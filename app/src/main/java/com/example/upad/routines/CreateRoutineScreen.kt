@@ -38,6 +38,8 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
+import com.example.upad.components.UPADBackgroundWrapper
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateRoutineScreen(
@@ -54,11 +56,20 @@ fun CreateRoutineScreen(
     val isPremiumUser by viewModel.isUserPremium.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
 
-    val colorAcabadoPrincipal = MaterialTheme.colorScheme.primary
-    val colorFondoBase = MaterialTheme.colorScheme.background
-    val colorSuperficieTarjetas = MaterialTheme.colorScheme.surface
-    val colorTextoPrincipal = MaterialTheme.colorScheme.onBackground
-    val colorTextoSecundario = MaterialTheme.colorScheme.onSurface
+    // 🌟 NUEVA LÓGICA DE COLORES ADAPTATIVOS
+    val isDarkMode by viewModel.isDarkMode.collectAsState()
+
+    val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
+    val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
+    val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
+    val colorFondoBase = Color.Transparent // 🔑 Deja ver el degradado del Wrapper trasero
+
+    // Superficie limpia translúcida sin grises forzados automáticos de Material 3
+    val colorSuperficieTarjetas = if (isPremiumUser) {
+        if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.65f)
+    } else {
+        if (isDarkMode) Color(0xFF1E1E1E) else Color.White
+    }
 
     val currentUserId = remember {
         FirebaseAuth.getInstance().currentUser?.uid ?: "PADRE_TEST"
@@ -104,7 +115,7 @@ fun CreateRoutineScreen(
             routineTurn = routineTurn,
             childName = childName,
             isPremiumUser = isPremiumUser,
-            colorFondo = colorSuperficieTarjetas,
+            colorFondo = if (isDarkMode) Color(0xFF1E1E1E) else Color.White,
             colorTexto = colorTextoPrincipal,
             colorProgreso = colorAcabadoPrincipal,
             onDismiss = { showSendingDialog = false }
@@ -122,7 +133,7 @@ fun CreateRoutineScreen(
     if (mostrarPopUpSugerencias) {
         AIOptionsDialog(
             opciones = sugerenciasIAByMenu,
-            colorFondo = colorSuperficieTarjetas,
+            colorFondo = if (isDarkMode) Color(0xFF1E1E1E) else Color.White,
             colorTexto = colorTextoPrincipal,
             colorTextoSec = colorTextoSecundario,
             colorAccion = Color(0xFFC5A059),
@@ -150,511 +161,513 @@ fun CreateRoutineScreen(
         )
     }
 
-    Scaffold(
-        containerColor = colorFondoBase,
-        bottomBar = {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                color = colorSuperficieTarjetas,
-                tonalElevation = 8.dp,
-                shadowElevation = 16.dp
-            ) {
-                Row(
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onBackClick,
-                        modifier = Modifier.weight(1f).height(50.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = colorTextoSecundario
-                        ),
-                        border = BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.3f))
-                    ) {
-                        Text("CANCELAR", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
-
-                    Button(
-                        onClick = { showSendingDialog = true },
-                        modifier = Modifier.weight(1f).height(50.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colorAcabadoPrincipal,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("GUARDAR", fontWeight = FontWeight.Black, fontSize = 13.sp)
-                    }
-                }
-            }
-        }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(bottom = 24.dp)
-        ) {
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-                        .background(colorSuperficieTarjetas)
-                        .padding(top = 20.dp, bottom = 24.dp, start = 16.dp, end = 24.dp)
+    // 🚀 WRAPPER PRINCIPAL QUE PINTA EL DEGRADADO DE FONDO ADAPTATIVO
+    UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
+        Scaffold(
+            containerColor = colorFondoBase,
+            bottomBar = {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                    color = colorSuperficieTarjetas,
+                    tonalElevation = 0.dp, // 🛠️ Matamos el plomo de Material 3
+                    shadowElevation = if (isPremiumUser) 0.dp else 16.dp
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .navigationBarsPadding()
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        IconButton(onClick = onBackClick) {
-                            Icon(
-                                Icons.Default.ArrowBack,
-                                contentDescription = "Atrás",
-                                tint = colorAcabadoPrincipal
-                            )
+                        OutlinedButton(
+                            onClick = onBackClick,
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = colorTextoSecundario
+                            ),
+                            border = BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.3f))
+                        ) {
+                            Text("CANCELAR", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
 
-                        if (isPremiumUser) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Row(
-                                    modifier = Modifier
-                                        .background(
-                                            colorAcabadoPrincipal.copy(alpha = 0.12f),
-                                            RoundedCornerShape(8.dp)
-                                        )
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Default.AutoAwesome,
-                                        contentDescription = null,
-                                        tint = colorAcabadoPrincipal,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        "PREMIUM",
-                                        color = colorAcabadoPrincipal,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Black
-                                    )
-                                }
-                            }
-                        } else {
-                            Button(
-                                onClick = { /* Navegar a pantalla de planes */ },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = colorAcabadoPrincipal.copy(alpha = 0.12f)
-                                ),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Badge,
-                                    contentDescription = null,
-                                    tint = colorAcabadoPrincipal,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "Basic",
-                                    color = colorAcabadoPrincipal,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                        Button(
+                            onClick = { showSendingDialog = true },
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colorAcabadoPrincipal,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("GUARDAR", fontWeight = FontWeight.Black, fontSize = 13.sp)
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        text = "TURNO: ${routineTurn.uppercase()}",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        color = colorTextoSecundario.copy(alpha = 0.8f),
-                        modifier = Modifier.padding(start = 12.dp),
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        text = "Editar Actividades",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Black,
-                        color = colorTextoPrincipal,
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
                 }
             }
-
-            item {
-                Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
-                    OutlinedTextField(
-                        value = routineName,
-                        onValueChange = {
-                            routineName = it
-                            viewModel.updateName(it)
-                        },
-                        label = { Text("Nombre de la Rutina", color = colorTextoSecundario) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colorAcabadoPrincipal,
-                            unfocusedBorderColor = colorTextoSecundario.copy(alpha = 0.3f),
-                            focusedTextColor = colorTextoPrincipal,
-                            unfocusedTextColor = colorTextoPrincipal
-                        ),
-                        singleLine = true
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = colorSuperficieTarjetas),
-                        border = BorderStroke(1.dp, colorAcabadoPrincipal.copy(alpha = 0.2f)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) { innerPadding ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
+                            .background(colorSuperficieTarjetas)
+                            .padding(top = 20.dp, bottom = 24.dp, start = 16.dp, end = 24.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "AÑADIR ACTIVIDAD",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colorAcabadoPrincipal,
-                                letterSpacing = 0.5.sp
-                            )
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            OutlinedTextField(
-                                value = nombreActividad,
-                                onValueChange = { nombreActividad = it },
-                                placeholder = {
-                                    Text(
-                                        "Ej: Estudiar inglés, comer fruta...",
-                                        color = colorTextoSecundario.copy(alpha = 0.6f)
-                                    )
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = colorAcabadoPrincipal,
-                                    unfocusedBorderColor = colorTextoSecundario.copy(alpha = 0.2f),
-                                    focusedTextColor = colorTextoPrincipal,
-                                    unfocusedTextColor = colorTextoPrincipal
-                                ),
-                                singleLine = true
-                            )
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            Text(
-                                text = "Días programados:",
-                                fontSize = 13.sp,
-                                color = colorTextoSecundario
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                diasDeLaSemana.forEach { dia ->
-                                    val estaSeleccionado = diasSeleccionados.contains(dia)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(
-                                                if (estaSeleccionado) colorAcabadoPrincipal
-                                                else colorFondoBase
-                                            )
-                                            .clickable {
-                                                if (estaSeleccionado) diasSeleccionados.remove(dia)
-                                                else diasSeleccionados.add(dia)
-                                            }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = dia,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (estaSeleccionado) Color.White
-                                            else colorTextoSecundario
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Button(
-                                onClick = {
-                                    if (nombreActividad.isNotEmpty()) {
-                                        viewModel.agregarActividadAutomatica(
-                                            userId = currentUserId,
-                                            turn = routineTurn,
-                                            textoCompleto = nombreActividad,
-                                            diasSeleccionados = diasSeleccionados.toList()
-                                        )
-                                        if (diasSeleccionados.isNotEmpty()) {
-                                            diaFiltroSeleccionado = diasSeleccionados.first()
-                                        }
-                                        nombreActividad = ""
-                                        diasSeleccionados.clear()
-                                    }
-                                },
-                                enabled = nombreActividad.isNotEmpty(),
-                                modifier = Modifier.fillMaxWidth().height(45.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = colorAcabadoPrincipal,
-                                    contentColor = Color.White
-                                )
-                            ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = onBackClick) {
                                 Icon(
-                                    Icons.Default.Add,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
+                                    Icons.Default.ArrowBack,
+                                    contentDescription = "Atrás",
+                                    tint = colorAcabadoPrincipal
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("AÑADIR MANUAL ➕", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
 
-                            // ✅ BOTÓN IA CON GROQ
                             if (isPremiumUser) {
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            try {
-                                                isLoadingAI = true
-                                                sugerenciasIAByMenu.clear()
-
-                                                val rawText = withContext(Dispatchers.IO) {
-                                                    val client = okhttp3.OkHttpClient()
-                                                    val body = """
-        {
-            "model": "llama-3.3-70b-versatile",
-            "max_tokens": 200,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Eres un psicopedagogo experto en autismo (TEA). Sugiere exactamente 3 actividades, una por linea, empezando con numero y punto. Maximo 4 palabras cada una. Sin saludos ni explicaciones."
-                },
-                {
-                    "role": "user",
-                    "content": "Dame 3 actividades para la rutina de la $routineTurn de un nino con TEA."
-                }
-            ]
-        }
-    """.trimIndent()
-
-                                                    val request = okhttp3.Request.Builder()
-                                                        .url("https://api.groq.com/openai/v1/chat/completions")
-                                                        .post(
-                                                            okhttp3.RequestBody.create(
-                                                                "application/json".toMediaTypeOrNull(),
-                                                                body
-                                                            )
-                                                        )
-                                                        .addHeader("Authorization", "Bearer ")
-                                                        .addHeader("Content-Type", "application/json")
-                                                        .build()
-
-                                                    val response = client.newCall(request).execute()
-                                                    val jsonResponse = response.body?.string() ?: ""
-
-                                                    // ✅ Logueamos la respuesta completa para ver qué devuelve Groq
-                                                    android.util.Log.d("UPAD_IA", "Respuesta Groq: $jsonResponse")
-
-                                                    val jsonObj = org.json.JSONObject(jsonResponse)
-
-                                                    // ✅ Si hay error de Groq lo mostramos claramente
-                                                    if (jsonObj.has("error")) {
-                                                        val errorMsg = jsonObj.getJSONObject("error").optString("message", "Error desconocido")
-                                                        android.util.Log.e("UPAD_IA", "Groq error: $errorMsg")
-                                                        return@withContext ""
-                                                    }
-
-                                                    jsonObj
-                                                        .getJSONArray("choices")
-                                                        .getJSONObject(0)
-                                                        .getJSONObject("message")
-                                                        .getString("content")
-                                                }
-
-                                                if (rawText.isNotEmpty()) {
-                                                    val lineas = rawText.split("\n")
-                                                    for (linea in lineas) {
-                                                        val limpia = linea
-                                                            .replace(Regex("^[0-9]+\\.\\s*"), "")
-                                                            .trim()
-                                                        if (limpia.isNotEmpty()) {
-                                                            sugerenciasIAByMenu.add(limpia)
-                                                        }
-                                                    }
-                                                }
-
-                                                if (sugerenciasIAByMenu.isNotEmpty()) {
-                                                    mostrarPopUpSugerencias = true
-                                                }
-
-                                            } catch (e: Exception) {
-                                                android.util.Log.e(
-                                                    "UPAD_IA",
-                                                    "Error Groq: ${e.message}"
-                                                )
-                                            } finally {
-                                                isLoadingAI = false
-                                            }
-                                        }
-                                    },
-                                    enabled = !isLoadingAI,
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFC5A059),
-                                        contentColor = Color.White
-                                    )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    if (isLoadingAI) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(18.dp),
-                                            color = Color.White,
-                                            strokeWidth = 2.dp
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            "PROCESANDO CON IA...",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
-                                    } else {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .background(
+                                                colorAcabadoPrincipal.copy(alpha = 0.12f),
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Icon(
                                             Icons.Default.AutoAwesome,
                                             contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
+                                            tint = colorAcabadoPrincipal,
+                                            modifier = Modifier.size(12.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            "SUGERIR ACTIVIDAD IA ✨",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
+                                            "PREMIUM",
+                                            color = colorAcabadoPrincipal,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Black
                                         )
+                                    }
+                                }
+                            } else {
+                                Button(
+                                    onClick = { /* Navegar a pantalla de planes */ },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colorAcabadoPrincipal.copy(alpha = 0.12f)
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Badge,
+                                        contentDescription = null,
+                                        tint = colorAcabadoPrincipal,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "Basic",
+                                        color = colorAcabadoPrincipal,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = "TURNO: ${routineTurn.uppercase()}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = colorTextoSecundario.copy(alpha = 0.8f),
+                            modifier = Modifier.padding(start = 12.dp),
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = "Editar Actividades",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            color = colorTextoPrincipal,
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                    }
+                }
+
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
+                        OutlinedTextField(
+                            value = routineName,
+                            onValueChange = {
+                                routineName = it
+                                viewModel.updateName(it)
+                            },
+                            label = { Text("Nombre de la Rutina", color = colorTextoSecundario) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = colorAcabadoPrincipal,
+                                unfocusedBorderColor = colorTextoSecundario.copy(alpha = 0.3f),
+                                focusedTextColor = colorTextoPrincipal,
+                                unfocusedTextColor = colorTextoPrincipal
+                            ),
+                            singleLine = true
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            color = colorSuperficieTarjetas,
+                            border = BorderStroke(1.dp, colorAcabadoPrincipal.copy(alpha = 0.25f)),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "AÑADIR ACTIVIDAD",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colorAcabadoPrincipal,
+                                    letterSpacing = 0.5.sp
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                OutlinedTextField(
+                                    value = nombreActividad,
+                                    onValueChange = { nombreActividad = it },
+                                    placeholder = {
+                                        Text(
+                                            "Ej: Estudiar inglés, comer fruta...",
+                                            color = colorTextoSecundario.copy(alpha = 0.6f)
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = colorAcabadoPrincipal,
+                                        unfocusedBorderColor = colorTextoSecundario.copy(alpha = 0.2f),
+                                        focusedTextColor = colorTextoPrincipal,
+                                        unfocusedTextColor = colorTextoPrincipal
+                                    ),
+                                    singleLine = true
+                                )
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Text(
+                                    text = "Días programados:",
+                                    fontSize = 13.sp,
+                                    color = colorTextoSecundario
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    diasDeLaSemana.forEach { dia ->
+                                        val estaSeleccionado = diasSeleccionados.contains(dia)
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(
+                                                    if (estaSeleccionado) colorAcabadoPrincipal
+                                                    else if (isDarkMode) Color.White.copy(alpha = 0.05f) else Color(0xFFEEEEEE)
+                                                )
+                                                .clickable {
+                                                    if (estaSeleccionado) diasSeleccionados.remove(dia)
+                                                    else diasSeleccionados.add(dia)
+                                                }
+                                                .padding(vertical = 10.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = dia,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (estaSeleccionado) Color.White
+                                                else colorTextoSecundario
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Button(
+                                    onClick = {
+                                        if (nombreActividad.isNotEmpty()) {
+                                            viewModel.agregarActividadAutomatica(
+                                                userId = currentUserId,
+                                                turn = routineTurn,
+                                                textoCompleto = nombreActividad,
+                                                diasSeleccionados = diasSeleccionados.toList()
+                                            )
+                                            if (diasSeleccionados.isNotEmpty()) {
+                                                diaFiltroSeleccionado = diasSeleccionados.first()
+                                            }
+                                            nombreActividad = ""
+                                            diasSeleccionados.clear()
+                                        }
+                                    },
+                                    enabled = nombreActividad.isNotEmpty(),
+                                    modifier = Modifier.fillMaxWidth().height(45.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = colorAcabadoPrincipal,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("AÑADIR MANUAL ➕", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+
+                                // ✅ BOTÓN IA CON GROQ
+                                if (isPremiumUser) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                try {
+                                                    isLoadingAI = true
+                                                    sugerenciasIAByMenu.clear()
+
+                                                    val rawText = withContext(Dispatchers.IO) {
+                                                        val client = okhttp3.OkHttpClient()
+                                                        val body = """
+                            {
+                                "model": "llama-3.3-70b-versatile",
+                                "max_tokens": 200,
+                                "messages": [
+                                    {
+                                        "role": "system",
+                                        "content": "Eres un psicopedagogo experto en autismo (TEA). Sugiere exactamente 3 actividades, una por linea, empezando con numero y punto. Maximo 4 palabras cada una. Sin saludos ni explicaciones."
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": "Dame 3 actividades para la rutina de la $routineTurn de un nino con TEA."
+                                    }
+                                ]
+                            }
+                        """.trimIndent()
+
+                                                        val request = okhttp3.Request.Builder()
+                                                            .url("https://api.groq.com/openai/v1/chat/completions")
+                                                            .post(
+                                                                okhttp3.RequestBody.create(
+                                                                    "application/json".toMediaTypeOrNull(),
+                                                                    body
+                                                                )
+                                                            )
+                                                            .addHeader("Authorization", "Bearer ")
+                                                            .addHeader("Content-Type", "application/json")
+                                                            .build()
+
+                                                        val response = client.newCall(request).execute()
+                                                        val jsonResponse = response.body?.string() ?: ""
+
+                                                        android.util.Log.d("UPAD_IA", "Respuesta Groq: $jsonResponse")
+
+                                                        val jsonObj = org.json.JSONObject(jsonResponse)
+
+                                                        if (jsonObj.has("error")) {
+                                                            val errorMsg = jsonObj.getJSONObject("error").optString("message", "Error desconocido")
+                                                            android.util.Log.e("UPAD_IA", "Groq error: $errorMsg")
+                                                            return@withContext ""
+                                                        }
+
+                                                        jsonObj
+                                                            .getJSONArray("choices")
+                                                            .getJSONObject(0)
+                                                            .getJSONObject("message")
+                                                            .getString("content")
+                                                    }
+
+                                                    if (rawText.isNotEmpty()) {
+                                                        val lineas = rawText.split("\n")
+                                                        for (linea in lineas) {
+                                                            val limpia = linea
+                                                                .replace(Regex("^[0-9]+\\.\\s*"), "")
+                                                                .trim()
+                                                            if (limpia.isNotEmpty()) {
+                                                                sugerenciasIAByMenu.add(limpia)
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (sugerenciasIAByMenu.isNotEmpty()) {
+                                                        mostrarPopUpSugerencias = true
+                                                    }
+
+                                                } catch (e: Exception) {
+                                                    android.util.Log.e(
+                                                        "UPAD_IA",
+                                                        "Error Groq: ${e.message}"
+                                                    )
+                                                } finally {
+                                                    isLoadingAI = false
+                                                }
+                                            }
+                                        },
+                                        enabled = !isLoadingAI,
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFFC5A059),
+                                            contentColor = Color.White
+                                        )
+                                    ) {
+                                        if (isLoadingAI) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                color = Color.White,
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                "PROCESANDO CON IA...",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Default.AutoAwesome,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                "SUGERIR ACTIVIDAD IA ✨",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            item {
-                Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                    Text(
-                        text = "VER AGENDA SEMANAL:",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colorTextoSecundario,
-                        modifier = Modifier.padding(start = 24.dp, bottom = 8.dp)
-                    )
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(diasDeLaSemana) { dia ->
-                            val esElDiaActivo = (dia == diaFiltroSeleccionado)
-                            val esHoyDelSistema = (dia == diaActualDelReloj)
+                item {
+                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                        Text(
+                            text = "VER AGENDA SEMANAL:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colorTextoSecundario,
+                            modifier = Modifier.padding(start = 24.dp, bottom = 8.dp)
+                        )
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 24.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(diasDeLaSemana) { dia ->
+                                val esElDiaActivo = (dia == diaFiltroSeleccionado)
+                                val esHoyDelSistema = (dia == diaActualDelReloj)
 
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(
-                                        when {
-                                            esElDiaActivo -> colorAcabadoPrincipal
-                                            esHoyDelSistema -> colorAcabadoPrincipal.copy(alpha = 0.2f)
-                                            else -> colorSuperficieTarjetas
-                                        }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(
+                                            when {
+                                                esElDiaActivo -> colorAcabadoPrincipal
+                                                esHoyDelSistema -> colorAcabadoPrincipal.copy(alpha = 0.2f)
+                                                else -> colorSuperficieTarjetas
+                                            }
+                                        )
+                                        .clickable { diaFiltroSeleccionado = dia }
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (esHoyDelSistema) "$dia (Hoy)" else dia,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (esElDiaActivo || esHoyDelSistema)
+                                            FontWeight.Bold else FontWeight.Medium,
+                                        color = if (esElDiaActivo) Color.White
+                                        else if (esHoyDelSistema) colorAcabadoPrincipal
+                                        else colorTextoPrincipal
                                     )
-                                    .clickable { diaFiltroSeleccionado = dia }
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = if (esHoyDelSistema) "$dia (Hoy)" else dia,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (esElDiaActivo || esHoyDelSistema)
-                                        FontWeight.Bold else FontWeight.Medium,
-                                    color = if (esElDiaActivo) Color.White
-                                    else if (esHoyDelSistema) colorAcabadoPrincipal
-                                    else colorTextoPrincipal
-                                )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            item {
-                Text(
-                    text = "ACTIVIDADES DEL ${diaFiltroSeleccionado.uppercase()} " +
-                            "(${pasosFiltradosPorDia.size})",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colorTextoPrincipal,
-                    modifier = Modifier.padding(
-                        start = 24.dp, top = 16.dp, end = 24.dp, bottom = 8.dp
-                    )
-                )
-            }
-
-            if (pasosFiltradosPorDia.isEmpty()) {
                 item {
                     Text(
-                        text = "No hay actividades para el día $diaFiltroSeleccionado.",
-                        fontSize = 14.sp,
-                        color = colorTextoSecundario,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp, horizontal = 24.dp)
+                        text = "ACTIVIDADES DEL ${diaFiltroSeleccionado.uppercase()} " +
+                                "(${pasosFiltradosPorDia.size})",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colorTextoPrincipal,
+                        modifier = Modifier.padding(
+                            start = 24.dp, top = 16.dp, end = 24.dp, bottom = 8.dp
+                        )
                     )
                 }
-            } else {
-                itemsIndexed(pasosFiltradosPorDia) { _, paso ->
-                    val indexRealEnFirebase = pasosSeleccionados.indexOfFirst {
-                        it.actividad == paso.actividad && it.dias == paso.dias
-                    }
 
-                    Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 5.dp)) {
-                        PasoItemCard(
-                            tarea = paso,
-                            colorSuperficie = colorSuperficieTarjetas,
-                            colorTexto = colorTextoPrincipal,
-                            colorTextoSec = colorTextoSecundario,
-                            colorDetalle = colorAcabadoPrincipal,
-                            onDeleteClick = {
-                                if (indexRealEnFirebase != -1) {
-                                    onRemoveTaskClick(indexRealEnFirebase)
-                                }
-                            }
+                if (pasosFiltradosPorDia.isEmpty()) {
+                    item {
+                        Text(
+                            text = "No hay actividades para el día $diaFiltroSeleccionado.",
+                            fontSize = 14.sp,
+                            color = colorTextoSecundario,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp, horizontal = 24.dp)
                         )
+                    }
+                } else {
+                    itemsIndexed(pasosFiltradosPorDia) { _, paso ->
+                        val indexRealEnFirebase = pasosSeleccionados.indexOfFirst {
+                            it.actividad == paso.actividad && it.dias == paso.dias
+                        }
+
+                        Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 5.dp)) {
+                            PasoItemCard(
+                                tarea = paso,
+                                colorSuperficie = colorSuperficieTarjetas,
+                                colorTexto = colorTextoPrincipal,
+                                colorTextoSec = colorTextoSecundario,
+                                colorDetalle = colorAcabadoPrincipal,
+                                onDeleteClick = {
+                                    if (indexRealEnFirebase != -1) {
+                                        onRemoveTaskClick(indexRealEnFirebase)
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -817,7 +830,6 @@ fun PasoItemCard(
                 contentAlignment = Alignment.Center
             ) {
                 if (tarea.imageUrl.isNotEmpty()) {
-                    // ✅ Carga imagen de Arasaac con placeholder y fallback
                     AsyncImage(
                         model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                             .data(tarea.imageUrl)
@@ -830,7 +842,6 @@ fun PasoItemCard(
                         error = painterResource(android.R.drawable.ic_menu_gallery)
                     )
                 } else {
-                    // ✅ Mientras carga o si no hay imagen muestra ícono
                     Icon(
                         Icons.Default.Image,
                         contentDescription = null,

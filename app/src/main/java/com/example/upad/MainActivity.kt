@@ -377,14 +377,16 @@ fun UPadNavigation(
                     val trackingViewModel: com.example.upad.viewmodel.TrackingViewModel = viewModel()
 
                     HijoTrackingScreen(
+                        routineViewModel = routineViewModel, // 👈 Pasamos el ViewModel global aquí en primer lugar
                         hijoId = hijoId,
                         trackingViewModel = trackingViewModel,
-                        onNavigateBack = { navController.popBackStack() } // ✨ Con esto se borra el error en rojo al instante
+                        onNavigateBack = { navController.popBackStack() }
                     )
                 }
 
                 composable("profile") {
                     ProfileScreen(
+                        routineViewModel = routineViewModel, // 👈 Pasamos el ViewModel aquí para que compile correctamente
                         onNavigateBack = { navController.popBackStack() },
                         onLogoutSuccess = {
                             navController.navigate("welcome") {
@@ -403,6 +405,7 @@ fun UPadNavigation(
 
                 composable("connection_code") {
                     ConnectionScreen(
+                        routineViewModel = routineViewModel, // 👈 Pásale tu instancia del ViewModel aquí
                         onNavigateBack = { navController.popBackStack() },
                         onLinkSuccess = { navController.popBackStack() }
                     )

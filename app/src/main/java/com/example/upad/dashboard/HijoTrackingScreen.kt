@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.upad.components.UPADBackgroundWrapper // 🛠️ Importamos el contenedor unificado
+import com.example.upad.viewmodel.RoutineViewModel // 🛠️ Importamos el ViewModel de estado Premium/Tema
 import com.example.upad.viewmodel.TrackingViewModel
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationRequest
@@ -42,10 +44,27 @@ import com.google.firebase.firestore.FirebaseFirestore
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HijoTrackingScreen(
+    routineViewModel: RoutineViewModel, // 🛡️ AGREGADO DE FORMA SEGURA COMO PRIMER PARÁMETRO
     hijoId: String,
     onNavigateBack: () -> Unit,
     trackingViewModel: TrackingViewModel = viewModel()
 ) {
+    // 📨 1. RECOLECCIÓN DE ESTADOS GLOBALES (Cabecera del componente)
+    val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
+    val isDarkMode by routineViewModel.isDarkMode.collectAsState()
+
+    // 🎨 PALETA DE COLORES ADAPTATIVA EN BASE AL ESTADO PREMIUM Y MODO VISUAL
+    val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
+    val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
+    val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
+
+    // Configuración para tarjetas flotantes y TopBar: Translúcido en Premium o sólido en Básico
+    val colorSuperficieFlotante = if (isPremiumUser) {
+        if (isDarkMode) Color.Black.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.75f)
+    } else {
+        if (isDarkMode) Color(0xFF1E1E1E) else Color.White
+    }
+
     val context = LocalContext.current
     val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
     val firestore = remember { FirebaseFirestore.getInstance() }
@@ -53,7 +72,6 @@ fun HijoTrackingScreen(
     val dispositivosConectados = remember { mutableStateListOf<DispositivoVinculado>() }
     var dispositivoSeleccionado by remember { mutableStateOf<DispositivoVinculado?>(null) }
 
-    // 📍 Estados de ubicación limpios sin ciudades fijas precargadas
     var miUbicacionReal by remember { mutableStateOf<LatLng?>(null) }
     val datosUbicacionNino by trackingViewModel.ubicacion.collectAsState()
 
@@ -77,12 +95,11 @@ fun HijoTrackingScreen(
         }
     }
 
-    // 📡 ESCUCHA DE UBICACIÓN DEL PADRE EN TIEMPO REAL (Cada 5 segundos de forma continua)
+    // 📡 ESCUCHA DE UBICACIÓN DEL PADRE EN TIEMPO REAL
     LaunchedEffect(tienePermisoUbicacion) {
         if (tienePermisoUbicacion) {
             try {
                 val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
-
                 val locationRequest = LocationRequest.Builder(
                     Priority.PRIORITY_HIGH_ACCURACY, 5000L
                 ).build()
@@ -94,7 +111,6 @@ fun HijoTrackingScreen(
                             val pos = LatLng(location.latitude, location.longitude)
                             miUbicacionReal = pos
 
-                            // Si el niño no ha cargado coordenadas válidas, la cámara te sigue a ti primero
                             val ninoEsInvalido = datosUbicacionNino == null ||
                                     (datosUbicacionNino?.latitud == 0.0 && datosUbicacionNino?.longitud == 0.0)
 
@@ -110,7 +126,6 @@ fun HijoTrackingScreen(
                     locationCallback,
                     android.os.Looper.getMainLooper()
                 )
-
             } catch (e: SecurityException) {
                 e.printStackTrace()
             }
@@ -135,7 +150,6 @@ fun HijoTrackingScreen(
                         )
                     }
 
-                    // Auto-selección inteligente al abrir la pantalla
                     if (dispositivosConectados.isNotEmpty() && dispositivoSeleccionado == null) {
                         val preferido = dispositivosConectados.find { it.id == hijoId }
                         dispositivoSeleccionado = preferido ?: dispositivosConectados.first()
@@ -144,24 +158,21 @@ fun HijoTrackingScreen(
         }
     }
 
-    // Disparador del ViewModel al cambiar de teléfono seleccionado
     LaunchedEffect(dispositivoSeleccionado) {
         dispositivoSeleccionado?.let {
             trackingViewModel.iniciarRastreoHijo(it.id)
         }
     }
 
-    // 🎯 ENCUADRE DE CÁMARA ESTILO WHATSAPP (Ajuste automático dinámico)
+    // 🎯 ENCUADRE DE CÁMARA DINÁMICO
     LaunchedEffect(datosUbicacionNino, miUbicacionReal) {
         val infoNino = datosUbicacionNino
         val infoPadre = miUbicacionReal
 
-        // Comprobamos que el niño tenga coordenadas reales y no la posición por defecto (0,0) de Ghana
         if (infoNino != null && infoNino.latitud != 0.0 && infoNino.longitud != 0.0) {
             val coordenadasHijo = LatLng(infoNino.latitud, infoNino.longitud)
 
             if (infoPadre != null) {
-                // Si están los dos, los encuadra juntos
                 val limites = LatLngBounds.Builder()
                     .include(infoPadre)
                     .include(coordenadasHijo)
@@ -172,7 +183,6 @@ fun HijoTrackingScreen(
                     durationMs = 1000
                 )
             } else {
-                // Si solo está el niño, va directo a él
                 cameraPositionState.animate(
                     update = CameraUpdateFactory.newLatLngZoom(coordenadasHijo, 16f),
                     durationMs = 1000
@@ -181,80 +191,57 @@ fun HijoTrackingScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        "Ubicar a mi Hijo",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Volver al Dashboard",
-                            tint = Color(0xFFC5A059)
+    // 🚀 2. IMPLEMENTACIÓN DEL CONTENEDOR BASE
+    UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
+        Scaffold(
+            containerColor = Color.Transparent, // Fondo transparente para que funcione la estética Premium/Fondo unificado
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            "Ubicar a mi Hijo",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colorTextoPrincipal
                         )
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            GoogleMap(
-                modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState,
-                properties = MapProperties(isMyLocationEnabled = tienePermisoUbicacion),
-                uiSettings = MapUiSettings(myLocationButtonEnabled = true)
-            ) {
-                // 👤 Marcador de tu Ubicación Real
-                miUbicacionReal?.let { posPadre ->
-                    MarkerComposable(
-                        state = MarkerState(position = posPadre),
-                        title = "Tu ubicación"
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(45.dp)
-                                .background(Color(0xFF007AFF), CircleShape)
-                                .padding(2.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.White, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("👨‍🦰", fontSize = 22.sp)
-                            }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Volver al Dashboard",
+                                tint = colorAcabadoPrincipal
+                            )
                         }
-                    }
-                }
-
-                // 👶 Marcador de la Ubicación Real del Menor (Se renderiza si no es 0,0)
-                datosUbicacionNino?.let { info ->
-                    if (info.latitud != 0.0 && info.longitud != 0.0) {
-                        val coordenadasHijo = LatLng(info.latitud, info.longitud)
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = colorSuperficieFlotante // Barra adaptable (Translúcida o sólida)
+                    )
+                )
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                // El mapa base de Google Maps se mantiene a pantalla completa
+                GoogleMap(
+                    modifier = Modifier.fillMaxSize(),
+                    cameraPositionState = cameraPositionState,
+                    properties = MapProperties(isMyLocationEnabled = tienePermisoUbicacion),
+                    uiSettings = MapUiSettings(myLocationButtonEnabled = true)
+                ) {
+                    // 👨‍🦰 Marcador de tu Ubicación Real
+                    miUbicacionReal?.let { posPadre ->
                         MarkerComposable(
-                            state = MarkerState(position = coordenadasHijo),
-                            title = dispositivoSeleccionado?.modelo ?: "Hijo"
+                            state = MarkerState(position = posPadre),
+                            title = "Tu ubicación"
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(45.dp)
-                                    .background(Color(0xFF4CAF50), CircleShape)
+                                    .background(Color(0xFF007AFF), CircleShape)
                                     .padding(2.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -264,51 +251,80 @@ fun HijoTrackingScreen(
                                         .background(Color.White, CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text("👦", fontSize = 22.sp)
+                                    Text("👨‍🦰", fontSize = 22.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // 👦 Marcador de la Ubicación Real del Menor
+                    datosUbicacionNino?.let { info ->
+                        if (info.latitud != 0.0 && info.longitud != 0.0) {
+                            val coordenadasHijo = LatLng(info.latitud, info.longitud)
+                            MarkerComposable(
+                                state = MarkerState(position = coordenadasHijo),
+                                title = dispositivoSeleccionado?.modelo ?: "Hijo"
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(45.dp)
+                                        .background(Color(0xFF4CAF50), CircleShape)
+                                        .padding(2.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.White, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("👦", fontSize = 22.sp)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // Carrusel horizontal superior de dispositivos
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-            ) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                // Carrusel horizontal superior flotante de dispositivos adaptado con Glassmorphism
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
                 ) {
-                    items(dispositivosConectados) { dispositivo ->
-                        val esElSeleccionado = dispositivo.id == dispositivoSeleccionado?.id
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(dispositivosConectados) { dispositivo ->
+                            val esElSeleccionado = dispositivo.id == dispositivoSeleccionado?.id
 
-                        Card(
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (esElSeleccionado) Color(0xFFC5A059) else MaterialTheme.colorScheme.surface
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                            modifier = Modifier.clickable { dispositivoSeleccionado = dispositivo }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            Card(
+                                shape = RoundedCornerShape(24.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (esElSeleccionado) colorAcabadoPrincipal else colorSuperficieFlotante
+                                ),
+                                border = if (isPremiumUser && !esElSeleccionado) androidx.compose.foundation.BorderStroke(1.dp, colorAcabadoPrincipal.copy(alpha = 0.25f)) else null,
+                                elevation = CardDefaults.cardElevation(defaultElevation = if (isPremiumUser) 0.dp else 6.dp),
+                                modifier = Modifier.clickable { dispositivoSeleccionado = dispositivo }
                             ) {
-                                Text(
-                                    text = if (esElSeleccionado) "🎯" else "📱",
-                                    fontSize = 16.sp
-                                )
-                                Text(
-                                    text = dispositivo.modelo,
-                                    color = if (esElSeleccionado) Color.White else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 14.sp
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (esElSeleccionado) "🎯" else "📱",
+                                        fontSize = 16.sp
+                                    )
+                                    Text(
+                                        text = dispositivo.modelo,
+                                        color = if (esElSeleccionado) Color.White else colorTextoPrincipal,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 14.sp
+                                    )
+                                }
                             }
                         }
                     }
