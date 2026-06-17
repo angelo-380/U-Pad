@@ -37,10 +37,10 @@ import java.util.Calendar
 fun ChildStartScreen(
     routineViewModel: RoutineViewModel,
     onNavigateToTask: (actividadNombre: String, turno: String) -> Unit,
-    onNavigateToCompleted: () -> Unit
+    onNavigateToCompleted: () -> Unit,
+    onPadreIdObtenido: (String) -> Unit = {}  // FIX: nuevo parámetro para propagar el padreId real
 ) {
-    val colorAzulTEA = Color(0xFF4FC3F7)
-    val colorFondoNiño = Color(0xFFF4F9FC) // Fondo base más elegante y limpio
+    val colorFondoNiño = Color(0xFFF4F9FC)
     val context = LocalContext.current
 
     val deviceId = remember { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
@@ -50,8 +50,8 @@ fun ChildStartScreen(
     var cargando by remember { mutableStateOf(true) }
     var padreIdAsociado by remember { mutableStateOf("") }
     var esPremiumPorPadre by remember { mutableStateOf(false) }
-
     var verTareasModoBasico by remember { mutableStateOf(false) }
+    var codigoGeneradoEnSesion by remember { mutableStateOf(false) }
 
     val firestore = remember { FirebaseFirestore.getInstance() }
 
@@ -59,7 +59,6 @@ fun ChildStartScreen(
         var devicesListener: ListenerRegistration? = null
         var premiumListener: ListenerRegistration? = null
         var pairingCodeListener: ListenerRegistration? = null
-        var codigoGeneradoEnSesion = false
 
         devicesListener = firestore.collection("dispositivos_niños").document(deviceId)
             .addSnapshotListener { snapshot, error ->
@@ -68,71 +67,73 @@ fun ChildStartScreen(
                     return@addSnapshotListener
                 }
 
-                if (snapshot != null && snapshot.exists() && snapshot.contains("padreId")) {
-                    val pId = snapshot.getString("padreId") ?: ""
-                    if (pId.isNotEmpty()) {
-                        estaVinculado = true
+                val padreId = snapshot?.getString("padreId") ?: ""
 
-                        // Solo recargamos rutinas y listener si el ID del padre realmente cambió o es el primero
-                        if (padreIdAsociado != pId) {
-                            padreIdAsociado = pId
-                            routineViewModel.cargarRutinasDesdeFirebase(pId)
+                if (snapshot == null || !snapshot.exists() || padreId.isEmpty()) {
+                    estaVinculado = false
+                    padreIdAsociado = ""
+                    premiumListener?.remove()
 
-                            // Apagamos listener premium del padre anterior si existiera
-                            premiumListener?.remove()
-                            premiumListener = firestore.collection("users").document(pId)
-                                .addSnapshotListener { userSnapshot, userError ->
-                                    if (userError != null) {
-                                        cargando = false
-                                        return@addSnapshotListener
-                                    }
-                                    if (userSnapshot != null && userSnapshot.exists()) {
-                                        esPremiumPorPadre = userSnapshot.getBoolean("isPremium") ?: false
-                                    }
-                                    cargando = false
-                                }
-                        }
-
-                        // Limpiamos el listener del código de emparejamiento pues ya está vinculado
-                        pairingCodeListener?.remove()
-                        pairingCodeListener = null
-                    } else {
-                        cargando = false
-                    }
-                } else {
-                    if (codigoNiño == "------" && !codigoGeneradoEnSesion) {
+                    if (!codigoGeneradoEnSesion) {
                         codigoGeneradoEnSesion = true
                         val nuevoCodigo = (100000..999999).random().toString()
                         codigoNiño = nuevoCodigo
 
-                        val datosConexion = mapOf(
-                            "deviceId" to deviceId,
-                            "estado" to "esperando",
-                            "padreId" to ""
-                        )
                         firestore.collection("codigos_vinculacion").document(nuevoCodigo)
-                            .set(datosConexion)
+                            .set(mapOf(
+                                "deviceId" to deviceId,
+                                "estado" to "esperando",
+                                "padreId" to ""
+                            ))
 
-                        pairingCodeListener = firestore.collection("codigos_vinculacion").document(nuevoCodigo)
+                        pairingCodeListener?.remove()
+                        pairingCodeListener = firestore.collection("codigos_vinculacion")
+                            .document(nuevoCodigo)
                             .addSnapshotListener { codeSnapshot, codeError ->
                                 if (codeError != null) return@addSnapshotListener
-
                                 if (codeSnapshot != null && codeSnapshot.exists()) {
                                     val estado = codeSnapshot.getString("estado")
-                                    val padreId = codeSnapshot.getString("padreId")
-
-                                    if (estado == "enlazado" && !padreId.isNullOrEmpty()) {
+                                    val pId = codeSnapshot.getString("padreId")
+                                    if (estado == "enlazado" && !pId.isNullOrEmpty()) {
                                         firestore.collection("dispositivos_niños").document(deviceId)
-                                            .set(mapOf("padreId" to padreId), SetOptions.merge())
-
-                                        firestore.collection("codigos_vinculacion").document(nuevoCodigo)
-                                            .delete()
+                                            .set(mapOf("padreId" to pId), SetOptions.merge())
+                                        firestore.collection("codigos_vinculacion")
+                                            .document(nuevoCodigo).delete()
                                     }
                                 }
                             }
+                    } else if (codigoNiño == "------") {
+                        codigoGeneradoEnSesion = false
                     }
+
                     cargando = false
+                    return@addSnapshotListener
                 }
+
+                // Padre vinculado
+                estaVinculado = true
+
+                if (padreIdAsociado != padreId) {
+                    padreIdAsociado = padreId
+                    onPadreIdObtenido(padreId)  // FIX: propagar el padreId real al NavHost
+                    routineViewModel.cargarRutinasDesdeFirebase(padreId)
+
+                    premiumListener?.remove()
+                    premiumListener = firestore.collection("users").document(padreId)
+                        .addSnapshotListener { userSnapshot, userError ->
+                            if (userError != null) {
+                                cargando = false
+                                return@addSnapshotListener
+                            }
+                            if (userSnapshot != null && userSnapshot.exists()) {
+                                esPremiumPorPadre = userSnapshot.getBoolean("isPremium") ?: false
+                            }
+                            cargando = false
+                        }
+                }
+
+                pairingCodeListener?.remove()
+                pairingCodeListener = null
             }
 
         onDispose {
@@ -174,10 +175,8 @@ fun ChildStartScreen(
 
     val filtradasManana = remember(tasksManana, listaVariacionesDia) {
         tasksManana.filter { item ->
-            val elObjeto = item as? Any ?: return@filter false
             try {
-                val clasesMetodos = elObjeto.javaClass.getMethod("getDias")
-                val listaDias = clasesMetodos.invoke(elObjeto) as? List<*> ?: emptyList<String>()
+                val listaDias = item.javaClass.getMethod("getDias").invoke(item) as? List<*> ?: emptyList<String>()
                 listaDias.isEmpty() || listaDias.any { d -> listaVariacionesDia.contains(d.toString().uppercase().trim()) }
             } catch (e: Exception) { true }
         }
@@ -185,10 +184,8 @@ fun ChildStartScreen(
 
     val filtradasTarde = remember(tasksTarde, listaVariacionesDia) {
         tasksTarde.filter { item ->
-            val elObjeto = item as? Any ?: return@filter false
             try {
-                val clasesMetodos = elObjeto.javaClass.getMethod("getDias")
-                val listaDias = clasesMetodos.invoke(elObjeto) as? List<*> ?: emptyList<String>()
+                val listaDias = item.javaClass.getMethod("getDias").invoke(item) as? List<*> ?: emptyList<String>()
                 listaDias.isEmpty() || listaDias.any { d -> listaVariacionesDia.contains(d.toString().uppercase().trim()) }
             } catch (e: Exception) { true }
         }
@@ -196,10 +193,8 @@ fun ChildStartScreen(
 
     val filtradasNoche = remember(tasksNoche, listaVariacionesDia) {
         tasksNoche.filter { item ->
-            val elObjeto = item as? Any ?: return@filter false
             try {
-                val clasesMetodos = elObjeto.javaClass.getMethod("getDias")
-                val listaDias = clasesMetodos.invoke(elObjeto) as? List<*> ?: emptyList<String>()
+                val listaDias = item.javaClass.getMethod("getDias").invoke(item) as? List<*> ?: emptyList<String>()
                 listaDias.isEmpty() || listaDias.any { d -> listaVariacionesDia.contains(d.toString().uppercase().trim()) }
             } catch (e: Exception) { true }
         }
@@ -208,7 +203,12 @@ fun ChildStartScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (esPremiumPorPadre) Brush.verticalGradient(listOf(Color(0xFFFFF9C4), Color(0xFFFBC02D).copy(alpha = 0.3f))) else Brush.verticalGradient(listOf(colorFondoNiño, colorFondoNiño))),
+            .background(
+                if (esPremiumPorPadre)
+                    Brush.verticalGradient(listOf(Color(0xFFFFF9C4), Color(0xFFFBC02D).copy(alpha = 0.3f)))
+                else
+                    Brush.verticalGradient(listOf(colorFondoNiño, colorFondoNiño))
+            ),
         contentAlignment = Alignment.Center
     ) {
         if (cargando) {
@@ -250,7 +250,6 @@ fun ChildStartScreen(
                     CircularProgressIndicator(color = Color(0xFF0D47A1), strokeWidth = 5.dp)
                 } else {
                     if (esPremiumPorPadre || verTareasModoBasico) {
-                        // ✨ CORREGIDO: Título principal en Negro elegante
                         Text(
                             text = "¡MIS ACTIVIDADES DE HOY! 🏆",
                             fontSize = 26.sp,
@@ -259,15 +258,14 @@ fun ChildStartScreen(
                             modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
                         )
 
-                        val turnomananaActivo = horaActual < 13
+                        val turnoMananaActivo = horaActual < 13
                         val turnoTardeActivo = horaActual in 13..17
                         val turnoNocheActivo = horaActual >= 18
 
                         var yaSeEncontroLaActivaGlobal = false
 
-                        // ================== 🌅 MAÑANA ==================
-                        SeccionTurnoTitulo(titulo = "🌅 ACTIVIDADES DE LA MAÑANA", activo = turnomananaActivo, horasTexto = "(12:00 AM - 1:00 PM)")
-                        if (turnomananaActivo) {
+                        SeccionTurnoTitulo(titulo = "🌅 ACTIVIDADES DE LA MAÑANA", activo = turnoMananaActivo, horasTexto = "(12:00 AM - 1:00 PM)")
+                        if (turnoMananaActivo) {
                             BloqueListaTareas(
                                 tareas = filtradasManana,
                                 turnoNombre = "MAÑANA",
@@ -282,7 +280,6 @@ fun ChildStartScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // ================== ☀️ TARDE ==================
                         SeccionTurnoTitulo(titulo = "☀️ ACTIVIDADES DE LA TARDE", activo = turnoTardeActivo, horasTexto = "(1:00 PM - 6:00 PM)")
                         if (turnoTardeActivo) {
                             BloqueListaTareas(
@@ -299,7 +296,6 @@ fun ChildStartScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // ================== 🌙 NOCHE ==================
                         SeccionTurnoTitulo(titulo = "🌙 ACTIVIDADES DE LA NOCHE", activo = turnoNocheActivo, horasTexto = "(6:00 PM - 12:00 AM)")
                         if (turnoNocheActivo) {
                             BloqueListaTareas(
@@ -326,7 +322,9 @@ fun ChildStartScreen(
                         Spacer(modifier = Modifier.height(48.dp))
                         Button(
                             onClick = { verTareasModoBasico = true },
-                            modifier = Modifier.fillMaxWidth(0.85f).height(85.dp),
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .height(85.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                             shape = RoundedCornerShape(24.dp)
                         ) {
@@ -342,7 +340,9 @@ fun ChildStartScreen(
 @Composable
 fun SeccionTurnoTitulo(titulo: String, activo: Boolean, horasTexto: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -359,7 +359,10 @@ fun SeccionTurnoTitulo(titulo: String, activo: Boolean, horasTexto: String) {
             SuggestionChip(
                 onClick = {},
                 label = { Text("ACTIVO", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
-                colors = SuggestionChipDefaults.suggestionChipColors(labelColor = Color(0xFF2E7D32), containerColor = Color(0xFFE8F5E9))
+                colors = SuggestionChipDefaults.suggestionChipColors(
+                    labelColor = Color(0xFF2E7D32),
+                    containerColor = Color(0xFFE8F5E9)
+                )
             )
         }
     }
@@ -370,7 +373,7 @@ fun CardBloqueadoPorHorario(mensaje: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFECEFF1)), // Plomo neutral elegante
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFECEFF1)),
         border = BorderStroke(1.dp, Color(0xFFCFD8DC))
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -391,7 +394,12 @@ fun BloqueListaTareas(
     marcarActivaEncontrada: () -> Unit
 ) {
     if (tareas.isEmpty()) {
-        Text("No hay actividades agregadas para este turno.", fontSize = 14.sp, color = Color.Gray, modifier = Modifier.padding(8.dp))
+        Text(
+            "No hay actividades agregadas para este turno.",
+            fontSize = 14.sp,
+            color = Color.Gray,
+            modifier = Modifier.padding(8.dp)
+        )
     } else {
         var localActivaEncontrada = yaSeEncontroActiva
         Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -408,7 +416,6 @@ fun BloqueListaTareas(
                     try { clase.getMethod("getDuracion").invoke(task).toString() } catch (ex: Exception) { "5" }
                 }
 
-                // ✨ CORRECCIÓN: Si el texto extraído dice "55" o está vacío, lo forzamos a ser "5"
                 if (duracionText.trim() == "55" || duracionText.trim() == "0") {
                     duracionText = "5"
                 }
@@ -418,8 +425,7 @@ fun BloqueListaTareas(
                 } catch (e: Exception) { "" }
 
                 val completada = try {
-                    val metodoCompletado = clase.getMethod("estaCompletadaHoy", String::class.java)
-                    metodoCompletado.invoke(task, diaActualTexto) as Boolean
+                    clase.getMethod("estaCompletadaHoy", String::class.java).invoke(task, diaActualTexto) as Boolean
                 } catch (e: Exception) { false }
 
                 val estaHabilitada = if (completada) {
@@ -440,7 +446,7 @@ fun BloqueListaTareas(
                         turno = turnoNombre,
                         isCompletada = completada,
                         isHabilitada = estaHabilitada,
-                        index = index, // Pasamos el índice para variar los hermosos colores
+                        index = index,
                         onClick = {
                             if (estaHabilitada && !completada) {
                                 onNavigateToTask(nombreActividad, turnoNombre)
@@ -464,12 +470,11 @@ fun ItemActividadContenedor(
     index: Int,
     onClick: () -> Unit
 ) {
-    // ✨ PALETA DE COLORES ELEGANTES Y ATRACTIVOS (Solo activos)
     val colorBaseDinamico = when (index % 4) {
-        0 -> Color(0xFFE3F2FD) // Celeste Pastel premium
-        1 -> Color(0xFFE8F5E9) // Verde Menta suave
-        2 -> Color(0xFFF3E5F5) // Lavanda/Morado elegante
-        else -> Color(0xFFFFF3E0) // Naranja Durazno alegre
+        0 -> Color(0xFFE3F2FD)
+        1 -> Color(0xFFE8F5E9)
+        2 -> Color(0xFFF3E5F5)
+        else -> Color(0xFFFFF3E0)
     }
 
     val colorBordeDinamico = when (index % 4) {
@@ -479,10 +484,9 @@ fun ItemActividadContenedor(
         else -> Color(0xFFFF9800)
     }
 
-    // ✨ CORREGIDO: Si está hecho o bloqueado va en plomo (Gray)
     val colorContenedor = when {
-        isCompletada -> Color(0xFFECEFF1)       // Plomo suave listo
-        !isHabilitada -> Color(0xFFF5F5F5)      // Plomo claro deshabilitado
+        isCompletada -> Color(0xFFECEFF1)
+        !isHabilitada -> Color(0xFFF5F5F5)
         else -> colorBaseDinamico
     }
 
@@ -500,7 +504,7 @@ fun ItemActividadContenedor(
             .clickable(enabled = isHabilitada && !isCompletada) { onClick() },
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = colorContenedor),
-        border = BorderStroke(2.5.dp, colorBorde), // Bordes más marcados y limpios
+        border = BorderStroke(2.5.dp, colorBorde),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isHabilitada && !isCompletada) 4.dp else 0.dp)
     ) {
         Row(
@@ -520,7 +524,9 @@ fun ItemActividadContenedor(
                             AsyncImage(
                                 model = imageUrl,
                                 contentDescription = nombre,
-                                modifier = Modifier.fillMaxSize().padding(6.dp),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(6.dp),
                                 contentScale = ContentScale.Fit,
                                 alpha = if (isHabilitada && !isCompletada) 1f else 0.35f
                             )
@@ -545,7 +551,6 @@ fun ItemActividadContenedor(
                         color = colorTexto
                     )
                     Text(
-                        // ✨ Visualización corregida asegurada a 5 minutos
                         text = "⏱️ $duracion min | 📍 $turno",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
@@ -554,7 +559,6 @@ fun ItemActividadContenedor(
                 }
             }
 
-            // Icono de estado lateral derecho
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -569,9 +573,9 @@ fun ItemActividadContenedor(
                 contentAlignment = Alignment.Center
             ) {
                 when {
-                    isCompletada -> Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF388E3C))
-                    !isHabilitada -> Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = Color(0xFF90A4AE))
-                    else -> Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
+                    isCompletada -> Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF388E3C))
+                    !isHabilitada -> Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF90A4AE))
+                    else -> Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
                 }
             }
         }

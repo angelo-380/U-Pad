@@ -32,9 +32,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
-// 🎯 Apunta al paquete dashboard que es donde vive tu pantalla realmente
 import com.example.upad.dashboard.HijoTrackingScreen
-// Importaciones de tus pantallas
 import com.example.upad.auth.ForgotPasswordScreen
 import com.example.upad.auth.LoginScreen
 import com.example.upad.auth.RegisterScreen
@@ -64,7 +62,7 @@ import com.example.upad.dashboard.SettingsScreen
 import com.example.upad.viewmodel.RoutineViewModel
 import com.example.upad.dashboard.ConnectionScreen
 import com.example.upad.dashboard.AnalyticsScreen
-import com.example.upad.premium.PaymentViewScreen // Única importación premium externa necesaria
+import com.example.upad.premium.PaymentViewScreen
 
 class MainActivity : FragmentActivity() {
 
@@ -81,7 +79,6 @@ class MainActivity : FragmentActivity() {
         kioscoListener = firestore.collection("dispositivos_niños").document(deviceId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) return@addSnapshotListener
-                
                 if (snapshot != null && snapshot.exists()) {
                     val kioscoActivo = snapshot.getBoolean("kioscoActivo") ?: false
                     ordenBloqueoPadreActiva = kioscoActivo
@@ -112,7 +109,6 @@ class MainActivity : FragmentActivity() {
     private fun gestionarRestriccionesSistema(activarFijacionKiosco: Boolean) {
         if (activarFijacionKiosco) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 window.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
             } else {
@@ -123,7 +119,6 @@ class MainActivity : FragmentActivity() {
                                 or View.SYSTEM_UI_FLAG_FULLSCREEN
                         )
             }
-
             try { startLockTask() } catch (e: Exception) { e.printStackTrace() }
         } else {
             try {
@@ -186,9 +181,11 @@ fun UPadNavigation(
     val navController = rememberNavController()
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
 
+    // FIX: estado compartido que recibe el padreId real cuando el hijo se vincula
+    var padreIdDelHijo by remember { mutableStateOf("") }
+
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val rutaActual = navBackStackEntry?.destination?.route ?: ""
-
     val estaEnSeccionNiño = rutaActual.startsWith("child_")
 
     LaunchedEffect(bloqueoActivo, estaEnSeccionNiño) {
@@ -203,16 +200,12 @@ fun UPadNavigation(
     if (!view.isInEditMode && !(bloqueoActivo && estaEnSeccionNiño)) {
         val activity = view.context as Activity
         val window = activity.window
-
         window.statusBarColor = if (isDarkMode) android.graphics.Color.parseColor("#1E1E1E") else android.graphics.Color.TRANSPARENT
-
         val windowInsetsController = WindowInsetsControllerCompat(window, window.decorView)
         windowInsetsController.isAppearanceLightStatusBars = !isDarkMode
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize()
-    ) { paddingValues ->
+    Scaffold(modifier = Modifier.fillMaxSize()) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -222,22 +215,15 @@ fun UPadNavigation(
                 navController = navController,
                 startDestination = "role_selection"
             ) {
-                // --- SECCIÓN AUTENTICACIÓN Y ROLES ENRUTADOS ---
                 composable("role_selection") {
                     RoleSelectionScreen(
                         onRoleSelected = { role ->
                             when (role) {
-                                "padre_directo" -> {
-                                    navController.navigate("parent_dashboard") {
-                                        popUpTo("role_selection") { inclusive = true }
-                                    }
+                                "padre_directo" -> navController.navigate("parent_dashboard") {
+                                    popUpTo("role_selection") { inclusive = true }
                                 }
-                                "padre" -> {
-                                    navController.navigate("welcome")
-                                }
-                                else -> {
-                                    navController.navigate("child_start")
-                                }
+                                "padre" -> navController.navigate("welcome")
+                                else -> navController.navigate("child_start")
                             }
                         }
                     )
@@ -278,7 +264,6 @@ fun UPadNavigation(
                     ForgotPasswordScreen(onBackToLogin = { navController.popBackStack() })
                 }
 
-                // --- SECCIÓN CONFIGURACIÓN (SETUP) ---
                 composable("subscription_plans") {
                     SubscriptionPlansScreen(
                         onPlanSelected = { planType ->
@@ -323,7 +308,6 @@ fun UPadNavigation(
                     )
                 }
 
-                // --- SECCIÓN PREMIUM FLUJO DE PAGOS (LIMPIO) ---
                 composable("change_plan") {
                     ChangePlanScreen(
                         onBackClick = { navController.popBackStack() },
@@ -343,7 +327,6 @@ fun UPadNavigation(
                     )
                 }
 
-                // --- SECCIÓN PADRE (DASHBOARD Y RUTINAS) ---
                 composable("parent_dashboard") {
                     LaunchedEffect(Unit) {
                         routineViewModel.cargarRutinasDesdeFirebase("PADRE_TEST")
@@ -358,24 +341,16 @@ fun UPadNavigation(
                         onNavigateToAnalytics = { navController.navigate("analytics") },
                         onNavigateToDeviceManagement = { navController.navigate("device_management") },
                         onNavigateToChangePlan = { navController.navigate("change_plan") },
-
-                        // 🎯 CORREGIDO: Ahora el patrón coincide perfectamente con el NavHost inferior
-                        onNavigateToTracking = { hijoId ->
-                            navController.navigate("tracking/$hijoId")
-                        }
+                        onNavigateToTracking = { hijoId -> navController.navigate("tracking/$hijoId") }
                     )
                 }
 
-                // 🎯 RUTA DE RASTREO CORREGIDA E INTERRUPTOR EN ROJO ELIMINADO
-                // 🎯 RUTA DE RASTREO CORREGIDA E INTERRUPTOR EN ROJO ELIMINADO
                 composable(
                     route = "tracking/{hijoId}",
                     arguments = listOf(navArgument("hijoId") { type = NavType.StringType })
                 ) { backStackEntry ->
                     val hijoId = backStackEntry.arguments?.getString("hijoId") ?: ""
-
                     val trackingViewModel: com.example.upad.viewmodel.TrackingViewModel = viewModel()
-
                     HijoTrackingScreen(
                         routineViewModel = routineViewModel, // 👈 Pasamos el ViewModel global aquí en primer lugar
                         hijoId = hijoId,
@@ -431,13 +406,11 @@ fun UPadNavigation(
                     arguments = listOf(navArgument("routineTurn") { type = NavType.StringType })
                 ) { backStackEntry ->
                     val turn = backStackEntry.arguments?.getString("routineTurn") ?: "Mañana"
-
                     val listaPasosTurno by when (turn.uppercase()) {
                         "MAÑANA" -> routineViewModel.tasksManana.collectAsState()
                         "TARDE" -> routineViewModel.tasksTarde.collectAsState()
                         else -> routineViewModel.tasksNoche.collectAsState()
                     }
-
                     CreateRoutineScreen(
                         routineTurn = turn,
                         childName = "tu hijo",
@@ -459,19 +432,17 @@ fun UPadNavigation(
                     arguments = listOf(navArgument("routineTurn") { type = NavType.StringType })
                 ) { backStackEntry ->
                     val turn = backStackEntry.arguments?.getString("routineTurn") ?: "Mañana"
-
                     PictogramSelectionScreen(
                         viewModel = routineViewModel,
                         onBackClick = { navController.popBackStack() },
                         onPictogramSelected = { description, url ->
-                            // Modificado para asegurar persistencia instantánea
                             routineViewModel.addTask(turn, description, url, "PADRE_TEST")
                             navController.popBackStack()
                         }
                     )
                 }
 
-                // --- SECCIÓN NIÑO (PANTALLA ÚNICA COMPARTIDA Y CORREGIDA) ---
+                // FIX: child_start ahora propaga el padreId real
                 composable("child_start") {
                     ChildStartScreen(
                         routineViewModel = routineViewModel,
@@ -480,6 +451,9 @@ fun UPadNavigation(
                         },
                         onNavigateToCompleted = {
                             navController.navigate("child_routine_completed")
+                        },
+                        onPadreIdObtenido = { pId ->
+                            padreIdDelHijo = pId
                         }
                     )
                 }
@@ -493,7 +467,6 @@ fun UPadNavigation(
                 ) { backStackEntry ->
                     val activityName = backStackEntry.arguments?.getString("activityName") ?: "Actividad"
                     val turn = backStackEntry.arguments?.getString("routineTurn") ?: "MAÑANA"
-
                     TaskExecutionScreen(
                         viewModel = routineViewModel,
                         activityName = activityName,
@@ -509,10 +482,33 @@ fun UPadNavigation(
                     arguments = listOf(navArgument("activityName") { type = NavType.StringType })
                 ) { backStackEntry ->
                     val activityName = backStackEntry.arguments?.getString("activityName") ?: "Actividad"
+                    val context = androidx.compose.ui.platform.LocalContext.current
 
                     TaskFeedbackScreen(
                         activityName = activityName,
-                        onFeedbackSelected = { _ ->
+                        onFeedbackSelected = { emocion ->
+                            // FIX: usar padreIdDelHijo en lugar de FirebaseAuth
+                            // el hijo no está autenticado, así que currentUser sería null
+                            val idPadre = padreIdDelHijo.ifEmpty {
+                                com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                                    ?: "PADRE_TEST"
+                            }
+
+                            val horaActual = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                            val turnoActual = when {
+                                horaActual < 13 -> "MAÑANA"
+                                horaActual in 13..17 -> "TARDE"
+                                else -> "NOCHE"
+                            }
+
+                            routineViewModel.registrarFeedbackEmocional(
+                                userId = idPadre,
+                                turn = turnoActual,
+                                actividadNombre = activityName,
+                                emocionSeleccionada = emocion,
+                                context = context
+                            )
+
                             navController.navigate("child_routine_completed") {
                                 popUpTo("child_start") { inclusive = false }
                             }
@@ -531,7 +527,6 @@ fun UPadNavigation(
                     )
                 }
 
-                // --- SECCIÓN REPORTES DETALLADOS ---
                 composable("notifications") {
                     NotificationsScreen(onViewReportClick = { navController.navigate("achievement_report") })
                 }
