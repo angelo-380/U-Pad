@@ -1,6 +1,7 @@
 package com.example.upad.viewmodel
 
 import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.upad.data.FirebaseRepository
@@ -10,10 +11,8 @@ import kotlinx.coroutines.launch
 import com.example.upad.data.ArasaacPictogram
 import com.example.upad.data.ArasaacService
 import com.example.upad.data.DataStoreManager
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
+import com.example.upad.widget.ChildSessionMonitorWidgetProvider
 import kotlinx.coroutines.flow.collectLatest
-import java.util.Calendar
 import kotlinx.coroutines.flow.asStateFlow
 import com.google.firebase.firestore.ListenerRegistration
 
@@ -23,11 +22,17 @@ data class TaskItem(
     val imageUrl: String = "",
     val dias: List<String> = emptyList(),
     val duration: Int = 15,
-    val estadosPorDia: Map<String, Boolean> = emptyMap()
+    val estadosPorDia: Map<String, Boolean> = emptyMap(),
+    val emocionesPorDia: Map<String, String> = emptyMap()
 ) {
     fun estaCompletadaHoy(diaActual: String): Boolean {
         val diaKey = diaActual.uppercase().trim()
         return estadosPorDia[diaKey] ?: false
+    }
+
+    fun obtenerEmocionHoy(diaActual: String): String {
+        val diaKey = diaActual.uppercase().trim()
+        return emocionesPorDia[diaKey] ?: ""
     }
 }
 
@@ -120,15 +125,16 @@ class RoutineViewModel(
 
     private fun notificarCambioAlWidget() {
         try {
-            val context = com.google.firebase.FirebaseApp.getInstance().applicationContext
+            // FIX: usar applicationContext del proceso directamente, no via FirebaseApp
+            val context = com.example.upad.UPadApplication.appContext
             val prefs = context.getSharedPreferences("WIDGET_PREFS", Context.MODE_PRIVATE)
             val diaDeHoy = com.example.upad.utils.RoutineProgressCalculator.obtenerDiaDeHoy()
             val prefijoDia = com.example.upad.utils.RoutineProgressCalculator.obtenerPrefijoDia(diaDeHoy)
-            
+
             val progManana = calcularPorcentaje(_tasksManana.value, prefijoDia)
-            val progTarde = calcularPorcentaje(_tasksTarde.value, prefijoDia)
-            val progNoche = calcularPorcentaje(_tasksNoche.value, prefijoDia)
-            
+            val progTarde  = calcularPorcentaje(_tasksTarde.value, prefijoDia)
+            val progNoche  = calcularPorcentaje(_tasksNoche.value, prefijoDia)
+
             prefs.edit().apply {
                 putInt("PROGRESO_MANANA", progManana)
                 putInt("PROGRESO_TARDE", progTarde)
@@ -136,7 +142,6 @@ class RoutineViewModel(
                 putLong("ULTIMO_FETCH", System.currentTimeMillis())
                 apply()
             }
-            
             com.example.upad.widget.ParentRoutineWidgetProvider.notificarCambioDatos(context)
         } catch (e: Exception) {
             e.printStackTrace()
@@ -166,7 +171,7 @@ class RoutineViewModel(
         val newTask = TaskItem(
             actividad = actividadTexto.uppercase(),
             imageUrl = imageUrl,
-            dias = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
+            dias = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"),
         )
         val turnoUpper = turn.uppercase()
 
@@ -198,36 +203,36 @@ class RoutineViewModel(
 
     fun completeTaskPorNombre(userId: String, turn: String, actividadTexto: String, diaActual: String) {
         val turnoUpper = turn.uppercase()
-        val diaKey = diaActual.uppercase().trim()
+        // FIX: convertir el día a prefijo ANTES de usarlo como key
+        val diaKey = com.example.upad.utils.RoutineProgressCalculator
+            .obtenerPrefijoDia(diaActual.uppercase().trim())
 
         val listaActual = when (turnoUpper) {
             "MAÑANA" -> _tasksManana.value.toMutableList()
-            "TARDE" -> _tasksTarde.value.toMutableList()
-            else -> _tasksNoche.value.toMutableList()
+            "TARDE"  -> _tasksTarde.value.toMutableList()
+            else     -> _tasksNoche.value.toMutableList()
         }
 
-        val indexReal = listaActual.indexOfFirst { it.actividad.uppercase() == actividadTexto.uppercase() }
+        val indexReal = listaActual.indexOfFirst {
+            it.actividad.uppercase() == actividadTexto.uppercase()
+        }
 
         if (indexReal != -1) {
             val tareaEncontrada = listaActual[indexReal]
             val nuevosEstados = tareaEncontrada.estadosPorDia.toMutableMap()
-            nuevosEstados[diaKey] = true
+            nuevosEstados[diaKey] = true  // ahora guarda "LUN", no "LUNES"
 
-            val tareaModificada = tareaEncontrada.copy(estadosPorDia = nuevosEstados)
-            listaActual[indexReal] = tareaModificada
+            listaActual[indexReal] = tareaEncontrada.copy(estadosPorDia = nuevosEstados)
 
             when (turnoUpper) {
                 "MAÑANA" -> _tasksManana.value = listaActual
-                "TARDE" -> _tasksTarde.value = listaActual
-                else -> _tasksNoche.value = listaActual
+                "TARDE"  -> _tasksTarde.value = listaActual
+                else     -> _tasksNoche.value = listaActual
             }
 
             viewModelScope.launch {
-                try {
-                    repository.saveRoutine(userId, turnoUpper, listaActual)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                try { repository.saveRoutine(userId, turnoUpper, listaActual) }
+                catch (e: Exception) { e.printStackTrace() }
             }
         }
     }
@@ -312,7 +317,7 @@ class RoutineViewModel(
                 palabraClave = textoCompleto.trim(),
                 imageUrl = urlImagenFinal,
                 dias = diasSeleccionados.map { it.trim() },
-                estadosPorDia = mapaInicialEstados
+                estadosPorDia = mapaInicialEstados,
             )
 
             when (turnoUpper) {
@@ -330,6 +335,51 @@ class RoutineViewModel(
                 repository.saveRoutine(userId, turnoUpper, listaActualizada)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    fun registrarFeedbackEmocional(
+        userId: String, turn: String,
+        actividadNombre: String, emocionSeleccionada: String, context: Context
+    ) {
+        val turnoUpper = turn.uppercase()
+        val diaActual = com.example.upad.utils.RoutineProgressCalculator.obtenerDiaDeHoy()
+        // FIX: misma conversión a prefijo
+        val diaKey = com.example.upad.utils.RoutineProgressCalculator
+            .obtenerPrefijoDia(diaActual.uppercase().trim())
+
+        val listaActual = when (turnoUpper) {
+            "MAÑANA" -> _tasksManana.value.toMutableList()
+            "TARDE"  -> _tasksTarde.value.toMutableList()
+            else     -> _tasksNoche.value.toMutableList()
+        }
+
+        val index = listaActual.indexOfFirst {
+            it.actividad.uppercase() == actividadNombre.uppercase()
+        }
+
+        if (index != -1) {
+            val tarea = listaActual[index]
+            val nuevasEmociones = tarea.emocionesPorDia.toMutableMap()
+            nuevasEmociones[diaKey] = emocionSeleccionada
+
+            listaActual[index] = tarea.copy(emocionesPorDia = nuevasEmociones)
+
+            when (turnoUpper) {
+                "MAÑANA" -> _tasksManana.value = listaActual
+                "TARDE"  -> _tasksTarde.value = listaActual
+                else     -> _tasksNoche.value = listaActual
+            }
+
+            viewModelScope.launch {
+                try {
+                    repository.saveRoutine(userId, turnoUpper, listaActual)
+                    val intent = Intent(context, ChildSessionMonitorWidgetProvider::class.java).apply {
+                        action = ChildSessionMonitorWidgetProvider.ACTION_REFRESH
+                    }
+                    context.sendBroadcast(intent)
+                } catch (e: Exception) { e.printStackTrace() }
             }
         }
     }

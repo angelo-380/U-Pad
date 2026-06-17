@@ -187,7 +187,7 @@ class ParentRoutineWidgetProvider : AppWidgetProvider() {
                                     imageUrl = imageUrl,
                                     dias = dias,
                                     duration = durationNum.toInt(),
-                                    estadosPorDia = estadosPorDia
+                                    estadosPorDia = estadosPorDia,
                                 )
                             )
                         } catch (e: Exception) {

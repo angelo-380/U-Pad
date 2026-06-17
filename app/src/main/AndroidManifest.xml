@@ -9,10 +9,12 @@
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <application
+        android:name=".UPadApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -49,6 +51,19 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/parent_routine_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.ChildSessionMonitorWidgetProvider"
+            android:exported="true"
+            android:label="Monitor de Sesión U-pad">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.upad.widget.session.ACTION_REFRESH" />
+                <action android:name="com.example.upad.widget.ACTION_DATA_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_child_session_monitor_info" />
         </receiver>
     </application>
 

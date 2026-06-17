@@ -67,10 +67,15 @@ class FirebaseRepository {
                                 val dias = rawDias.mapNotNull { it?.toString() }
                                 
                                 val durationNum = taskItem["duration"] as? Number ?: 15
-                                
+
                                 val rawEstados = taskItem["estadosPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
-                                val estadosPorDia = rawEstados.entries.associate { 
-                                    it.key.toString() to (it.value as? Boolean ?: false) 
+                                val estadosPorDia = rawEstados.entries.associate {
+                                    it.key.toString() to (it.value as? Boolean ?: false)
+                                }
+
+                                val rawEmociones = taskItem["emocionesPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
+                                val emocionesPorDia = rawEmociones.entries.associate {
+                                    it.key.toString() to (it.value as? String ?: "")
                                 }
 
                                 tareas.add(
@@ -80,7 +85,8 @@ class FirebaseRepository {
                                         imageUrl = imageUrl,
                                         dias = dias,
                                         duration = durationNum.toInt(),
-                                        estadosPorDia = estadosPorDia
+                                        estadosPorDia = estadosPorDia,
+                                        emocionesPorDia = emocionesPorDia
                                     )
                                 )
                             } catch (e: Exception) {
