@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">U Pad</string>
+    <string name="widget_progreso">EN PROGRESO</string>
+    <string name="widget_refrescar">Refrescar</string>
+    <string name="widget_buscando">Buscando actividad...</string>
+    <string name="widget_siguiente_actividad">Siguiente actividad en: -- min</string>
+    <string name="widget_registro_emocional">Registro de estado emocional:</string>
+    <string name="emoji_tranquilo">😊</string>
+    <string name="emoji_ansioso">😐</string>
+    <string name="emoji_crisis">😡</string>
 </resources>

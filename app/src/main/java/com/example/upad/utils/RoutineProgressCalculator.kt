@@ -7,7 +7,7 @@ import java.util.Date
 import java.util.Locale
 
 object RoutineProgressCalculator {
-    val diasSemana = listOf("LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO")
+    val diasSemana = listOf("LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO")
 
     fun obtenerDiaDeHoy(): String {
         val formato = SimpleDateFormat("EEEE", Locale("es", "ES")).format(Date()).uppercase()
