@@ -99,4 +99,181 @@ class FirebaseRepository {
                 onDataChanged(tareas)
             }
     }
+
+    suspend fun obtenerRutinasDelPadreDirecto(padreId: String, turn: String): List<TaskItem> {
+        val document = firestore.collection("routines")
+            .document(padreId)
+            .collection("turns")
+            .document(turn.uppercase().trim())
+            .get()
+            .await()
+
+        val tareas = mutableListOf<TaskItem>()
+        if (document.exists()) {
+            val tasksList = document.get("tasks") as? List<*> ?: emptyList<Any>()
+            for (taskItem in tasksList) {
+                if (taskItem is Map<*, *>) {
+                    try {
+                        val actividad = taskItem["actividad"] as? String ?: ""
+                        val palabraClave = taskItem["palabraClave"] as? String ?: ""
+                        val imageUrl = taskItem["imageUrl"] as? String ?: ""
+                        
+                        val rawDias = taskItem["dias"] as? List<*> ?: emptyList<Any>()
+                        val dias = rawDias.mapNotNull { it?.toString() }
+                        
+                        val durationNum = taskItem["duration"] as? Number ?: 15
+
+                        val rawEstados = taskItem["estadosPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
+                        val estadosPorDia = rawEstados.entries.associate {
+                            it.key.toString() to (it.value as? Boolean ?: false)
+                        }
+
+                        val rawEmociones = taskItem["emocionesPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
+                        val emocionesPorDia = rawEmociones.entries.associate {
+                            it.key.toString() to (it.value as? String ?: "")
+                        }
+
+                        tareas.add(
+                            TaskItem(
+                                actividad = actividad,
+                                palabraClave = palabraClave,
+                                imageUrl = imageUrl,
+                                dias = dias,
+                                duration = durationNum.toInt(),
+                                estadosPorDia = estadosPorDia,
+                                emocionesPorDia = emocionesPorDia
+                            )
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+        return tareas
+    }
+
+    suspend fun saveRoutinePorDia(userId: String, turn: String, dia: String, tasks: List<TaskItem>) {
+        firestore.collection("routines")
+            .document(userId)
+            .collection("turns")
+            .document(turn.uppercase())
+            .collection("days")
+            .document(dia.uppercase())
+            .set(mapOf("tasks" to tasks), SetOptions.merge())
+            .await()
+    }
+
+    fun escucharRutinasDelPadrePorDia(padreId: String, turn: String, dia: String, onDataChanged: (List<TaskItem>) -> Unit): ListenerRegistration {
+        return firestore.collection("routines")
+            .document(padreId)
+            .collection("turns")
+            .document(turn.uppercase())
+            .collection("days")
+            .document(dia.uppercase())
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    return@addSnapshotListener
+                }
+
+                val tareas = mutableListOf<TaskItem>()
+                if (snapshot != null && snapshot.exists()) {
+                    val tasksList = snapshot.get("tasks") as? List<*> ?: emptyList<Any>()
+                    for (taskItem in tasksList) {
+                        if (taskItem is Map<*, *>) {
+                            try {
+                                val actividad = taskItem["actividad"] as? String ?: ""
+                                val palabraClave = taskItem["palabraClave"] as? String ?: ""
+                                val imageUrl = taskItem["imageUrl"] as? String ?: ""
+                                
+                                val rawDias = taskItem["dias"] as? List<*> ?: emptyList<Any>()
+                                val dias = rawDias.mapNotNull { it?.toString() }
+                                
+                                val durationNum = taskItem["duration"] as? Number ?: 15
+
+                                val rawEstados = taskItem["estadosPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
+                                val estadosPorDia = rawEstados.entries.associate {
+                                    it.key.toString() to (it.value as? Boolean ?: false)
+                                }
+
+                                val rawEmociones = taskItem["emocionesPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
+                                val emocionesPorDia = rawEmociones.entries.associate {
+                                    it.key.toString() to (it.value as? String ?: "")
+                                }
+
+                                tareas.add(
+                                    TaskItem(
+                                        actividad = actividad,
+                                        palabraClave = palabraClave,
+                                        imageUrl = imageUrl,
+                                        dias = dias,
+                                        duration = durationNum.toInt(),
+                                        estadosPorDia = estadosPorDia,
+                                        emocionesPorDia = emocionesPorDia
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
+                }
+                onDataChanged(tareas)
+            }
+    }
+
+    suspend fun obtenerRutinasDelPadreDirectoPorDia(padreId: String, turn: String, dia: String): List<TaskItem> {
+        val document = firestore.collection("routines")
+            .document(padreId)
+            .collection("turns")
+            .document(turn.uppercase())
+            .collection("days")
+            .document(dia.uppercase())
+            .get()
+            .await()
+
+        val tareas = mutableListOf<TaskItem>()
+        if (document.exists()) {
+            val tasksList = document.get("tasks") as? List<*> ?: emptyList<Any>()
+            for (taskItem in tasksList) {
+                if (taskItem is Map<*, *>) {
+                    try {
+                        val actividad = taskItem["actividad"] as? String ?: ""
+                        val palabraClave = taskItem["palabraClave"] as? String ?: ""
+                        val imageUrl = taskItem["imageUrl"] as? String ?: ""
+                        
+                        val rawDias = taskItem["dias"] as? List<*> ?: emptyList<Any>()
+                        val dias = rawDias.mapNotNull { it?.toString() }
+                        
+                        val durationNum = taskItem["duration"] as? Number ?: 15
+
+                        val rawEstados = taskItem["estadosPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
+                        val estadosPorDia = rawEstados.entries.associate {
+                            it.key.toString() to (it.value as? Boolean ?: false)
+                        }
+
+                        val rawEmociones = taskItem["emocionesPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
+                        val emocionesPorDia = rawEmociones.entries.associate {
+                            it.key.toString() to (it.value as? String ?: "")
+                        }
+
+                        tareas.add(
+                            TaskItem(
+                                actividad = actividad,
+                                palabraClave = palabraClave,
+                                imageUrl = imageUrl,
+                                dias = dias,
+                                duration = durationNum.toInt(),
+                                estadosPorDia = estadosPorDia,
+                                emocionesPorDia = emocionesPorDia
+                            )
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        }
+        return tareas
+    }
 }
