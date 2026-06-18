@@ -15,6 +15,7 @@ import com.example.upad.widget.ChildSessionMonitorWidgetProvider
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.asStateFlow
 import com.google.firebase.firestore.ListenerRegistration
+import com.example.upad.utils.RoutineProgressCalculator
 
 data class TaskItem(
     val actividad: String = "",
@@ -26,12 +27,12 @@ data class TaskItem(
     val emocionesPorDia: Map<String, String> = emptyMap()
 ) {
     fun estaCompletadaHoy(diaActual: String): Boolean {
-        val diaKey = diaActual.uppercase().trim()
+        val diaKey = RoutineProgressCalculator.obtenerPrefijoDia(diaActual)
         return estadosPorDia[diaKey] ?: false
     }
 
     fun obtenerEmocionHoy(diaActual: String): String {
-        val diaKey = diaActual.uppercase().trim()
+        val diaKey = RoutineProgressCalculator.obtenerPrefijoDia(diaActual)
         return emocionesPorDia[diaKey] ?: ""
     }
 }
@@ -102,21 +103,42 @@ class RoutineViewModel(
 
     fun updateName(newName: String) { _currentRoutineName.value = newName }
 
+    var ultimoDiaCargado: String = "LUNES"
+        private set
+
     fun cargarRutinasDesdeFirebase(userId: String) {
+        cargarRutinasPorDia(userId, RoutineProgressCalculator.obtenerDiaDeHoy())
+    }
+
+    fun cargarRutinasPorDia(userId: String, dia: String) {
+        val uidValido = obtenerUidSeguro(userId)
+        val diaKey = dia.uppercase().trim().replace("É", "E").replace("Á", "A")
+        val diaFull = when (diaKey.take(3)) {
+            "LUN" -> "LUNES"
+            "MAR" -> "MARTES"
+            "MIE" -> "MIERCOLES"
+            "JUE" -> "JUEVES"
+            "VIE" -> "VIERNES"
+            "SAB" -> "SABADO"
+            "DOM" -> "DOMINGO"
+            else -> diaKey
+        }
+        ultimoDiaCargado = diaFull
+
         viewModelScope.launch {
             listenerManana?.remove()
             listenerTarde?.remove()
             listenerNoche?.remove()
 
-            listenerManana = repository.escucharRutinasDelPadre(userId, "MAÑANA") { lista ->
+            listenerManana = repository.escucharRutinasDelPadrePorDia(uidValido, "MAÑANA", diaFull) { lista ->
                 _tasksManana.value = lista
                 notificarCambioAlWidget()
             }
-            listenerTarde = repository.escucharRutinasDelPadre(userId, "TARDE") { lista ->
+            listenerTarde = repository.escucharRutinasDelPadrePorDia(uidValido, "TARDE", diaFull) { lista ->
                 _tasksTarde.value = lista
                 notificarCambioAlWidget()
             }
-            listenerNoche = repository.escucharRutinasDelPadre(userId, "NOCHE") { lista ->
+            listenerNoche = repository.escucharRutinasDelPadrePorDia(uidValido, "NOCHE", diaFull) { lista ->
                 _tasksNoche.value = lista
                 notificarCambioAlWidget()
             }
@@ -125,11 +147,10 @@ class RoutineViewModel(
 
     private fun notificarCambioAlWidget() {
         try {
-            // FIX: usar applicationContext del proceso directamente, no via FirebaseApp
             val context = com.example.upad.UPadApplication.appContext
             val prefs = context.getSharedPreferences("WIDGET_PREFS", Context.MODE_PRIVATE)
-            val diaDeHoy = com.example.upad.utils.RoutineProgressCalculator.obtenerDiaDeHoy()
-            val prefijoDia = com.example.upad.utils.RoutineProgressCalculator.obtenerPrefijoDia(diaDeHoy)
+            val diaDeHoy = RoutineProgressCalculator.obtenerDiaDeHoy()
+            val prefijoDia = RoutineProgressCalculator.obtenerPrefijoDia(diaDeHoy)
 
             val progManana = calcularPorcentaje(_tasksManana.value, prefijoDia)
             val progTarde  = calcularPorcentaje(_tasksTarde.value, prefijoDia)
@@ -149,7 +170,7 @@ class RoutineViewModel(
     }
 
     private fun calcularPorcentaje(tareas: List<TaskItem>, prefijoDia: String): Int {
-        val (total, completadas) = com.example.upad.utils.RoutineProgressCalculator.calcularProgreso(tareas, prefijoDia)
+        val (total, completadas) = RoutineProgressCalculator.calcularProgreso(tareas, prefijoDia)
         return if (total > 0) (completadas * 100) / total else 0
     }
 
@@ -167,114 +188,216 @@ class RoutineViewModel(
         }
     }
 
+    private fun normalizarTurno(turn: String): String {
+        val clean = turn.uppercase().trim()
+        return when (clean) {
+            "MAÑANA", "MANANA" -> "MAÑANA"
+            "TARDE" -> "TARDE"
+            "NOCHE" -> "NOCHE"
+            else -> "MAÑANA"
+        }
+    }
+
+    private fun obtenerUidSeguro(userId: String): String {
+        return if (userId == "PADRE_TEST" || userId.isBlank()) {
+            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "PADRE_TEST"
+        } else {
+            userId
+        }
+    }
+
     fun addTask(turn: String, actividadTexto: String, imageUrl: String, userId: String = "PADRE_TEST") {
+        val turnoValido = normalizarTurno(turn)
+        val uidValido = obtenerUidSeguro(userId)
         val newTask = TaskItem(
             actividad = actividadTexto.uppercase(),
             imageUrl = imageUrl,
-            dias = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"),
+            dias = listOf("LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"),
         )
-        val turnoUpper = turn.uppercase()
+        val todosLosDias = listOf("LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO")
 
-        when (turnoUpper) {
-            "MAÑANA" -> _tasksManana.value = _tasksManana.value + newTask
-            "TARDE" -> _tasksTarde.value = _tasksTarde.value + newTask
-            "NOCHE" -> _tasksNoche.value = _tasksNoche.value + newTask
+        viewModelScope.launch {
+            for (diaFull in todosLosDias) {
+                val listaActualizada = try {
+                    val listExistente = repository.obtenerRutinasDelPadreDirectoPorDia(uidValido, turnoValido, diaFull)
+                    listExistente + newTask
+                } catch (e: Exception) {
+                    emptyList<TaskItem>() + newTask
+                }
+                try {
+                    repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listaActualizada)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    fun addTaskConDia(turn: String, actividadTexto: String, imageUrl: String, dia: String, userId: String = "PADRE_TEST") {
+        val turnoValido = normalizarTurno(turn)
+        val uidValido = obtenerUidSeguro(userId)
+        val diaKey = RoutineProgressCalculator.obtenerPrefijoDia(dia)
+        val diaFull = when (diaKey) {
+            "LUN" -> "LUNES"
+            "MAR" -> "MARTES"
+            "MIE", "MIÉ" -> "MIERCOLES"
+            "JUE" -> "JUEVES"
+            "VIE" -> "VIERNES"
+            "SAB", "SÁB" -> "SABADO"
+            "DOM" -> "DOMINGO"
+            else -> dia.uppercase().trim().replace("É", "E").replace("Á", "A")
         }
 
-        saveAll(userId, turnoUpper)
+        val newTask = TaskItem(
+            actividad = actividadTexto.uppercase(),
+            imageUrl = imageUrl,
+            dias = listOf(diaKey),
+        )
+
+        viewModelScope.launch {
+            val listaActualizada = try {
+                repository.obtenerRutinasDelPadreDirectoPorDia(uidValido, turnoValido, diaFull) + newTask
+            } catch (e: Exception) {
+                emptyList<TaskItem>() + newTask
+            }
+
+            try {
+                repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listaActualizada)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun removeTask(turn: String, index: Int) {
-        when (turn.uppercase()) {
-            "MAÑANA" -> {
-                val newList = _tasksManana.value.toMutableList()
-                if (index in newList.indices) { newList.removeAt(index); _tasksManana.value = newList }
+        val turnoValido = normalizarTurno(turn)
+        val uidValido = obtenerUidSeguro("PADRE_TEST")
+        val diaFull = ultimoDiaCargado
+
+        viewModelScope.launch {
+            val listLocal = when (turnoValido) {
+                "MAÑANA" -> _tasksManana.value.toMutableList()
+                "TARDE" -> _tasksTarde.value.toMutableList()
+                else -> _tasksNoche.value.toMutableList()
             }
-            "TARDE" -> {
-                val newList = _tasksTarde.value.toMutableList()
-                if (index in newList.indices) { newList.removeAt(index); _tasksTarde.value = newList }
-            }
-            "NOCHE" -> {
-                val newList = _tasksNoche.value.toMutableList()
-                if (index in newList.indices) { newList.removeAt(index); _tasksNoche.value = newList }
+
+            if (index in listLocal.indices) {
+                listLocal.removeAt(index)
+
+                when (turnoValido) {
+                    "MAÑANA" -> _tasksManana.value = listLocal
+                    "TARDE" -> _tasksTarde.value = listLocal
+                    "NOCHE" -> _tasksNoche.value = listLocal
+                }
+
+                try {
+                    repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listLocal)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
 
     fun completeTaskPorNombre(userId: String, turn: String, actividadTexto: String, diaActual: String) {
-        val turnoUpper = turn.uppercase()
-        // FIX: convertir el día a prefijo ANTES de usarlo como key
-        val diaKey = com.example.upad.utils.RoutineProgressCalculator
-            .obtenerPrefijoDia(diaActual.uppercase().trim())
-
-        val listaActual = when (turnoUpper) {
-            "MAÑANA" -> _tasksManana.value.toMutableList()
-            "TARDE"  -> _tasksTarde.value.toMutableList()
-            else     -> _tasksNoche.value.toMutableList()
+        val turnoValido = normalizarTurno(turn)
+        val uidValido = obtenerUidSeguro(userId)
+        val diaKey = RoutineProgressCalculator.obtenerPrefijoDia(diaActual)
+        val diaFull = when (diaKey) {
+            "LUN" -> "LUNES"
+            "MAR" -> "MARTES"
+            "MIE" -> "MIERCOLES"
+            "JUE" -> "JUEVES"
+            "VIE" -> "VIERNES"
+            "SAB" -> "SABADO"
+            "DOM" -> "DOMINGO"
+            else -> diaActual.uppercase().trim().replace("É", "E").replace("Á", "A")
         }
 
-        val indexReal = listaActual.indexOfFirst {
-            it.actividad.uppercase() == actividadTexto.uppercase()
-        }
-
-        if (indexReal != -1) {
-            val tareaEncontrada = listaActual[indexReal]
-            val nuevosEstados = tareaEncontrada.estadosPorDia.toMutableMap()
-            nuevosEstados[diaKey] = true  // ahora guarda "LUN", no "LUNES"
-
-            listaActual[indexReal] = tareaEncontrada.copy(estadosPorDia = nuevosEstados)
-
-            when (turnoUpper) {
-                "MAÑANA" -> _tasksManana.value = listaActual
-                "TARDE"  -> _tasksTarde.value = listaActual
-                else     -> _tasksNoche.value = listaActual
+        viewModelScope.launch {
+            val listaActual = try {
+                repository.obtenerRutinasDelPadreDirectoPorDia(uidValido, turnoValido, diaFull).toMutableList()
+            } catch (e: Exception) {
+                when (turnoValido) {
+                    "MAÑANA" -> _tasksManana.value.toMutableList()
+                    "TARDE"  -> _tasksTarde.value.toMutableList()
+                    else     -> _tasksNoche.value.toMutableList()
+                }
             }
 
-            viewModelScope.launch {
-                try { repository.saveRoutine(userId, turnoUpper, listaActual) }
-                catch (e: Exception) { e.printStackTrace() }
+            val indexReal = listaActual.indexOfFirst {
+                it.actividad.uppercase() == actividadTexto.uppercase()
+            }
+
+            if (indexReal != -1) {
+                val tareaEncontrada = listaActual[indexReal]
+                val nuevosEstados = tareaEncontrada.estadosPorDia.toMutableMap()
+                nuevosEstados[diaKey] = true
+
+                listaActual[indexReal] = tareaEncontrada.copy(estadosPorDia = nuevosEstados)
+
+                when (turnoValido) {
+                    "MAÑANA" -> _tasksManana.value = listaActual
+                    "TARDE"  -> _tasksTarde.value = listaActual
+                    "NOCHE"  -> _tasksNoche.value = listaActual
+                }
+
+                try {
+                    repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listaActual)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
 
     fun getCompletedCount(turn: String, diaActual: String): Int {
-        val targetList = when (turn.uppercase()) {
+        val turnoValido = normalizarTurno(turn)
+        val targetList = when (turnoValido) {
             "MAÑANA" -> _tasksManana.value
             "TARDE" -> _tasksTarde.value
             else -> _tasksNoche.value
         }
-        return targetList.count { it.estaCompletadaHoy(diaActual) }
+        val prefijoLimpio = RoutineProgressCalculator.obtenerPrefijoDia(diaActual)
+        return targetList.count { it.estaCompletadaHoy(prefijoLimpio) }
     }
 
     fun getTotalCount(turn: String, diaActual: String): Int {
-        val targetList = when (turn.uppercase()) {
+        val turnoValido = normalizarTurno(turn)
+        val targetList = when (turnoValido) {
             "MAÑANA" -> _tasksManana.value
             "TARDE" -> _tasksTarde.value
             else -> _tasksNoche.value
         }
+        val prefijoLimpio = RoutineProgressCalculator.obtenerPrefijoDia(diaActual)
         return targetList.count { tarea ->
-            tarea.dias.isEmpty() || tarea.dias.any { it.uppercase().trim().startsWith(diaActual.uppercase().trim()) }
+            tarea.dias.isEmpty() || tarea.dias.any {
+                RoutineProgressCalculator.obtenerPrefijoDia(it) == prefijoLimpio
+            }
         }
     }
 
     fun saveAll(userId: String, turn: String) {
+        val turnoValido = normalizarTurno(turn)
+        val uidValido = obtenerUidSeguro(userId)
+        val diaFull = ultimoDiaCargado
         viewModelScope.launch {
-            val listToSave = when (turn.uppercase()) {
+            val listToSave = when (turnoValido) {
                 "MAÑANA" -> _tasksManana.value
                 "TARDE" -> _tasksTarde.value
                 else -> _tasksNoche.value
             }
-            repository.saveRoutine(userId, turn.uppercase(), listToSave)
+            repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listToSave)
         }
     }
 
     fun agregarActividadAutomatica(userId: String, turn: String, textoCompleto: String, diasSeleccionados: List<String>) {
-        val turnoUpper = turn.uppercase()
+        val turnoValido = normalizarTurno(turn)
+        val uidValido = obtenerUidSeguro(userId)
 
         viewModelScope.launch {
             var urlImagenFinal = ""
             try {
-                // ✅ Normalizar el texto completo
                 val textoNormalizado = textoCompleto.trim()
                     .lowercase()
                     .replace(Regex("[áàä]"), "a")
@@ -284,57 +407,65 @@ class RoutineViewModel(
                     .replace(Regex("[úùü]"), "u")
                     .replace(Regex("[^a-z0-9 ]"), "")
 
-                // ✅ Separar en palabras y probar una por una
                 val palabras = textoNormalizado.split(" ")
                     .map { it.trim() }
                     .filter { it.length > 2 }
 
-                android.util.Log.d("ARASAAC", "Palabras a probar: $palabras")
-
                 for (palabra in palabras) {
-                    android.util.Log.d("ARASAAC", "Probando palabra: $palabra")
                     val resultados = arasaacService.searchPictograms(palabra)
-                    android.util.Log.d("ARASAAC", "Resultados para '$palabra': ${resultados.size}")
-
                     if (resultados.isNotEmpty()) {
                         val idImagen = resultados.first()._id
                         urlImagenFinal = "https://static.arasaac.org/pictograms/$idImagen/${idImagen}_300.png"
-                        android.util.Log.d("ARASAAC", "✅ Imagen encontrada con '$palabra': $urlImagenFinal")
-                        break // ✅ Encontró imagen, para de buscar
+                        break
                     }
                 }
-
             } catch (e: Exception) {
-                android.util.Log.e("ARASAAC", "Error: ${e.message}")
+                e.printStackTrace()
             }
 
-            android.util.Log.d("ARASAAC", "URL final guardada: $urlImagenFinal")
+            val diasFinales = if (diasSeleccionados.isEmpty()) {
+                listOf(ultimoDiaCargado)
+            } else {
+                diasSeleccionados
+            }
 
-            val mapaInicialEstados = diasSeleccionados.associate { it.uppercase().trim() to false }
+            val mapaInicialEstados = diasFinales.associate {
+                RoutineProgressCalculator.obtenerPrefijoDia(it) to false
+            }
 
             val nuevaTarea = TaskItem(
                 actividad = textoCompleto.uppercase(),
                 palabraClave = textoCompleto.trim(),
                 imageUrl = urlImagenFinal,
-                dias = diasSeleccionados.map { it.trim() },
+                dias = diasFinales.map { RoutineProgressCalculator.obtenerPrefijoDia(it) },
                 estadosPorDia = mapaInicialEstados,
             )
 
-            when (turnoUpper) {
-                "MAÑANA" -> _tasksManana.value = _tasksManana.value + nuevaTarea
-                "TARDE" -> _tasksTarde.value = _tasksTarde.value + nuevaTarea
-                else -> _tasksNoche.value = _tasksNoche.value + nuevaTarea
-            }
-
-            try {
-                val listaActualizada = when (turnoUpper) {
-                    "MAÑANA" -> _tasksManana.value
-                    "TARDE" -> _tasksTarde.value
-                    else -> _tasksNoche.value
+            for (dia in diasFinales) {
+                val diaNormalizado = RoutineProgressCalculator.obtenerPrefijoDia(dia)
+                val diaFull = when (diaNormalizado) {
+                    "LUN" -> "LUNES"
+                    "MAR" -> "MARTES"
+                    "MIE" -> "MIERCOLES"
+                    "JUE" -> "JUEVES"
+                    "VIE" -> "VIERNES"
+                    "SAB" -> "SABADO"
+                    "DOM" -> "DOMINGO"
+                    else -> dia.uppercase().trim().replace("É", "E").replace("Á", "A")
                 }
-                repository.saveRoutine(userId, turnoUpper, listaActualizada)
-            } catch (e: Exception) {
-                e.printStackTrace()
+
+                val listaActualizada = try {
+                    val listExistente = repository.obtenerRutinasDelPadreDirectoPorDia(uidValido, turnoValido, diaFull)
+                    listExistente + nuevaTarea
+                } catch (e: Exception) {
+                    emptyList<TaskItem>() + nuevaTarea
+                }
+
+                try {
+                    repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listaActualizada)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
@@ -343,38 +474,51 @@ class RoutineViewModel(
         userId: String, turn: String,
         actividadNombre: String, emocionSeleccionada: String, context: Context
     ) {
-        val turnoUpper = turn.uppercase()
-        val diaActual = com.example.upad.utils.RoutineProgressCalculator.obtenerDiaDeHoy()
-        // FIX: misma conversión a prefijo
-        val diaKey = com.example.upad.utils.RoutineProgressCalculator
-            .obtenerPrefijoDia(diaActual.uppercase().trim())
-
-        val listaActual = when (turnoUpper) {
-            "MAÑANA" -> _tasksManana.value.toMutableList()
-            "TARDE"  -> _tasksTarde.value.toMutableList()
-            else     -> _tasksNoche.value.toMutableList()
+        val turnoValido = normalizarTurno(turn)
+        val uidValido = obtenerUidSeguro(userId)
+        val diaActual = RoutineProgressCalculator.obtenerDiaDeHoy()
+        val diaKey = RoutineProgressCalculator.obtenerPrefijoDia(diaActual)
+        val diaFull = when (diaKey) {
+            "LUN" -> "LUNES"
+            "MAR" -> "MARTES"
+            "MIE" -> "MIERCOLES"
+            "JUE" -> "JUEVES"
+            "VIE" -> "VIERNES"
+            "SAB" -> "SABADO"
+            "DOM" -> "DOMINGO"
+            else -> diaActual.uppercase().trim().replace("É", "E").replace("Á", "A")
         }
 
-        val index = listaActual.indexOfFirst {
-            it.actividad.uppercase() == actividadNombre.uppercase()
-        }
-
-        if (index != -1) {
-            val tarea = listaActual[index]
-            val nuevasEmociones = tarea.emocionesPorDia.toMutableMap()
-            nuevasEmociones[diaKey] = emocionSeleccionada
-
-            listaActual[index] = tarea.copy(emocionesPorDia = nuevasEmociones)
-
-            when (turnoUpper) {
-                "MAÑANA" -> _tasksManana.value = listaActual
-                "TARDE"  -> _tasksTarde.value = listaActual
-                else     -> _tasksNoche.value = listaActual
+        viewModelScope.launch {
+            val listaActual = try {
+                repository.obtenerRutinasDelPadreDirectoPorDia(uidValido, turnoValido, diaFull).toMutableList()
+            } catch (e: Exception) {
+                when (turnoValido) {
+                    "MAÑANA" -> _tasksManana.value.toMutableList()
+                    "TARDE"  -> _tasksTarde.value.toMutableList()
+                    else     -> _tasksNoche.value.toMutableList()
+                }
             }
 
-            viewModelScope.launch {
+            val index = listaActual.indexOfFirst {
+                it.actividad.uppercase() == actividadNombre.uppercase()
+            }
+
+            if (index != -1) {
+                val tarea = listaActual[index]
+                val nuevasEmociones = tarea.emocionesPorDia.toMutableMap()
+                nuevasEmociones[diaKey] = emocionSeleccionada
+
+                listaActual[index] = tarea.copy(emocionesPorDia = nuevasEmociones)
+
+                when (turnoValido) {
+                    "MAÑANA" -> _tasksManana.value = listaActual
+                    "TARDE"  -> _tasksTarde.value = listaActual
+                    "NOCHE"  -> _tasksNoche.value = listaActual
+                }
+
                 try {
-                    repository.saveRoutine(userId, turnoUpper, listaActual)
+                    repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listaActual)
                     val intent = Intent(context, ChildSessionMonitorWidgetProvider::class.java).apply {
                         action = ChildSessionMonitorWidgetProvider.ACTION_REFRESH
                     }
