@@ -67,4 +67,8 @@
     <string name="view_my_tasks">ПОСМОТРЕТЬ МОИ ЗАДАЧИ 🚀</string>
     <string name="no_activities_for_turn">Нет добавленных активностей на эту смену.</string>
     <string name="activity_duration_turn">⏱️ %1$s мин | 📍 %2$s</string>
+    <string name="todays_progress">СЕГОДНЯШНИЙ ПРОГРЕСС</string>
+    <string name="total_tasks">Всего задач</string>
+    <string name="completed_tasks">Выполненные задачи</string>
+    <string name="pending_tasks">Предстоящие задачи</string>
 </resources>

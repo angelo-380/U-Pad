@@ -7,5 +7,5 @@
         <item name="postSplashScreenTheme">@style/Theme.UPad</item>
     </style>
 
-    <style name="Theme.UPad" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.UPad" parent="Theme.AppCompat.Light.NoActionBar" />
 </resources>

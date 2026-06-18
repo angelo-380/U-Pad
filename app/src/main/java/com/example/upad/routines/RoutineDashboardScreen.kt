@@ -27,6 +27,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.example.upad.R
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -124,7 +126,7 @@ fun RoutineDashboardScreen(
         onNavigateToTracking(hijoVinculadoId ?: "DISPOSITIVO_PADRE")
     }
 
-    val childText = "tu hijo"
+    // Localized child text is handled directly in UI string resource
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
@@ -145,9 +147,10 @@ fun RoutineDashboardScreen(
         routineViewModel.cargarRutinasPorDia(currentUserId, diaSeleccionado)
     }
 
-    val infoMesActual = remember {
+    val currentLocale = LocalContext.current.resources.configuration.locales[0]
+    val infoMesActual = remember(currentLocale) {
         val cal = Calendar.getInstance()
-        val nombreMes = cal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale("es", "ES"))?.uppercase() ?: ""
+        val nombreMes = cal.getDisplayName(Calendar.MONTH, Calendar.LONG, currentLocale)?.uppercase() ?: ""
         val anio = cal.get(Calendar.YEAR)
         val maxDias = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
 
@@ -325,7 +328,6 @@ fun RoutineDashboardScreen(
             }
         }
     ) {
-<<<<<<< HEAD
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -337,54 +339,21 @@ fun RoutineDashboardScreen(
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 floatingActionButton = {
                     FloatingActionButton(
-                        onClick = { if (esPremium) onUbicarHijoAccionUnificada() else onNavigateToCreateRoutine(diaSeleccionado) },
+                        onClick = {
+                            if (esPremium) {
+                                onUbicarHijoAccionUnificada()
+                            } else {
+                                showTurnSelectionDialog = true
+                            }
+                        },
                         containerColor = if (isDarkMode) Color.White else Color.Black,
                         contentColor = if (isDarkMode) Color.Black else Color.White,
                         shape = CircleShape
-=======
-        Scaffold(
-            containerColor = colorFondoBase,
-            floatingActionButton = {
-                FloatingActionButton(
-                    onClick = {
-                        if (esPremium) {
-                            onUbicarHijoAccionUnificada()
-                        } else {
-                            showTurnSelectionDialog = true
-                        }
-                    },
-                    containerColor = colorDinamicoSuscripcion,
-                    contentColor = if (esPremium && !isDarkMode) Color.Black else Color.White,
-                    shape = CircleShape
-                ) {
-                    if (esPremium) {
-                        Text(text = "🗺️", fontSize = 26.sp)
-                    } else {
-                        Icon(Icons.Default.Add, contentDescription = "Crear nueva rutina", modifier = Modifier.size(30.dp))
-                    }
-                }
-            }
-        ) { paddingValues ->
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(bottom = 100.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(bottomStart = 45.dp, bottomEnd = 45.dp))
-                            .background(colorSuperficieTarjetas)
-                            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 24.dp)
->>>>>>> feat: implementar selector de horario (mañana, tarde, noche) en el dashboard
                     ) {
                         if (esPremium) {
                             Text(text = "🗺️", fontSize = 26.sp)
                         } else {
-                            Icon(Icons.Default.Add, contentDescription = "Crear nueva rutina", modifier = Modifier.size(30.dp))
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create_new_routine), modifier = Modifier.size(30.dp))
                         }
                     }
                 }
@@ -419,15 +388,14 @@ fun RoutineDashboardScreen(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             Text(
-                                text = "¡HOLA, $parentName!",
+                                text = stringResource(R.string.hello_parent, parentName),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Black,
-                                color = colorTextoSecundario,
-                                fontFamily = fuentePremium
+                                color = colorTextoSecundario.copy(alpha = 0.6f)
                             )
 
                             Text(
-                                text = if (esPremium) "Rutinas de $childText ⭐" else "Rutinas de $childText",
+                                text = if (esPremium) stringResource(R.string.child_routines) + " ⭐" else stringResource(R.string.child_routines),
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.Black,
                                 color = colorTextoPrincipal,
@@ -451,7 +419,7 @@ fun RoutineDashboardScreen(
                             ) {
                                 Column(modifier = Modifier.padding(24.dp)) {
                                     Text(
-                                        text = "Today's Progress",
+                                        text = stringResource(R.string.todays_progress),
                                         color = Color.White,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
@@ -495,7 +463,7 @@ fun RoutineDashboardScreen(
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Column {
                                                     Text(text = "$totalTareasDia", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = fuentePremium)
-                                                    Text(text = "Total Task", color = Color.Gray, fontSize = 11.sp, fontFamily = fuentePremium)
+                                                    Text(text = stringResource(R.string.total_tasks), color = Color.Gray, fontSize = 11.sp, fontFamily = fuentePremium)
                                                 }
                                             }
                                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -505,7 +473,7 @@ fun RoutineDashboardScreen(
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Column {
                                                     Text(text = "$completadasTareasDia", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = fuentePremium)
-                                                    Text(text = "Completed Task", color = Color.Gray, fontSize = 11.sp, fontFamily = fuentePremium)
+                                                    Text(text = stringResource(R.string.completed_tasks), color = Color.Gray, fontSize = 11.sp, fontFamily = fuentePremium)
                                                 }
                                             }
                                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -515,7 +483,7 @@ fun RoutineDashboardScreen(
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Column {
                                                     Text(text = "$pendientesTareasDia", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = fuentePremium)
-                                                    Text(text = "Pending Task", color = Color.Gray, fontSize = 11.sp, fontFamily = fuentePremium)
+                                                    Text(text = stringResource(R.string.pending_tasks), color = Color.Gray, fontSize = 11.sp, fontFamily = fuentePremium)
                                                 }
                                             }
                                         }
@@ -537,9 +505,9 @@ fun RoutineDashboardScreen(
                             ) {
                                 Text(
                                     text = if (diaSeleccionado == diaDeHoy && diaNumeroSeleccionado == numeroDeHoyReal) {
-                                        "PROGRAMA DE HOY ($diaDeHoy $numeroDeHoyReal)"
+                                        stringResource(R.string.today_program) + " (${getLocalizedDayName(diaDeHoy)} $numeroDeHoyReal)"
                                     } else {
-                                        "PROGRAMA DEL $diaSeleccionado" + if (diaNumeroSeleccionado > 0) " $diaNumeroSeleccionado" else ""
+                                        stringResource(R.string.program_of) + " ${getLocalizedDayName(diaSeleccionado)}" + if (diaNumeroSeleccionado > 0) " $diaNumeroSeleccionado" else ""
                                     },
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Black,
@@ -553,8 +521,8 @@ fun RoutineDashboardScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.CalendarMonth,
-                                        contentDescription = "Planificar otros días",
-                                        tint = colorTextoPrincipal
+                                        contentDescription = stringResource(R.string.monthly_view),
+                                        tint = colorDinamicoSuscripcion
                                     )
                                 }
                             }
@@ -583,7 +551,7 @@ fun RoutineDashboardScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = dia,
+                                            text = getLocalizedDayName(dia),
                                             color = if (esElSeleccionado) {
                                                 if (isDarkMode) Color.Black else Color.White
                                             } else colorTextoPrincipal,
@@ -624,11 +592,10 @@ fun RoutineDashboardScreen(
                                             fontFamily = fuentePremium
                                         )
                                         Text(
-                                            text = "VISTA MENSUAL",
+                                            text = stringResource(R.string.monthly_view),
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = colorTextoSecundario,
-                                            fontFamily = fuentePremium
+                                            color = colorTextoSecundario.copy(alpha = 0.6f)
                                         )
                                     }
 
@@ -638,7 +605,13 @@ fun RoutineDashboardScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        val inicialesDias = listOf("D", "L", "M", "M", "J", "V", "S")
+                                        val currentLocale = java.util.Locale.getDefault()
+                                        val initialsCal = Calendar.getInstance()
+                                        val inicialesDias = (Calendar.SUNDAY..Calendar.SATURDAY).map { dayOfWeek ->
+                                            initialsCal.set(Calendar.DAY_OF_WEEK, dayOfWeek)
+                                            initialsCal.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT, currentLocale)
+                                                ?.take(1)?.uppercase(currentLocale) ?: ""
+                                        }
                                         inicialesDias.forEach { letra ->
                                             Text(
                                                 text = letra,
@@ -720,9 +693,9 @@ fun RoutineDashboardScreen(
                     item {
                         Text(
                             text = if (diaNumeroSeleccionado > 0) {
-                                "BLOQUES DE ACTIVIDAD - $diaSeleccionado $diaNumeroSeleccionado"
+                                stringResource(R.string.activity_blocks) + " - ${getLocalizedDayName(diaSeleccionado)} $diaNumeroSeleccionado"
                             } else {
-                                "BLOQUES DE ACTIVIDAD - $diaSeleccionado"
+                                stringResource(R.string.activity_blocks) + " - ${getLocalizedDayName(diaSeleccionado)}"
                             },
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
@@ -754,7 +727,7 @@ fun RoutineDashboardScreen(
             onDismissRequest = { showTurnSelectionDialog = false },
             title = {
                 Text(
-                    text = "Seleccionar Turno",
+                    text = stringResource(R.string.select_turn),
                     fontWeight = FontWeight.Black,
                     fontSize = 18.sp,
                     color = colorTextoPrincipal
@@ -763,7 +736,7 @@ fun RoutineDashboardScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "Elige el bloque horario para añadir o editar tu rutina para el día $diaSeleccionado:",
+                        text = stringResource(R.string.choose_time_block, getLocalizedDayName(diaSeleccionado)),
                         fontSize = 14.sp,
                         color = colorTextoSecundario
                     )
@@ -777,7 +750,7 @@ fun RoutineDashboardScreen(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB74D))
                     ) {
-                        Text("☀️ MAÑANA", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("☀️ " + stringResource(R.string.morning), fontWeight = FontWeight.Bold, color = Color.White)
                     }
                     Button(
                         onClick = {
@@ -788,7 +761,7 @@ fun RoutineDashboardScreen(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF81C784))
                     ) {
-                        Text("⛅ TARDE", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("⛅ " + stringResource(R.string.afternoon), fontWeight = FontWeight.Bold, color = Color.White)
                     }
                     Button(
                         onClick = {
@@ -799,14 +772,14 @@ fun RoutineDashboardScreen(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9575CD))
                     ) {
-                        Text("🌙 NOCHE", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("🌙 " + stringResource(R.string.evening), fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             },
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showTurnSelectionDialog = false }) {
-                    Text("Cancelar", fontWeight = FontWeight.Bold, color = colorDinamicoSuscripcion)
+                    Text(stringResource(R.string.cancel), fontWeight = FontWeight.Bold, color = colorDinamicoSuscripcion)
                 }
             },
             containerColor = colorSuperficieTarjetas,
@@ -827,16 +800,15 @@ fun RoutineProgressCard(
     val factorProgreso = if (routine.totalTasks > 0) routine.completedTasks.toFloat() / routine.totalTasks else 0f
     val porcentajeTexto = (factorProgreso * 100).toInt()
 
-    // 🛠️ Cambiamos Card por Surface para matar el fondo plomo automático de Material 3
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp)) // Asegura que el ripple del click respete las esquinas
+            .clip(RoundedCornerShape(24.dp))
             .clickable { onClick() },
         shape = RoundedCornerShape(24.dp),
-        color = colorSuperficie, // Surface usa directamente "color" en lugar de cardColors
+        color = colorSuperficie,
         border = BorderStroke(1.dp, colorTextoSec.copy(alpha = 0.1f)),
-        tonalElevation = 0.dp, // Forzamos a 0 para que no mezcle grises en capas inferiores
+        tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -862,17 +834,16 @@ fun RoutineProgressCard(
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
-                            text = routine.name,
+                            text = getLocalizedTurnName(routine.name),
                             color = colorTexto,
                             fontWeight = FontWeight.Black,
                             fontSize = 16.sp,
                             fontFamily = fuente
                         )
                         Text(
-                            text = "${routine.completedTasks}/${routine.totalTasks} tareas logradas",
-                            color = colorTextoSec,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
+                            text = stringResource(R.string.tasks_completed, routine.completedTasks, routine.totalTasks),
+                            color = colorTextoSec.copy(alpha = 0.7f),
+                            fontSize = 12.sp,
                             fontFamily = fuente
                         )
                     }
@@ -897,4 +868,37 @@ fun RoutineProgressCard(
             )
         }
     }
+}
+
+@Composable
+fun getLocalizedDayName(day: String): String {
+    val cleanDay = day.uppercase()
+        .replace("Á", "A")
+        .replace("É", "E")
+        .replace("Í", "I")
+        .replace("Ó", "O")
+        .replace("Ú", "U")
+        .trim()
+    val resId = when (cleanDay) {
+        "LUN", "LUNES" -> R.string.monday
+        "MAR", "MARTES" -> R.string.tuesday
+        "MIE", "MIERCOLES" -> R.string.wednesday
+        "JUE", "JUEVES" -> R.string.thursday
+        "VIE", "VIERNES" -> R.string.friday
+        "SAB", "SABADO" -> R.string.saturday
+        "DOM", "DOMINGO" -> R.string.sunday
+        else -> return day
+    }
+    return stringResource(resId)
+}
+
+@Composable
+fun getLocalizedTurnName(turn: String): String {
+    val resId = when (turn.uppercase()) {
+        "MAÑANA" -> R.string.morning
+        "TARDE" -> R.string.afternoon
+        "NOCHE" -> R.string.evening
+        else -> return turn
+    }
+    return stringResource(resId)
 }

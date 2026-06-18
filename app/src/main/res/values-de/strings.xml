@@ -67,4 +67,8 @@
     <string name="view_my_tasks">MEINE AUFGABEN ANZEIGEN 🚀</string>
     <string name="no_activities_for_turn">Keine Aktivitäten für diese Tageszeit hinzugefügt.</string>
     <string name="activity_duration_turn">⏱️ %1$s Min. | 📍 %2$s</string>
+    <string name="todays_progress">HEUTIGER FORTSCHRITT</string>
+    <string name="total_tasks">Gesamtaufgaben</string>
+    <string name="completed_tasks">Abgeschlossene Aufgaben</string>
+    <string name="pending_tasks">Ausstehende Aufgaben</string>
 </resources>

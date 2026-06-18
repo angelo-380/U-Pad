@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import com.example.upad.data.ArasaacPictogram
 import com.example.upad.data.ArasaacService
 import com.example.upad.data.DataStoreManager
+import com.example.upad.data.LanguageDataStore
 import com.example.upad.widget.ChildSessionMonitorWidgetProvider
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,20 +40,30 @@ data class TaskItem(
 
 class RoutineViewModel(
     private val repository: FirebaseRepository,
-    private val dataStoreManager: DataStoreManager
+    private val dataStoreManager: DataStoreManager,
+    private val languageDataStore: LanguageDataStore
 ) : ViewModel() {
 
     private var listenerManana: ListenerRegistration? = null
     private var listenerTarde: ListenerRegistration? = null
     private var listenerNoche: ListenerRegistration? = null
+    private var languageListener: ListenerRegistration? = null
 
     private val _isPremiumManual = MutableStateFlow(false)
     val isUserPremium: StateFlow<Boolean> = _isPremiumManual
+
+    private val _appLanguage = MutableStateFlow("es")
+    val appLanguage: StateFlow<String> = _appLanguage.asStateFlow()
 
     init {
         viewModelScope.launch {
             dataStoreManager.isPremiumFlow.collectLatest { estadoReal ->
                 _isPremiumManual.value = estadoReal
+            }
+        }
+        viewModelScope.launch {
+            languageDataStore.languageFlow.collectLatest { lang ->
+                _appLanguage.value = lang
             }
         }
     }
@@ -74,6 +85,34 @@ class RoutineViewModel(
 
     fun purchasePremium(userId: String? = null) { setSuscripcionManual(true, userId) }
     fun cancelPremium(userId: String? = null) { setSuscripcionManual(false, userId) }
+
+    fun changeLanguage(userId: String?, languageCode: String) {
+        viewModelScope.launch {
+            languageDataStore.saveLanguage(languageCode)
+            if (!userId.isNullOrEmpty() && userId != "PADRE_TEST") {
+                try {
+                    repository.saveUserLanguage(userId, languageCode)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    fun iniciarEscuchaIdioma(userId: String) {
+        languageListener?.remove()
+        if (userId.isEmpty() || userId == "PADRE_TEST") return
+        
+        languageListener = repository.listenUserLanguage(userId) { nuevoIdioma ->
+            viewModelScope.launch {
+                languageDataStore.saveLanguage(nuevoIdioma)
+            }
+        }
+    }
+
+    fun detenerEscuchaIdioma() {
+        languageListener?.remove()
+    }
 
     private val _isDarkMode = MutableStateFlow(false)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
@@ -533,5 +572,6 @@ class RoutineViewModel(
         listenerManana?.remove()
         listenerTarde?.remove()
         listenerNoche?.remove()
+        detenerEscuchaIdioma()
     }
 }

@@ -22,11 +22,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.upad.R
 import com.example.upad.viewmodel.RoutineViewModel
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -224,7 +226,7 @@ fun ChildStartScreen(
             ) {
                 if (!estaVinculado) {
                     Text(
-                        text = "¡Hola! Dile a tus papás que escriban este código en su teléfono:",
+                        text = stringResource(R.string.child_pairing_instructions),
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF1A1A1A),
@@ -251,7 +253,7 @@ fun ChildStartScreen(
                 } else {
                     if (esPremiumPorPadre || verTareasModoBasico) {
                         Text(
-                            text = "¡MIS ACTIVIDADES DE HOY! 🏆",
+                            text = stringResource(R.string.my_activities_today),
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Black,
                             color = Color(0xFF1A1A1A),
@@ -264,7 +266,7 @@ fun ChildStartScreen(
 
                         var yaSeEncontroLaActivaGlobal = false
 
-                        SeccionTurnoTitulo(titulo = "🌅 ACTIVIDADES DE LA MAÑANA", activo = turnoMananaActivo, horasTexto = "(12:00 AM - 1:00 PM)")
+                        SeccionTurnoTitulo(titulo = stringResource(R.string.morning_activities), activo = turnoMananaActivo, horasTexto = "(12:00 AM - 1:00 PM)")
                         if (turnoMananaActivo) {
                             BloqueListaTareas(
                                 tareas = filtradasManana,
@@ -275,12 +277,12 @@ fun ChildStartScreen(
                                 marcarActivaEncontrada = { yaSeEncontroLaActivaGlobal = true }
                             )
                         } else {
-                            CardBloqueadoPorHorario(mensaje = "Disponible solo por la mañana.")
+                            CardBloqueadoPorHorario(mensaje = stringResource(R.string.available_morning_only))
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        SeccionTurnoTitulo(titulo = "☀️ ACTIVIDADES DE LA TARDE", activo = turnoTardeActivo, horasTexto = "(1:00 PM - 6:00 PM)")
+                        SeccionTurnoTitulo(titulo = stringResource(R.string.afternoon_activities), activo = turnoTardeActivo, horasTexto = "(1:00 PM - 6:00 PM)")
                         if (turnoTardeActivo) {
                             BloqueListaTareas(
                                 tareas = filtradasTarde,
@@ -291,12 +293,12 @@ fun ChildStartScreen(
                                 marcarActivaEncontrada = { yaSeEncontroLaActivaGlobal = true }
                             )
                         } else {
-                            CardBloqueadoPorHorario(mensaje = "Disponible a partir de la 1:00 PM hasta las 6:00 PM.")
+                            CardBloqueadoPorHorario(mensaje = stringResource(R.string.available_afternoon_only))
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        SeccionTurnoTitulo(titulo = "🌙 ACTIVIDADES DE LA NOCHE", activo = turnoNocheActivo, horasTexto = "(6:00 PM - 12:00 AM)")
+                        SeccionTurnoTitulo(titulo = stringResource(R.string.evening_activities), activo = turnoNocheActivo, horasTexto = "(6:00 PM - 12:00 AM)")
                         if (turnoNocheActivo) {
                             BloqueListaTareas(
                                 tareas = filtradasNoche,
@@ -307,12 +309,12 @@ fun ChildStartScreen(
                                 marcarActivaEncontrada = { yaSeEncontroLaActivaGlobal = true }
                             )
                         } else {
-                            CardBloqueadoPorHorario(mensaje = "Disponible a partir de las 6:00 PM.")
+                            CardBloqueadoPorHorario(mensaje = stringResource(R.string.available_evening_only))
                         }
 
                     } else {
                         Text(
-                            text = "¡Todo listo para empezar tus actividades!",
+                            text = stringResource(R.string.ready_to_start_activities),
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Black,
                             color = Color(0xFF1A1A1A),
@@ -328,7 +330,7 @@ fun ChildStartScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                             shape = RoundedCornerShape(24.dp)
                         ) {
-                            Text("VER MIS TAREAS 🚀", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(stringResource(R.string.view_my_tasks), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
@@ -358,7 +360,7 @@ fun SeccionTurnoTitulo(titulo: String, activo: Boolean, horasTexto: String) {
         if (activo) {
             SuggestionChip(
                 onClick = {},
-                label = { Text("ACTIVO", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
+                label = { Text(stringResource(R.string.active), fontWeight = FontWeight.Bold, fontSize = 11.sp) },
                 colors = SuggestionChipDefaults.suggestionChipColors(
                     labelColor = Color(0xFF2E7D32),
                     containerColor = Color(0xFFE8F5E9)
@@ -395,7 +397,7 @@ fun BloqueListaTareas(
 ) {
     if (tareas.isEmpty()) {
         Text(
-            "No hay actividades agregadas para este turno.",
+            stringResource(R.string.no_activities_for_turn),
             fontSize = 14.sp,
             color = Color.Gray,
             modifier = Modifier.padding(8.dp)
@@ -551,7 +553,7 @@ fun ItemActividadContenedor(
                         color = colorTexto
                     )
                     Text(
-                        text = "⏱️ $duracion min | 📍 $turno",
+                        text = stringResource(R.string.activity_duration_turn, duracion, getLocalizedTurnName(turno)),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isHabilitada && !isCompletada) Color.DarkGray else Color(0xFF90A4AE)
@@ -580,4 +582,15 @@ fun ItemActividadContenedor(
             }
         }
     }
+}
+
+@Composable
+fun getLocalizedTurnName(turn: String): String {
+    val resId = when (turn.uppercase()) {
+        "MAÑANA" -> R.string.morning
+        "TARDE" -> R.string.afternoon
+        "NOCHE" -> R.string.evening
+        else -> return turn
+    }
+    return stringResource(resId)
 }

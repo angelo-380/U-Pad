@@ -67,4 +67,8 @@
     <string name="view_my_tasks">VOIR MES TÂCHES 🚀</string>
     <string name="no_activities_for_turn">Aucune activité ajoutée pour cette période.</string>
     <string name="activity_duration_turn">⏱️ %1$s min | 📍 %2$s</string>
+    <string name="todays_progress">PROGRÈS D\'AUJOURD\'HUI</string>
+    <string name="total_tasks">Tâches totales</string>
+    <string name="completed_tasks">Tâches terminées</string>
+    <string name="pending_tasks">Tâches en attente</string>
 </resources>

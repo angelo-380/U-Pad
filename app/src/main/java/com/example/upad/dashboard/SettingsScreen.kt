@@ -19,6 +19,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.clickable
+import com.example.upad.R
+import com.google.firebase.auth.FirebaseAuth
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.viewmodel.RoutineViewModel
 
@@ -30,6 +34,7 @@ fun SettingsScreen(
 ) {
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
+    val appLanguage by routineViewModel.appLanguage.collectAsState()
 
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
     val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
@@ -43,13 +48,22 @@ fun SettingsScreen(
 
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
     var notificationsEnabled by remember { mutableStateOf(true) }
+    var expandedLanguage by remember { mutableStateOf(false) }
+    val idiomasDisponibles = listOf(
+        "es" to "Español",
+        "en" to "English",
+        "fr" to "Français",
+        "de" to "Deutsch",
+        "ru" to "Русский",
+        "pt" to "Português"
+    )
 
     UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
-                    title = { Text("Ajustes", fontWeight = FontWeight.Bold, color = colorTextoPrincipal) },
+                    title = { Text(stringResource(R.string.settings_title), fontWeight = FontWeight.Bold, color = colorTextoPrincipal) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(
@@ -71,7 +85,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
 
-                Text("Tu Suscripción", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorTextoSecundario)
+                Text(stringResource(R.string.settings_subscription), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorTextoSecundario)
 
                 // 🛠️ Contenedor 1: Usamos Surface para desvincular los tintes grises automatizados de las Cards
                 Surface(
@@ -99,13 +113,13 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
                                 Text(
-                                    text = if (isPremiumUser) "Plan UPAD Gold ✨" else "Plan Básico",
+                                    text = if (isPremiumUser) stringResource(R.string.plan_gold) else stringResource(R.string.plan_basic),
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Black,
                                     color = colorTextoPrincipal
                                 )
                                 Text(
-                                    text = if (isPremiumUser) "Acceso total ilimitado e IA activada" else "Funciones básicas de rutinas",
+                                    text = if (isPremiumUser) stringResource(R.string.gold_desc) else stringResource(R.string.basic_desc),
                                     fontSize = 12.sp,
                                     color = colorTextoSecundario
                                 )
@@ -119,7 +133,7 @@ fun SettingsScreen(
                                 modifier = Modifier.padding(start = 8.dp)
                             ) {
                                 Text(
-                                    "ACTIVO",
+                                    stringResource(R.string.active),
                                     color = Color.Black,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Black,
@@ -130,7 +144,7 @@ fun SettingsScreen(
                     }
                 }
 
-                Text("Preferencias generales", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorTextoSecundario)
+                Text(stringResource(R.string.settings_general), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorTextoSecundario)
 
                 // 🛠️ Contenedor 2 limpiado de herencias plomas de Material
                 Surface(
@@ -144,8 +158,8 @@ fun SettingsScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         SettingSwitchRow(
                             icon = Icons.Default.Notifications,
-                            title = "Notificaciones de rutinas",
-                            subtitle = "Recordar tareas pendientes",
+                            title = stringResource(R.string.settings_notifications),
+                            subtitle = stringResource(R.string.settings_notifications_desc),
                             checked = notificationsEnabled,
                             onCheckedChange = { notificationsEnabled = it },
                             switchColor = colorAcabadoPrincipal,
@@ -160,8 +174,8 @@ fun SettingsScreen(
 
                         SettingSwitchRow(
                             icon = Icons.Default.DarkMode,
-                            title = if (isPremiumUser) "Tema Premium Visual" else "Modo Oscuro",
-                            subtitle = if (isPremiumUser) "Cambiar entre Rosa Pastel y Azul Profundo" else "Cambiar la interfaz a blanco o negro",
+                            title = if (isPremiumUser) "Tema Premium Visual" else stringResource(R.string.settings_dark_mode),
+                            subtitle = if (isPremiumUser) "Cambiar entre Rosa Pastel y Azul Profundo" else stringResource(R.string.settings_dark_mode_desc),
                             checked = isDarkMode,
                             onCheckedChange = { routineViewModel.setDarkMode(it) },
                             switchColor = colorAcabadoPrincipal,
@@ -171,11 +185,13 @@ fun SettingsScreen(
                     }
                 }
 
-                Text("Aplicación", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorTextoSecundario)
+                Text(stringResource(R.string.settings_app), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorTextoSecundario)
 
                 // 🛠️ Contenedor 3 purificado
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expandedLanguage = true },
                     shape = RoundedCornerShape(20.dp),
                     color = colorSuperficieTarjetas,
                     border = if (isPremiumUser) BorderStroke(1.dp, colorAcabadoPrincipal.copy(alpha = 0.25f)) else null,
@@ -193,8 +209,25 @@ fun SettingsScreen(
                             Icon(Icons.Default.Language, contentDescription = null, tint = colorAcabadoPrincipal)
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
-                                Text("Idioma de la app", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colorTextoPrincipal)
-                                Text("Español", fontSize = 12.sp, color = colorTextoSecundario)
+                                Text(stringResource(R.string.settings_language), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colorTextoPrincipal)
+                                val nombreIdiomaActual = idiomasDisponibles.find { it.first == appLanguage }?.second ?: "Español"
+                                Text(nombreIdiomaActual, fontSize = 12.sp, color = colorTextoSecundario)
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = expandedLanguage,
+                            onDismissRequest = { expandedLanguage = false }
+                        ) {
+                            idiomasDisponibles.forEach { (codigo, nombre) ->
+                                DropdownMenuItem(
+                                    text = { Text(nombre) },
+                                    onClick = {
+                                        expandedLanguage = false
+                                        val userId = FirebaseAuth.getInstance().currentUser?.uid
+                                        routineViewModel.changeLanguage(userId, codigo)
+                                    }
+                                )
                             }
                         }
                     }

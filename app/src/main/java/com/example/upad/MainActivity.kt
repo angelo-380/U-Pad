@@ -22,6 +22,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -64,7 +67,10 @@ import com.example.upad.dashboard.ConnectionScreen
 import com.example.upad.dashboard.AnalyticsScreen
 import com.example.upad.premium.PaymentViewScreen
 
-class MainActivity : FragmentActivity() {
+class MainActivity : AppCompatActivity() {
+
+    private var currentRoute = ""
+    private var pendingLanguage = ""
 
     private var ordenBloqueoPadreActiva by mutableStateOf(false)
     private val firestore = FirebaseFirestore.getInstance()
@@ -93,6 +99,11 @@ class MainActivity : FragmentActivity() {
                 factory = com.example.upad.viewmodel.RoutineViewModelFactory(repository)
             )
 
+            val appLanguage by routineViewModel.appLanguage.collectAsState()
+            LaunchedEffect(appLanguage) {
+                evaluarYAplicarIdioma(appLanguage)
+            }
+
             val isDarkMode by routineViewModel.isDarkMode.collectAsState()
             val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
 
@@ -100,9 +111,38 @@ class MainActivity : FragmentActivity() {
                 UPadNavigation(
                     bloqueoActivo = ordenBloqueoPadreActiva,
                     routineViewModel = routineViewModel,
-                    onCambiarEstadoSistema = ::gestionarRestriccionesSistema
+                    onCambiarEstadoSistema = ::gestionarRestriccionesSistema,
+                    onRouteChanged = { route ->
+                        currentRoute = route
+                        if (pendingLanguage.isNotEmpty() && esRutaSeguraParaIdioma(route)) {
+                            aplicarLocale(pendingLanguage)
+                            pendingLanguage = ""
+                        }
+                    }
                 )
             }
+        }
+    }
+
+    private fun evaluarYAplicarIdioma(idiomaCode: String) {
+        if (esRutaSeguraParaIdioma(currentRoute)) {
+            aplicarLocale(idiomaCode)
+        } else {
+            pendingLanguage = idiomaCode
+        }
+    }
+
+    private fun esRutaSeguraParaIdioma(route: String): Boolean {
+        if (route.isEmpty()) return true
+        val esTareaActiva = route.contains("child_task_execution") || route.contains("child_task_feedback")
+        return !esTareaActiva
+    }
+
+    private fun aplicarLocale(idiomaCode: String) {
+        val appLocale = LocaleListCompat.forLanguageTags(idiomaCode)
+        val currentLocales = AppCompatDelegate.getApplicationLocales()
+        if (currentLocales != appLocale) {
+            AppCompatDelegate.setApplicationLocales(appLocale)
         }
     }
 
@@ -176,7 +216,8 @@ fun UPadTheme(
 fun UPadNavigation(
     bloqueoActivo: Boolean,
     routineViewModel: RoutineViewModel,
-    onCambiarEstadoSistema: (Boolean) -> Unit
+    onCambiarEstadoSistema: (Boolean) -> Unit,
+    onRouteChanged: (String) -> Unit
 ) {
     val navController = rememberNavController()
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
@@ -187,6 +228,10 @@ fun UPadNavigation(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val rutaActual = navBackStackEntry?.destination?.route ?: ""
     val estaEnSeccionNiño = rutaActual.startsWith("child_")
+
+    LaunchedEffect(rutaActual) {
+        onRouteChanged(rutaActual)
+    }
 
     LaunchedEffect(bloqueoActivo, estaEnSeccionNiño) {
         if (bloqueoActivo && estaEnSeccionNiño) {

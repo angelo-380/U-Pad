@@ -30,6 +30,23 @@ class FirebaseRepository {
             .await()
     }
 
+    suspend fun saveUserLanguage(userId: String, languageCode: String) {
+        firestore.collection("users").document(userId)
+            .set(mapOf("language" to languageCode), SetOptions.merge())
+            .await()
+    }
+
+    fun listenUserLanguage(userId: String, onLanguageChanged: (String) -> Unit): ListenerRegistration {
+        return firestore.collection("users").document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+                val lang = snapshot?.getString("language")
+                if (!lang.isNullOrEmpty()) {
+                    onLanguageChanged(lang)
+                }
+            }
+    }
+
     // --- GUARDADO CORREGIDO ---
     // Guardamos en: routines -> userId -> turns -> {turno}
     suspend fun saveRoutine(userId: String, turn: String, tasks: List<TaskItem>) {
