@@ -565,7 +565,7 @@ fun ItemActividadContenedor(
                     .clip(CircleShape)
                     .background(
                         when {
-                            isCompletada -> Color(0xFF81C784).copy(alpha = 0.2f)
+                            isCompletada -> Color.Transparent
                             !isHabilitada -> Color.Transparent
                             else -> colorBordeDinamico
                         }
@@ -573,7 +573,7 @@ fun ItemActividadContenedor(
                 contentAlignment = Alignment.Center
             ) {
                 when {
-                    isCompletada -> Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF388E3C))
+                    isCompletada -> Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF90A4AE))
                     !isHabilitada -> Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF90A4AE))
                     else -> Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
                 }
