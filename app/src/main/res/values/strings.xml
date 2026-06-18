@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">U Pad</string>
     <string name="widget_progreso">EN PROGRESO</string>
@@ -8,4 +9,62 @@
     <string name="emoji_tranquilo">😊</string>
     <string name="emoji_ansioso">😐</string>
     <string name="emoji_crisis">😡</string>
+
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_subscription">Tu Suscripción</string>
+    <string name="plan_gold">Plan UPAD Gold ✨</string>
+    <string name="plan_basic">Plan Básico</string>
+    <string name="gold_desc">Acceso total ilimitado e IA activada</string>
+    <string name="basic_desc">Funciones básicas de rutinas</string>
+    <string name="active">ACTIVO</string>
+    <string name="settings_general">Preferencias generales</string>
+    <string name="settings_notifications">Notificaciones de rutinas</string>
+    <string name="settings_notifications_desc">Recordar tareas pendientes</string>
+    <string name="settings_dark_mode">Modo Oscuro</string>
+    <string name="settings_dark_mode_desc">Cambiar la interfaz a tonos oscuros</string>
+    <string name="settings_app">Aplicación</string>
+    <string name="settings_language">Idioma de la app</string>
+    <string name="change_basic_plan">Cambiar a Plan Básico</string>
+    <string name="change_premium_plan">Cambiar a Plan Premium</string>
+    <string name="locate_child">Ubicar a mi Hijo</string>
+    <string name="performance_analysis">Análisis de Desempeño</string>
+    <string name="lock_device">Bloquear Dispositivo</string>
+    <string name="connect_child">Conectar con el Niño (Código)</string>
+    <string name="my_profile">Mi Perfil</string>
+    <string name="morning">MAÑANA</string>
+    <string name="afternoon">TARDE</string>
+    <string name="evening">NOCHE</string>
+    <string name="monday">LUNES</string>
+    <string name="tuesday">MARTES</string>
+    <string name="wednesday">MIÉRCOLES</string>
+    <string name="thursday">JUEVES</string>
+    <string name="friday">VIERNES</string>
+    <string name="saturday">SÁBADO</string>
+    <string name="sunday">DOMINGO</string>
+    <string name="today_program">PROGRAMA DE HOY</string>
+    <string name="program_of">PROGRAMA DEL</string>
+    <string name="hello_parent">¡HOLA, %1$s!</string>
+    <string name="child_routines">Rutinas de tu hijo</string>
+    <string name="open_menu">Abrir menú</string>
+    <string name="create_new_routine">Crear nueva rutina</string>
+    <string name="routine_manager">Gestor de Rutinas</string>
+    <string name="parent_tutor">PADRE/TUTOR</string>
+    <string name="monthly_view">VISTA MENSUAL</string>
+    <string name="activity_blocks">BLOQUES DE ACTIVIDAD</string>
+    <string name="tasks_completed">%1$d/%2$d tareas logradas</string>
+    <string name="select_turn">Seleccionar Turno</string>
+    <string name="choose_time_block">Elige el bloque horario para añadir o editar tu rutina para el día %1$s:</string>
+    <string name="cancel">Cancelar</string>
+    <string name="child_pairing_instructions">¡Hola! Dile a tus papás que escriban este código en su teléfono:</string>
+    <string name="my_activities_today">¡MIS ACTIVIDADES DE HOY! 🏆</string>
+    <string name="morning_activities">🌅 ACTIVIDADES DE LA MAÑANA</string>
+    <string name="available_morning_only">Disponible solo por la mañana.</string>
+    <string name="afternoon_activities">☀️ ACTIVIDADES DE LA TARDE</string>
+    <string name="available_afternoon_only">Disponible a partir de la 1:00 PM hasta las 6:00 PM.</string>
+    <string name="evening_activities">🌙 ACTIVIDADES DE LA NOCHE</string>
+    <string name="available_evening_only">Disponible a partir de las 6:00 PM.</string>
+    <string name="ready_to_start_activities">¡Todo listo para empezar tus actividades!</string>
+    <string name="view_my_tasks">VER MIS TAREAS 🚀</string>
+    <string name="no_activities_for_turn">No hay actividades agregadas para este turno.</string>
+    <string name="activity_duration_turn">⏱️ %1$s min | 📍 %2$s</string>
 </resources>
