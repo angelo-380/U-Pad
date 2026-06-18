@@ -523,6 +523,7 @@ fun UPadNavigation(
                         viewModel = routineViewModel,
                         activityName = activityName,
                         turn = turn,
+                        padreId = padreIdDelHijo,
                         onFinishRoutine = { nombreDeLaTareaCompletada ->
                             navController.navigate("child_task_feedback/$nombreDeLaTareaCompletada")
                         }
