@@ -28,6 +28,7 @@ fun TaskExecutionScreen(
     viewModel: RoutineViewModel,
     activityName: String,
     turn: String,
+    padreId: String,
     onFinishRoutine: (String) -> Unit
 ) {
     val colorFondoNiño = Color(0xFFE1F5FE)
@@ -36,7 +37,9 @@ fun TaskExecutionScreen(
     val colorNaranjaPomodoro = Color(0xFFFF5722)
 
     val currentUserId = remember {
-        FirebaseAuth.getInstance().currentUser?.uid ?: "PADRE_TEST"
+        padreId.ifEmpty {
+            FirebaseAuth.getInstance().currentUser?.uid ?: "PADRE_TEST"
+        }
     }
 
     // Recolectamos las tareas del turno actual desde el ViewModel
