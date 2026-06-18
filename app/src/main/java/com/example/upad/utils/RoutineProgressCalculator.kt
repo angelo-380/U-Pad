@@ -16,23 +16,35 @@ object RoutineProgressCalculator {
     }
 
     fun obtenerPrefijoDia(dia: String): String {
-        return when (dia.uppercase()) {
-            "MIÉRCOLES", "MIERCOLES" -> "MIÉ"
-            "SÁBADO", "SABADO" -> "SÁB"
-            else -> dia.uppercase().take(3)
+        val limpio = dia.uppercase()
+            .replace("Á", "A")
+            .replace("É", "E")
+            .replace("Í", "I")
+            .replace("Ó", "O")
+            .replace("Ú", "U")
+            .trim()
+
+        return when (limpio) {
+            "MIERCOLES" -> "MIE"
+            "SABADO" -> "SAB"
+            else -> limpio.take(3)
         }
     }
 
     fun filtrarTareasPorDia(tareas: List<TaskItem>, prefijoDia: String): List<TaskItem> {
+        val prefijoLimpio = obtenerPrefijoDia(prefijoDia)
         return tareas.filter { task ->
-            task.dias.isEmpty() || task.dias.any { it.uppercase().trim().startsWith(prefijoDia.uppercase()) }
+            task.dias.isEmpty() || task.dias.any { diaTarea ->
+                obtenerPrefijoDia(diaTarea) == prefijoLimpio
+            }
         }
     }
 
     fun calcularProgreso(tareas: List<TaskItem>, prefijoDia: String): Pair<Int, Int> {
         val tareasFiltradas = filtrarTareasPorDia(tareas, prefijoDia)
         val total = tareasFiltradas.size
-        val completadas = tareasFiltradas.count { it.estaCompletadaHoy(prefijoDia) }
+        val prefijoLimpio = obtenerPrefijoDia(prefijoDia)
+        val completadas = tareasFiltradas.count { it.estaCompletadaHoy(prefijoLimpio) }
         return Pair(total, completadas)
     }
 }
