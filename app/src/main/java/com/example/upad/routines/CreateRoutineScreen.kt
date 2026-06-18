@@ -51,7 +51,8 @@ fun CreateRoutineScreen(
     onSendRoutine: () -> Unit,
     onRemoveTaskClick: (Int) -> Unit,
     viewModel: RoutineViewModel,
-    drawableId: Int
+    drawableId: Int,
+    diaInicial: String = "LUNES"
 ) {
     val isPremiumUser by viewModel.isUserPremium.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
@@ -99,7 +100,20 @@ fun CreateRoutineScreen(
         }
     }
 
-    var diaFiltroSeleccionado by remember { mutableStateOf(diaActualDelReloj) }
+    val diaInicialFormateado = remember(diaInicial) {
+        when (diaInicial.uppercase().trim().take(3)) {
+            "LUN" -> "Lun"
+            "MAR" -> "Mar"
+            "MIE", "MIÉ" -> "Mié"
+            "JUE" -> "Jue"
+            "VIE" -> "Vie"
+            "SAB", "SÁB" -> "Sáb"
+            "DOM" -> "Dom"
+            else -> "Lun"
+        }
+    }
+
+    var diaFiltroSeleccionado by remember(diaInicialFormateado) { mutableStateOf(diaInicialFormateado) }
 
     val pasosFiltradosPorDia = remember(pasosSeleccionados, diaFiltroSeleccionado) {
         pasosSeleccionados.filter { tarea ->
@@ -422,7 +436,7 @@ fun CreateRoutineScreen(
                                                 userId = currentUserId,
                                                 turn = routineTurn,
                                                 textoCompleto = nombreActividad,
-                                                diasSeleccionados = diasSeleccionados.toList()
+                                                diasSeleccionados = if (diasSeleccionados.isEmpty()) listOf(diaFiltroSeleccionado) else diasSeleccionados.toList()
                                             )
                                             if (diasSeleccionados.isNotEmpty()) {
                                                 diaFiltroSeleccionado = diasSeleccionados.first()
@@ -604,7 +618,10 @@ fun CreateRoutineScreen(
                                                 else -> colorSuperficieTarjetas
                                             }
                                         )
-                                        .clickable { diaFiltroSeleccionado = dia }
+                                        .clickable {
+                                            diaFiltroSeleccionado = dia
+                                            viewModel.cargarRutinasPorDia(currentUserId, dia)
+                                        }
                                         .padding(horizontal = 16.dp, vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
