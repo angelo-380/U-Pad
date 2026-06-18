@@ -329,7 +329,8 @@ fun UPadNavigation(
 
                 composable("parent_dashboard") {
                     LaunchedEffect(Unit) {
-                        routineViewModel.cargarRutinasDesdeFirebase("PADRE_TEST")
+                        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                        routineViewModel.cargarRutinasDesdeFirebase(uid)
                     }
                     RoutineDashboardScreen(
                         routineViewModel = routineViewModel,
@@ -429,7 +430,8 @@ fun UPadNavigation(
 
                     // Force the ViewModel to load the correct day's tasks
                     LaunchedEffect(turnoNormalizado, diaNormalizado) {
-                        routineViewModel.cargarRutinasPorDia("PADRE_TEST", diaNormalizado)
+                        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                        routineViewModel.cargarRutinasPorDia(uid, diaNormalizado)
                     }
 
                     val listaPasosTurno by when (turnoNormalizado) {
@@ -446,7 +448,8 @@ fun UPadNavigation(
                         onNavigateToPictogramSearch = { navController.navigate("pictogram_selection/$turnoNormalizado/$diaNormalizado") },
                         onRemoveTaskClick = { index -> routineViewModel.removeTask(turnoNormalizado, index) },
                         onSendRoutine = {
-                            routineViewModel.saveAll("PADRE_TEST", turnoNormalizado)
+                            val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                            routineViewModel.saveAll(uid, turnoNormalizado)
                             navController.navigate("parent_dashboard")
                         },
                         viewModel = routineViewModel,
@@ -484,7 +487,8 @@ fun UPadNavigation(
                         viewModel = routineViewModel,
                         onBackClick = { navController.popBackStack() },
                         onPictogramSelected = { description, url ->
-                            routineViewModel.addTaskConDia(turnoNormalizado, description, url, diaNormalizado, "PADRE_TEST")
+                            val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                            routineViewModel.addTaskConDia(turnoNormalizado, description, url, diaNormalizado, uid)
                             navController.popBackStack()
                         }
                     )
@@ -588,7 +592,8 @@ fun UPadNavigation(
 
                 composable("activity_details") {
                     LaunchedEffect(Unit) {
-                        routineViewModel.cargarRutinasDesdeFirebase("PADRE_TEST")
+                        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                        routineViewModel.cargarRutinasDesdeFirebase(uid)
                     }
                     ActivityDetailsScreen(
                         viewModel = routineViewModel,

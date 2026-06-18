@@ -200,13 +200,13 @@ class RoutineViewModel(
 
     private fun obtenerUidSeguro(userId: String): String {
         return if (userId == "PADRE_TEST" || userId.isBlank()) {
-            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "PADRE_TEST"
+            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
         } else {
             userId
         }
     }
 
-    fun addTask(turn: String, actividadTexto: String, imageUrl: String, userId: String = "PADRE_TEST") {
+    fun addTask(turn: String, actividadTexto: String, imageUrl: String, userId: String = "") {
         val turnoValido = normalizarTurno(turn)
         val uidValido = obtenerUidSeguro(userId)
         val newTask = TaskItem(
@@ -233,7 +233,7 @@ class RoutineViewModel(
         }
     }
 
-    fun addTaskConDia(turn: String, actividadTexto: String, imageUrl: String, dia: String, userId: String = "PADRE_TEST") {
+    fun addTaskConDia(turn: String, actividadTexto: String, imageUrl: String, dia: String, userId: String = "") {
         val turnoValido = normalizarTurno(turn)
         val uidValido = obtenerUidSeguro(userId)
         val diaKey = RoutineProgressCalculator.obtenerPrefijoDia(dia)
@@ -271,7 +271,7 @@ class RoutineViewModel(
 
     fun removeTask(turn: String, index: Int) {
         val turnoValido = normalizarTurno(turn)
-        val uidValido = obtenerUidSeguro("PADRE_TEST")
+        val uidValido = obtenerUidSeguro("")
         val diaFull = ultimoDiaCargado
 
         viewModelScope.launch {
