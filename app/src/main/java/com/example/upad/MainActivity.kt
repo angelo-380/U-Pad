@@ -333,8 +333,8 @@ fun UPadNavigation(
                     }
                     RoutineDashboardScreen(
                         routineViewModel = routineViewModel,
-                        onNavigateToCreateRoutine = { turn -> navController.navigate("create_routine/$turn") },
-                        onRoutineClick = { turn -> navController.navigate("create_routine/$turn") },
+                        onNavigateToCreateRoutine = { turn, day -> navController.navigate("create_routine/$turn/$day") },
+                        onRoutineClick = { turn, day -> navController.navigate("create_routine/$turn/$day") },
                         onNavigateToProfile = { navController.navigate("profile") },
                         onNavigateToSettings = { navController.navigate("settings") },
                         onNavigateToConnection = { navController.navigate("connection_code") },
@@ -402,41 +402,89 @@ fun UPadNavigation(
                 }
 
                 composable(
-                    route = "create_routine/{routineTurn}",
-                    arguments = listOf(navArgument("routineTurn") { type = NavType.StringType })
+                    route = "create_routine/{routineTurn}/{selectedDay}",
+                    arguments = listOf(
+                        navArgument("routineTurn") { type = NavType.StringType },
+                        navArgument("selectedDay") { type = NavType.StringType }
+                    )
                 ) { backStackEntry ->
-                    val turn = backStackEntry.arguments?.getString("routineTurn") ?: "Mañana"
-                    val listaPasosTurno by when (turn.uppercase()) {
+                    val turn = backStackEntry.arguments?.getString("routineTurn") ?: "MAÑANA"
+                    val day = backStackEntry.arguments?.getString("selectedDay") ?: "LUNES"
+                    val turnoNormalizado = when (turn.uppercase().trim()) {
+                        "MAÑANA", "MANANA" -> "MAÑANA"
+                        "TARDE" -> "TARDE"
+                        "NOCHE" -> "NOCHE"
+                        else -> "MAÑANA"
+                    }
+                    val diaNormalizado = when (day.uppercase().trim()) {
+                        "LUNES", "LUN" -> "LUNES"
+                        "MARTES", "MAR" -> "MARTES"
+                        "MIERCOLES", "MIE", "MIÉRCOLES" -> "MIERCOLES"
+                        "JUEVES", "JUE" -> "JUEVES"
+                        "VIERNES", "VIE" -> "VIERNES"
+                        "SABADO", "SAB", "SÁBADO" -> "SABADO"
+                        "DOMINGO", "DOM" -> "DOMINGO"
+                        else -> "LUNES"
+                    }
+
+                    // Force the ViewModel to load the correct day's tasks
+                    LaunchedEffect(turnoNormalizado, diaNormalizado) {
+                        routineViewModel.cargarRutinasPorDia("PADRE_TEST", diaNormalizado)
+                    }
+
+                    val listaPasosTurno by when (turnoNormalizado) {
                         "MAÑANA" -> routineViewModel.tasksManana.collectAsState()
                         "TARDE" -> routineViewModel.tasksTarde.collectAsState()
                         else -> routineViewModel.tasksNoche.collectAsState()
                     }
+
                     CreateRoutineScreen(
-                        routineTurn = turn,
+                        routineTurn = turnoNormalizado,
                         childName = "tu hijo",
                         pasosSeleccionados = listaPasosTurno,
                         onBackClick = { navController.popBackStack() },
-                        onNavigateToPictogramSearch = { navController.navigate("pictogram_selection/$turn") },
-                        onRemoveTaskClick = { index -> routineViewModel.removeTask(turn, index) },
+                        onNavigateToPictogramSearch = { navController.navigate("pictogram_selection/$turnoNormalizado/$diaNormalizado") },
+                        onRemoveTaskClick = { index -> routineViewModel.removeTask(turnoNormalizado, index) },
                         onSendRoutine = {
-                            routineViewModel.saveAll("PADRE_TEST", turn)
+                            routineViewModel.saveAll("PADRE_TEST", turnoNormalizado)
                             navController.navigate("parent_dashboard")
                         },
                         viewModel = routineViewModel,
-                        drawableId = android.R.drawable.ic_menu_manage
+                        drawableId = android.R.drawable.ic_menu_manage,
+                        diaInicial = diaNormalizado
                     )
                 }
 
                 composable(
-                    route = "pictogram_selection/{routineTurn}",
-                    arguments = listOf(navArgument("routineTurn") { type = NavType.StringType })
+                    route = "pictogram_selection/{routineTurn}/{selectedDay}",
+                    arguments = listOf(
+                        navArgument("routineTurn") { type = NavType.StringType },
+                        navArgument("selectedDay") { type = NavType.StringType }
+                    )
                 ) { backStackEntry ->
-                    val turn = backStackEntry.arguments?.getString("routineTurn") ?: "Mañana"
+                    val turn = backStackEntry.arguments?.getString("routineTurn") ?: "MAÑANA"
+                    val day = backStackEntry.arguments?.getString("selectedDay") ?: "LUNES"
+                    val turnoNormalizado = when (turn.uppercase().trim()) {
+                        "MAÑANA", "MANANA" -> "MAÑANA"
+                        "TARDE" -> "TARDE"
+                        "NOCHE" -> "NOCHE"
+                        else -> "MAÑANA"
+                    }
+                    val diaNormalizado = when (day.uppercase().trim()) {
+                        "LUNES", "LUN" -> "LUNES"
+                        "MARTES", "MAR" -> "MARTES"
+                        "MIERCOLES", "MIE", "MIÉRCOLES" -> "MIERCOLES"
+                        "JUEVES", "JUE" -> "JUEVES"
+                        "VIERNES", "VIE" -> "VIERNES"
+                        "SABADO", "SAB", "SÁBADO" -> "SABADO"
+                        "DOMINGO", "DOM" -> "DOMINGO"
+                        else -> "LUNES"
+                    }
                     PictogramSelectionScreen(
                         viewModel = routineViewModel,
                         onBackClick = { navController.popBackStack() },
                         onPictogramSelected = { description, url ->
-                            routineViewModel.addTask(turn, description, url, "PADRE_TEST")
+                            routineViewModel.addTaskConDia(turnoNormalizado, description, url, diaNormalizado, "PADRE_TEST")
                             navController.popBackStack()
                         }
                     )
