@@ -18,9 +18,9 @@
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/upad_icono"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@drawable/upad_icono"
         android:supportsRtl="true"
         android:theme="@style/Theme.App.Start">
 
@@ -64,6 +64,20 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_child_session_monitor_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.DeviceLockWidgetProvider"
+            android:exported="true"
+            android:label="Bloqueo de Dispositivos U-pad">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.upad.widget.lock.ACTION_REFRESH" />
+                <action android:name="com.example.upad.widget.lock.ACTION_TOGGLE_LOCK" />
+                <action android:name="com.example.upad.widget.ACTION_DATA_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_device_lock_info" />
         </receiver>
     </application>
 

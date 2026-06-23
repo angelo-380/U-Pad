@@ -71,6 +71,11 @@ object BiometricHelper {
                     .addOnSuccessListener {
                         val mensaje = if (debeBloquear) "¡Dispositivo infantil Bloqueado! 🔒" else "¡Dispositivo infantil Liberado! 🔓"
                         Toast.makeText(activity, mensaje, Toast.LENGTH_SHORT).show()
+                        try {
+                            com.example.upad.widget.DeviceLockWidgetProvider.notificarCambioDatos(activity)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
                         onResultado(true)
                     }
                     .addOnFailureListener {
