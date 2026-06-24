@@ -69,6 +69,7 @@ import com.example.upad.dashboard.ConnectionScreen
 import com.example.upad.dashboard.AnalyticsScreen
 import com.example.upad.premium.PaymentViewScreen
 import android.content.Context
+import com.example.upad.components.UPADBottomBar
 import com.example.upad.dashboard.HelpTutorialScreen
 import com.google.firebase.auth.FirebaseAuth
 
@@ -143,6 +144,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 )
             }
+
         }
     }
 
@@ -291,11 +293,16 @@ fun UPadNavigation(
         windowInsetsController.isAppearanceLightStatusBars = !isDarkMode
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { paddingValues ->
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        bottomBar = {
+            UPADBottomBar(navController = navController, routineViewModel = routineViewModel)
+        }
+    ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(paddingValues) // 👈 Esto evita que el contenido quede tapado por la barra inferior
         ) {
             val contextoNav = androidx.compose.ui.platform.LocalContext.current
 
