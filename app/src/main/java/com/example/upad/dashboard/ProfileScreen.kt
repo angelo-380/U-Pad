@@ -1,6 +1,7 @@
 package com.example.upad.dashboard
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -119,7 +120,6 @@ fun ProfileScreen(
                 )
             }
         ) { paddingValues ->
-            // El contenedor principal ahora implementa scroll dinámico responsivo sin romper la interfaz
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -211,7 +211,6 @@ fun ProfileScreen(
 
                     Spacer(modifier = Modifier.height(28.dp))
 
-                    // 🗂️ CONTENEDOR DE DATOS ACTUALES
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(22.dp),
@@ -221,7 +220,6 @@ fun ProfileScreen(
                         shadowElevation = 0.dp
                     ) {
                         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            // Fila Nombre
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.size(38.dp).background(colorAcabadoPrincipal.copy(alpha = 0.1f), CircleShape), contentAlignment = Alignment.Center) {
                                     Icon(Icons.Default.Person, contentDescription = null, tint = colorAcabadoPrincipal, modifier = Modifier.size(18.dp))
@@ -232,7 +230,6 @@ fun ProfileScreen(
                                     Text(nameInput, fontSize = 15.sp, color = colorTextoPrincipal, fontWeight = FontWeight.Bold)
                                 }
                             }
-                            // Fila Correo
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(modifier = Modifier.size(38.dp).background(colorAcabadoPrincipal.copy(alpha = 0.1f), CircleShape), contentAlignment = Alignment.Center) {
                                     Icon(Icons.Default.Email, contentDescription = null, tint = colorAcabadoPrincipal, modifier = Modifier.size(18.dp))
@@ -248,7 +245,6 @@ fun ProfileScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Opciones de menú estructuradas en filas
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         MenuOptionRow(
                             icon = Icons.Default.Person,
@@ -260,13 +256,10 @@ fun ProfileScreen(
                             colorTextoSec = colorTextoSecundario,
                             onClick = { isEditingMode = true }
                         )
-
                     }
 
-                    // Dinámico en vez de weight(1f) fijo para no reventar con el scroll vertical
                     Spacer(modifier = Modifier.height(if (isLandscape) 24.dp else 45.dp))
 
-                    // Botón para Cerrar Sesión inferior
                     MenuOptionRow(
                         icon = Icons.Default.ExitToApp,
                         title = "Cerrar Sesión",
@@ -292,7 +285,6 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Campo: Nombre Completo
                         Column {
                             Text("Nombre de Usuario", fontSize = 13.sp, color = colorTextoSecundario, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(6.dp))
@@ -314,7 +306,6 @@ fun ProfileScreen(
                             )
                         }
 
-                        // Campo: Correo Electrónico
                         Column {
                             Text("Correo Electrónico", fontSize = 13.sp, color = colorTextoSecundario, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(6.dp))
@@ -336,17 +327,15 @@ fun ProfileScreen(
                         }
                     }
 
-                    // Dinámico en vez de weight(1f) fijo para no romper con el scroll vertical
                     Spacer(modifier = Modifier.height(if (isLandscape) 30.dp else 60.dp))
 
-                    // Botones inferiores de Cancelar y Guardar
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedButton(
                             onClick = {
-                                nameInput = initialName // Revertir cambios
+                                nameInput = initialName
                                 isEditingMode = false
                             },
                             modifier = Modifier.weight(1f).height(50.dp),
@@ -358,6 +347,19 @@ fun ProfileScreen(
 
                         Button(
                             onClick = {
+                                // 🔐 CONSEGUIR PERMISOS PERSISTENTES ANTES DE GUARDAR LA URI
+                                imageUri?.let { uri ->
+                                    // Comprobamos si es un esquema de tipo content (Galeria/Documentos)
+                                    if (uri.scheme == "content") {
+                                        try {
+                                            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
+                                }
+
                                 sharedPreferences.edit().apply {
                                     putString("PARENT_NAME", nameInput)
                                     imageUri?.let { putString("PROFILE_IMAGE_URI", it.toString()) }

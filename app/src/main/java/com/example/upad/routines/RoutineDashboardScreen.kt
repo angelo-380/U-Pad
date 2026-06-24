@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
+import coil.compose.AsyncImage
 import com.example.upad.R
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
@@ -58,7 +60,14 @@ fun RoutineDashboardScreen(
 ) {
     val firebaseAuth = remember { FirebaseAuth.getInstance() }
     val currentUser = firebaseAuth.currentUser
-    val context = LocalContext.current
+    val context = LocalContext.current // 🎯 Mantenemos esta única declaración global
+
+    // 📸 Recuperamos las SharedPreferences y la foto de perfil ordenadamente al inicio
+    val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
+    val imageUriString = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
+    val imageUri = remember(imageUriString) {
+        imageUriString?.let { android.net.Uri.parse(it) } ?: currentUser?.photoUrl
+    }
 
     // 🌗 ESTADOS DE AJUSTES DESDE EL VIEWMODEL
     val esPremium by routineViewModel.isUserPremium.collectAsState()
@@ -99,14 +108,12 @@ fun RoutineDashboardScreen(
     val colorDinamicoSuscripcion = if (esPremium) Color(0xFFC5A059) else colorAcabadoPrincipal
 
     val hijoVinculadoId = remember(currentUser) {
-        context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE)
-            .getString("HIJO_VINCULADO_ID", "DISPOSITIVO_PADRE")
+        sharedPreferences.getString("HIJO_VINCULADO_ID", "DISPOSITIVO_PADRE")
     }
 
     var parentName by remember {
         mutableStateOf(
-            context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE)
-                .getString("PARENT_NAME", "PADRE/TUTOR") ?: "PADRE/TUTOR"
+            sharedPreferences.getString("PARENT_NAME", "PADRE/TUTOR") ?: "PADRE/TUTOR"
         )
     }
 
@@ -116,8 +123,7 @@ fun RoutineDashboardScreen(
             val nameToDisplay = currentUser.displayName?.uppercase() ?: emailName
             if (!nameToDisplay.isNullOrBlank()) {
                 parentName = nameToDisplay
-                context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE)
-                    .edit().putString("PARENT_NAME", nameToDisplay).apply()
+                sharedPreferences.edit().putString("PARENT_NAME", nameToDisplay).apply()
             }
         }
     }
@@ -147,7 +153,7 @@ fun RoutineDashboardScreen(
         routineViewModel.cargarRutinasPorDia(currentUserId, diaSeleccionado)
     }
 
-    val currentLocale = LocalContext.current.resources.configuration.locales[0]
+    val currentLocale = context.resources.configuration.locales[0]
     val infoMesActual = remember(currentLocale) {
         val cal = Calendar.getInstance()
         val nombreMes = cal.getDisplayName(Calendar.MONTH, Calendar.LONG, currentLocale)?.uppercase() ?: ""
@@ -195,6 +201,8 @@ fun RoutineDashboardScreen(
         RoutineItem("NOCHE", Icons.Default.NightsStay, progresoNoche.first, progresoNoche.second, Color(0xFF9575CD))
     )
 
+    // El código del ModalDrawerSheet continúa abajo...
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -218,12 +226,32 @@ fun RoutineDashboardScreen(
                         .padding(24.dp)
                 ) {
                     Column {
-                        Icon(
-                            Icons.Default.AccountCircle,
-                            contentDescription = null,
-                            tint = if (esPremium && !isDarkMode) Color(0xFF111111) else Color.White,
-                            modifier = Modifier.size(64.dp)
-                        )
+                        // 🎯 NUEVA SECCIÓN: Foto de Perfil Dinámica y Circular
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .background(if (esPremium && !isDarkMode) Color(0xFF111111).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (imageUri != null) {
+                                AsyncImage(
+                                    model = imageUri,
+                                    contentDescription = "Foto de perfil",
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                // Respaldo en caso de que no haya ninguna foto guardada
+                                Icon(
+                                    Icons.Default.AccountCircle,
+                                    contentDescription = null,
+                                    tint = if (esPremium && !isDarkMode) Color(0xFF111111) else Color.White,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = parentName,
@@ -248,7 +276,6 @@ fun RoutineDashboardScreen(
                     unselectedTextColor = colorTextoPrincipal,
                     selectedIconColor = colorDinamicoSuscripcion,
                     selectedTextColor = colorTextoPrincipal,
-                    // Hace que el contenedor de los ítems al pasar el dedo o seleccionarlos sea sutil y translúcido
                     unselectedContainerColor = Color.Transparent,
                     selectedContainerColor = colorTextoPrincipal.copy(alpha = 0.1f)
                 )
