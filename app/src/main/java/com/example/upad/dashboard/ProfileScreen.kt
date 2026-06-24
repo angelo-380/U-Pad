@@ -15,12 +15,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,11 +30,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.upad.components.UPADBackgroundWrapper
+import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
 import com.google.firebase.auth.FirebaseAuth
 
@@ -45,7 +46,8 @@ import com.google.firebase.auth.FirebaseAuth
 fun ProfileScreen(
     routineViewModel: RoutineViewModel,
     onNavigateBack: () -> Unit,
-    onLogoutSuccess: () -> Unit
+    onLogoutSuccess: () -> Unit,
+    onNavigateToHelp: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
@@ -64,17 +66,24 @@ fun ProfileScreen(
     // 🔄 ESTADO DE SUB-PANTALLA: false = Vista Perfil / true = Editar Perfil
     var isEditingMode by remember { mutableStateOf(false) }
 
-    // 📸 PERSISTENCIA DE IMAGEN DE PERFIL
-    var imageUri by remember {
-        mutableStateOf<Uri?>(
-            sharedPreferences.getString("PROFILE_IMAGE_URI", null)?.let { Uri.parse(it) } ?: currentUser?.photoUrl
-        )
+    // 📸 IMAGEN DE PERFIL — estado reactivo para que el TopBar también se actualice
+    // FIX: usamos var mutable para que al cambiar foto se re-renderice el TopBar
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    LaunchedEffect(Unit) {
+        val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
+        imageUri = when {
+            saved != null -> Uri.parse(saved)
+            currentUser?.photoUrl != null -> currentUser.photoUrl
+            else -> null
+        }
     }
 
     // ✏️ ESTADOS DE CAMPOS FORMULARIO
     val initialName = remember(currentUser) {
-        sharedPreferences.getString("PARENT_NAME", null) ?:
-        currentUser?.displayName ?: currentUser?.email?.substringBefore("@")?.uppercase() ?: "PADRE/TUTOR"
+        sharedPreferences.getString("PARENT_NAME", null)
+            ?: currentUser?.displayName
+            ?: currentUser?.email?.substringBefore("@")?.uppercase()
+            ?: "PADRE/TUTOR"
     }
     var nameInput by remember { mutableStateOf(initialName) }
     var emailInput by remember { mutableStateOf(currentUser?.email ?: "") }
@@ -83,15 +92,20 @@ fun ProfileScreen(
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        if (uri != null && isEditingMode) {
-            imageUri = uri
-        }
+        if (uri != null && isEditingMode) imageUri = uri  // ← actualiza también el TopBar
     }
 
-    // 🎨 PALETA ADAPTATIVA COMPATIBLE
+    // 🎨 PALETA ADAPTATIVA
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
     val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
+    val fuentePremium = FontFamily.SansSerif
+
+    val colorFondoSolido = if (isPremiumUser) {
+        if (isDarkMode) Color(0xFF0F0C29) else Color(0xFFFBE9E7)
+    } else {
+        if (isDarkMode) Color(0xFF121212) else Color.White
+    }
 
     val colorSuperficieTarjetas = if (isPremiumUser) {
         if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.65f)
@@ -103,20 +117,21 @@ fun ProfileScreen(
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = if (isEditingMode) "Editar Perfil" else "Mi Perfil",
-                            fontWeight = FontWeight.Bold,
-                            color = colorTextoPrincipal
-                        )
+                UpadTopAppBar(
+                    title = if (isEditingMode) "Editar Perfil" else "Mi Perfil",
+                    // FIX: pasamos imageUri reactivo — se actualiza cuando el usuario cambia foto
+                    imageUri = imageUri,
+                    colorFondo = colorFondoSolido,
+                    colorIconos = colorTextoPrincipal,
+                    fuentePremium = fuentePremium,
+                    showBackButton = true,
+                    onBackPressed = {
+                        if (isEditingMode) isEditingMode = false else onNavigateBack()
                     },
-                    navigationIcon = {
-                        IconButton(onClick = { if (isEditingMode) isEditingMode = false else onNavigateBack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = colorAcabadoPrincipal)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    // FIX: ya estamos en perfil, el avatar no navega pero sí abre modo edición
+                    onNavigateToProfile = { isEditingMode = true },
+                    // FIX: onNavigateToHelp conectado correctamente
+                    onNavigateToHelp = onNavigateToHelp
                 )
             }
         ) { paddingValues ->
@@ -130,9 +145,7 @@ fun ProfileScreen(
             ) {
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // ==========================================
-                // 📸 SECCIÓN DEL AVATAR (VISTA DINÁMICA DE EDICIÓN)
-                // ==========================================
+                // ── AVATAR ────────────────────────────────────────────────────
                 Box(
                     modifier = Modifier.size(if (isLandscape) 90.dp else 110.dp),
                     contentAlignment = Alignment.BottomEnd
@@ -146,8 +159,12 @@ fun ProfileScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         if (imageUri != null) {
+                            // FIX: ImageRequest con contexto explícito para URIs de galería (content://)
                             AsyncImage(
-                                model = imageUri,
+                                model = ImageRequest.Builder(context)
+                                    .data(imageUri)
+                                    .crossfade(true)
+                                    .build(),
                                 contentDescription = "Foto de perfil",
                                 modifier = Modifier.fillMaxSize().clip(CircleShape),
                                 contentScale = ContentScale.Crop
@@ -181,9 +198,7 @@ fun ProfileScreen(
                     }
                 }
 
-                // ==========================================
-                // MODO 1: VISTA DE PERFIL
-                // ==========================================
+                // ── MODO 1: VISTA DE PERFIL ───────────────────────────────────
                 if (!isEditingMode) {
                     Spacer(modifier = Modifier.height(14.dp))
 
@@ -219,9 +234,17 @@ fun ProfileScreen(
                         tonalElevation = 0.dp,
                         shadowElevation = 0.dp
                     ) {
-                        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(38.dp).background(colorAcabadoPrincipal.copy(alpha = 0.1f), CircleShape), contentAlignment = Alignment.Center) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(colorAcabadoPrincipal.copy(alpha = 0.1f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Icon(Icons.Default.Person, contentDescription = null, tint = colorAcabadoPrincipal, modifier = Modifier.size(18.dp))
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
@@ -231,7 +254,12 @@ fun ProfileScreen(
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(38.dp).background(colorAcabadoPrincipal.copy(alpha = 0.1f), CircleShape), contentAlignment = Alignment.Center) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(colorAcabadoPrincipal.copy(alpha = 0.1f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Icon(Icons.Default.Email, contentDescription = null, tint = colorAcabadoPrincipal, modifier = Modifier.size(18.dp))
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
@@ -275,9 +303,7 @@ fun ProfileScreen(
                     )
                 }
 
-                // ==========================================
-                // MODO 2: FORMULARIO DE EDICIÓN
-                // ==========================================
+                // ── MODO 2: FORMULARIO DE EDICIÓN ────────────────────────────
                 else {
                     Spacer(modifier = Modifier.height(28.dp))
 
@@ -347,9 +373,8 @@ fun ProfileScreen(
 
                         Button(
                             onClick = {
-                                // 🔐 CONSEGUIR PERMISOS PERSISTENTES ANTES DE GUARDAR LA URI
+                                // 🔐 PERMISOS PERSISTENTES ANTES DE GUARDAR LA URI
                                 imageUri?.let { uri ->
-                                    // Comprobamos si es un esquema de tipo content (Galeria/Documentos)
                                     if (uri.scheme == "content") {
                                         try {
                                             val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -359,12 +384,10 @@ fun ProfileScreen(
                                         }
                                     }
                                 }
-
                                 sharedPreferences.edit().apply {
                                     putString("PARENT_NAME", nameInput)
                                     imageUri?.let { putString("PROFILE_IMAGE_URI", it.toString()) }
                                 }.apply()
-
                                 isEditingMode = false
                             },
                             modifier = Modifier.weight(1f).height(50.dp),
@@ -384,6 +407,7 @@ fun ProfileScreen(
     }
 }
 
+// ── COMPONENTE LOCAL: fila de opción del menú (sin cambios) ─────────────────
 @Composable
 fun MenuOptionRow(
     icon: ImageVector,
@@ -402,7 +426,10 @@ fun MenuOptionRow(
             .clickable { onClick() },
         shape = RoundedCornerShape(18.dp),
         color = colorSuperficie,
-        border = BorderStroke(1.dp, if (isPremium) colorPrincipal.copy(alpha = 0.25f) else colorTextoSec.copy(alpha = 0.08f)),
+        border = BorderStroke(
+            1.dp,
+            if (isPremium) colorPrincipal.copy(alpha = 0.25f) else colorTextoSec.copy(alpha = 0.08f)
+        ),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {

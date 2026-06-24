@@ -1,7 +1,9 @@
 package com.example.upad.dashboard
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -12,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,12 +21,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.request.ImageRequest
 import com.example.upad.components.UPADBackgroundWrapper // 🛠️ Importamos el contenedor unificado
+import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel // 🛠️ Importamos el ViewModel de estado Premium/Tema
 import com.example.upad.viewmodel.TrackingViewModel
 import com.google.android.gms.location.LocationServices
@@ -41,17 +45,40 @@ import com.google.maps.android.compose.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HijoTrackingScreen(
     routineViewModel: RoutineViewModel, // 🛡️ AGREGADO DE FORMA SEGURA COMO PRIMER PARÁMETRO
     hijoId: String,
     onNavigateBack: () -> Unit,
+    onNavigateToHelp: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {},
     trackingViewModel: TrackingViewModel = viewModel()
 ) {
     // 📨 1. RECOLECCIÓN DE ESTADOS GLOBALES (Cabecera del componente)
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
+
+    // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
+    val context = LocalContext.current
+    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
+    val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+
+    LaunchedEffect(Unit) {
+        val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
+        imageUri = when {
+            saved != null -> Uri.parse(saved)
+            currentUser?.photoUrl != null -> currentUser.photoUrl
+            else -> null
+        }
+    }
+
+    val fuentePremium = FontFamily.SansSerif
+    val colorFondoSolido = if (isPremiumUser) {
+        if (isDarkMode) Color(0xFF0F0C29) else Color(0xFFFBE9E7)
+    } else {
+        if (isDarkMode) Color(0xFF121212) else Color.White
+    }
 
     // 🎨 PALETA DE COLORES ADAPTATIVA EN BASE AL ESTADO PREMIUM Y MODO VISUAL
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
@@ -65,7 +92,6 @@ fun HijoTrackingScreen(
         if (isDarkMode) Color(0xFF1E1E1E) else Color.White
     }
 
-    val context = LocalContext.current
     val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
     val firestore = remember { FirebaseFirestore.getInstance() }
 
@@ -196,27 +222,16 @@ fun HijoTrackingScreen(
         Scaffold(
             containerColor = Color.Transparent, // Fondo transparente para que funcione la estética Premium/Fondo unificado
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            "Ubicar a mi Hijo",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colorTextoPrincipal
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Volver al Dashboard",
-                                tint = colorAcabadoPrincipal
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = colorSuperficieFlotante // Barra adaptable (Translúcida o sólida)
-                    )
+                UpadTopAppBar(
+                    title = "Ubicar a mi Hijo",
+                    imageUri = imageUri,
+                    colorFondo = colorFondoSolido,
+                    colorIconos = colorAcabadoPrincipal,
+                    fuentePremium = fuentePremium,
+                    showBackButton = true,
+                    onBackPressed = onNavigateBack,
+                    onNavigateToProfile = onNavigateToProfile,
+                    onNavigateToHelp = onNavigateToHelp
                 )
             }
         ) { innerPadding ->

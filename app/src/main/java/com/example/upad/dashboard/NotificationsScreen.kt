@@ -1,5 +1,7 @@
 package com.example.upad.dashboard
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -17,20 +19,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.request.ImageRequest
 import com.example.upad.components.UPADBackgroundWrapper
+import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
+import com.google.firebase.auth.FirebaseAuth
 
 // Estructura de datos temporal para simular alertas reales de Firebase
 data class NotificationItem(
-    val id: String,
-    val title: String,
-    val description: String,
-    val time: String,
-    val type: NotificationType
+    val id: String = "",
+    val title: String = "",
+    val description: String = "",
+    val time: String = "",
+    val type: NotificationType = NotificationType.INFO
 )
 
 enum class NotificationType {
@@ -40,10 +46,34 @@ enum class NotificationType {
 @Composable
 fun NotificationsScreen(
     routineViewModel: RoutineViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToHelp: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
 ) {
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
+
+    // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
+    val context = LocalContext.current
+    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
+    val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+
+    LaunchedEffect(Unit) {
+        val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
+        imageUri = when {
+            saved != null -> Uri.parse(saved)
+            currentUser?.photoUrl != null -> currentUser.photoUrl
+            else -> null
+        }
+    }
+
+    val fuentePremium = FontFamily.SansSerif
+    val colorFondoSolido = if (isPremiumUser) {
+        if (isDarkMode) Color(0xFF0F0C29) else Color(0xFFFBE9E7)
+    } else {
+        if (isDarkMode) Color(0xFF121212) else Color.White
+    }
 
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
     val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
@@ -89,64 +119,77 @@ fun NotificationsScreen(
     }
 
     UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp)
-                .padding(top = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = "Centro de Alertas 🔔",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Black,
-                color = colorTextoPrincipal
-            )
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                UpadTopAppBar(
+                    title = "Centro de Alertas 🔔",
+                    imageUri = imageUri,
+                    colorFondo = colorFondoSolido,
+                    colorIconos = colorTextoPrincipal,
+                    fuentePremium = fuentePremium,
+                    showBackButton = true,
+                    onBackPressed = onNavigateBack,
+                    onNavigateToProfile = onNavigateToProfile,
+                    onNavigateToHelp = onNavigateToHelp
+                )
+            }
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Mantente al tanto en tiempo real de los avances, estados y reportes del dispositivo de tu hijo.",
+                    fontSize = 14.sp,
+                    color = colorTextoSecundario,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
 
-            Text(
-                text = "Mantente al tanto en tiempo real de los avances, estados y reportes del dispositivo de tu hijo.",
-                fontSize = 14.sp,
-                color = colorTextoSecundario,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            if (notificationsList.isEmpty()) {
-                // Estado vacío si no hay alertas
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = null,
-                            tint = colorTextoSecundario.copy(alpha = 0.4f),
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "No tienes notificaciones por ahora",
-                            color = colorTextoSecundario,
-                            fontSize = 15.sp
-                        )
+                if (notificationsList.isEmpty()) {
+                    // Estado vacío si no hay alertas
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = colorTextoSecundario.copy(alpha = 0.4f),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "No tienes notificaciones por ahora",
+                                color = colorTextoSecundario,
+                                fontSize = 15.sp
+                            )
+                        }
                     }
-                }
-            } else {
-                // Listado optimizado y fluido con LazyColumn
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp)
-                ) {
-                    items(notificationsList) { notification ->
-                        NotificationCard(
-                            notification = notification,
-                            backgroundColor = colorSuperficieTarjetas,
-                            textColor = colorTextoPrincipal,
-                            subTextColor = colorTextoSecundario
-                        )
+                } else {
+                    // Listado optimizado y fluido con LazyColumn
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        items(notificationsList) { notification ->
+                            NotificationCard(
+                                notification = notification,
+                                backgroundColor = colorSuperficieTarjetas,
+                                textColor = colorTextoPrincipal,
+                                subTextColor = colorTextoSecundario
+                            )
+                        }
                     }
                 }
             }

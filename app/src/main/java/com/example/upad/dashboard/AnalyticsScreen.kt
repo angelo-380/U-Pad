@@ -1,5 +1,7 @@
 package com.example.upad.dashboard
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -10,7 +12,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Lock
@@ -23,24 +24,52 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.request.ImageRequest
 import com.example.upad.components.UPADBackgroundWrapper
+import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
+import com.google.firebase.auth.FirebaseAuth
 import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnalyticsScreen(
     routineViewModel: RoutineViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToPremium: () -> Unit
+    onNavigateToPremium: () -> Unit,
+    onNavigateToHelp: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
 ) {
     // 📨 1. ESTADOS LOCALES Y CONFIGURACIÓN EN LA CABECERA
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
+
+    // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
+    val context = LocalContext.current
+    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
+    val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+
+    LaunchedEffect(Unit) {
+        val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
+        imageUri = when {
+            saved != null -> Uri.parse(saved)
+            currentUser?.photoUrl != null -> currentUser.photoUrl
+            else -> null
+        }
+    }
+
+    val fuentePremium = FontFamily.SansSerif
+    val colorFondoSolido = if (isPremiumUser) {
+        if (isDarkMode) Color(0xFF0F0C29) else Color(0xFFFBE9E7)
+    } else {
+        if (isDarkMode) Color(0xFF121212) else Color.White
+    }
 
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
@@ -95,14 +124,16 @@ fun AnalyticsScreen(
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = { Text("Reporte Semanal", fontWeight = FontWeight.Bold, color = colorTextoPrincipal) },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = colorAcabadoPrincipal)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                UpadTopAppBar(
+                    title = "Reporte Semanal",
+                    imageUri = imageUri,
+                    colorFondo = colorFondoSolido,
+                    colorIconos = colorTextoPrincipal,
+                    fuentePremium = fuentePremium,
+                    showBackButton = true,
+                    onBackPressed = onNavigateBack,
+                    onNavigateToProfile = onNavigateToProfile,
+                    onNavigateToHelp = onNavigateToHelp
                 )
             }
         ) { paddingValues ->
@@ -115,7 +146,6 @@ fun AnalyticsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // --- TARJETA DE RESUMEN DE RENDIMIENTO (HOY) ---
-                // Esta se mantiene de color sólido (Dorado/Azul) por lo que no transparenta plomo interno
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
@@ -154,7 +184,7 @@ fun AnalyticsScreen(
                     }
                 }
 
-                // --- LEYENDA DEL GRÁFICO DE BARRAS (Purificado de plomo) ---
+                // --- LEYENDA DEL GRÁFICO DE BARRAS ---
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -185,7 +215,7 @@ fun AnalyticsScreen(
                     modifier = Modifier.padding(start = 4.dp)
                 )
 
-                // --- PANEL PRINCIPAL DEL GRÁFICO (Purificado de plomo) ---
+                // --- PANEL PRINCIPAL DEL GRÁFICO ---
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
@@ -244,7 +274,7 @@ fun AnalyticsScreen(
                     }
                 }
 
-                // --- 🤖 SECCIÓN MÓDULO DE IA (PREMIUM ADAPTATIVO Purificado) ---
+                // --- 🤖 SECCIÓN MÓDULO DE IA ---
                 Text(
                     text = "RECOMENDACIONES COMPORTAMENTALES",
                     fontSize = 11.sp,

@@ -1,5 +1,7 @@
 package com.example.upad.dashboard
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -7,7 +9,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.PhonelinkRing
@@ -17,30 +18,57 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.upad.components.UPADBackgroundWrapper // 🛠️ Importamos el contenedor unificado
-import com.example.upad.viewmodel.RoutineViewModel // 🛠️ Importamos el ViewModel de estado
+import coil.request.ImageRequest
+import com.example.upad.components.UPADBackgroundWrapper
+import com.example.upad.dashboard.components.UpadTopAppBar
+import com.example.upad.viewmodel.RoutineViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
 data class DispositivoVinculado(val id: String, val modelo: String = "Dispositivo del Niño")
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectionScreen(
-    routineViewModel: RoutineViewModel, // 📨 Añadido como primer parámetro para cumplir el estándar
+    routineViewModel: RoutineViewModel,
     onNavigateBack: () -> Unit,
-    onLinkSuccess: () -> Unit
+    onLinkSuccess: () -> Unit,
+    onNavigateToHelp: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
 ) {
     // 📨 1. RECOLECCIÓN DE ESTADOS GLOBALES (Cabecera del componente)
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
 
+    // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
+    val context = LocalContext.current
+    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
+    val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+
+    LaunchedEffect(Unit) {
+        val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
+        imageUri = when {
+            saved != null -> Uri.parse(saved)
+            currentUser?.photoUrl != null -> currentUser.photoUrl
+            else -> null
+        }
+    }
+
+    val fuentePremium = FontFamily.SansSerif
+    val colorFondoSolido = if (isPremiumUser) {
+        if (isDarkMode) Color(0xFF0F0C29) else Color(0xFFFBE9E7)
+    } else {
+        if (isDarkMode) Color(0xFF121212) else Color.White
+    }
+
     // 🎨 CONFIGURACIÓN DE PALETA ADAPTATIVA EQUILIBRADA
-    val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary // Dorado en Premium
+    val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
     val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
 
@@ -90,25 +118,18 @@ fun ConnectionScreen(
     // 🚀 2. IMPLEMENTACIÓN DEL CONTENEDOR BASE
     UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
         Scaffold(
-            containerColor = Color.Transparent, // ⚠️ Súper importante: deja ver el fondo dinámico del Wrapper
+            containerColor = Color.Transparent,
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            "Dispositivos",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colorTextoPrincipal
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Atrás", tint = colorAcabadoPrincipal)
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color.Transparent // Se vuelve transparente para integrarse al fondo
-                    )
+                UpadTopAppBar(
+                    title = "Dispositivos",
+                    imageUri = imageUri,
+                    colorFondo = colorFondoSolido,
+                    colorIconos = colorTextoPrincipal,
+                    fuentePremium = fuentePremium,
+                    showBackButton = true,
+                    onBackPressed = onNavigateBack,
+                    onNavigateToProfile = onNavigateToProfile,
+                    onNavigateToHelp = onNavigateToHelp
                 )
             }
         ) { innerPadding ->

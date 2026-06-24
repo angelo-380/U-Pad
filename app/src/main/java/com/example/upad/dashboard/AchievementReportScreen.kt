@@ -4,64 +4,57 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.upad.dashboard.components.UpadTopAppBar
 
 @Composable
 fun AchievementReportScreen(
     onBackClick: () -> Unit,
-    onViewDetailsClick: () -> Unit
+    onViewDetailsClick: () -> Unit,
+    isPremiumUser: Boolean = false,
+    isDarkMode: Boolean = false,
+    onNavigateToHelp: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
 ) {
     val colorAzulTEA = Color(0xFF4FC3F7)
     val colorFondoBase = Color(0xFFF0F4F8)
     val colorVerdeLogro = Color(0xFF81C784)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colorFondoBase)
-    ) {
-        // --- CABECERA ESTILO U-PAD ---
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(bottomStart = 45.dp, bottomEnd = 45.dp))
-                .background(Color.White)
-                .padding(top = 40.dp, bottom = 24.dp, start = 16.dp, end = 24.dp)
-        ) {
-            IconButton(onClick = onBackClick) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Atrás", tint = colorAzulTEA)
-            }
-            Text(
-                text = "TU PROGRESO",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.LightGray,
-                modifier = Modifier.padding(start = 12.dp)
-            )
-            Text(
-                text = "Reporte de Logros",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Black,
-                color = colorAzulTEA,
-                modifier = Modifier.padding(horizontal = 12.dp)
+    // Lógica obligatoria para calcular el fondo sólido del componente
+    val colorFondoSolido = if (isPremiumUser) {
+        if (isDarkMode) Color(0xFF0F0C29) else Color(0xFFFBE9E7)
+    } else {
+        if (isDarkMode) Color(0xFF121212) else Color.White
+    }
+
+    Scaffold(
+        topBar = {
+            UpadTopAppBar(
+                title = "Reporte de Logros",
+                imageUri = null,
+                colorFondo = colorFondoSolido,
+                showBackButton = true,
+                onBackPressed = onBackClick,
+                onNavigateToHelp = onNavigateToHelp,
+                onNavigateToProfile = onNavigateToProfile
             )
         }
-
+    ) { paddingValues ->
         Column(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxSize()
+                .padding(paddingValues)
+                .background(colorFondoBase)
                 .padding(horizontal = 24.dp)
         ) {
             Spacer(modifier = Modifier.height(24.dp))

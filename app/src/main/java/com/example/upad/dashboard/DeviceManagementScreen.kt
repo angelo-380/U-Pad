@@ -1,12 +1,13 @@
 package com.example.upad.dashboard
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.*
@@ -15,9 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
-import com.example.upad.components.UPADBackgroundWrapper // 🛠️ Importamos el contenedor unificado
+import coil.request.ImageRequest
+import com.example.upad.components.UPADBackgroundWrapper
+import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.utils.BiometricHelper
 import com.example.upad.viewmodel.RoutineViewModel
 import com.google.firebase.auth.FirebaseAuth
@@ -30,15 +34,38 @@ data class DispositivoNiño(
     val kioscoActivo: Boolean = false
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceManagementScreen(
-    routineViewModel: RoutineViewModel, // 🛡️ SE MANTIENE INTACTO (Sin romper rutas)
-    onNavigateBack: () -> Unit
+    routineViewModel: RoutineViewModel,
+    onNavigateBack: () -> Unit,
+    onNavigateToHelp: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
 ) {
     // 📨 1. LLAMAR A LOS ESTADOS LOCALES EN LA CABECERA (Procedimiento Estándar)
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
+
+    // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
+    val context = LocalContext.current
+    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
+    val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+
+    LaunchedEffect(Unit) {
+        val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
+        imageUri = when {
+            saved != null -> Uri.parse(saved)
+            currentUser?.photoUrl != null -> currentUser.photoUrl
+            else -> null
+        }
+    }
+
+    val fuentePremium = FontFamily.SansSerif
+    val colorFondoSolido = if (isPremiumUser) {
+        if (isDarkMode) Color(0xFF0F0C29) else Color(0xFFFBE9E7)
+    } else {
+        if (isDarkMode) Color(0xFF121212) else Color.White
+    }
 
     // 🎨 PALETA DE COLORES RE-ACOPLADA AL DISEÑO DEL CONTENEDOR
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
@@ -51,7 +78,6 @@ fun DeviceManagementScreen(
         if (isDarkMode) Color(0xFF1E1E1E) else Color(0xFFF7F7F7)
     }
 
-    val context = LocalContext.current
     val activity = context as FragmentActivity
 
     var listaDispositivos by remember { mutableStateOf(listOf<DispositivoNiño>()) }
@@ -95,18 +121,18 @@ fun DeviceManagementScreen(
     // 🚀 2. IMPLEMENTAR EL CONTENEDOR BASE
     UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
         Scaffold(
-            containerColor = Color.Transparent, // 🔑 Permite ver el fondo degradado o sólido del Wrapper
+            containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = { Text("Control de Bloqueo Remoto", color = colorTextoPrincipal) },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Regresar", tint = colorAcabadoPrincipal)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent // Fondo transparente para la TopBar
-                    )
+                UpadTopAppBar(
+                    title = "Control de Bloqueo Remoto",
+                    imageUri = imageUri,
+                    colorFondo = colorFondoSolido,
+                    colorIconos = colorTextoPrincipal,
+                    fuentePremium = fuentePremium,
+                    showBackButton = true,
+                    onBackPressed = onNavigateBack,
+                    onNavigateToProfile = onNavigateToProfile,
+                    onNavigateToHelp = onNavigateToHelp
                 )
             }
         ) { paddingValues ->

@@ -27,7 +27,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -112,23 +111,19 @@ class MainActivity : AppCompatActivity() {
                 evaluarYAplicarIdioma(appLanguage)
             }
 
-            // 💾 LEER CONFIGURACIÓN LOCAL INMEDIATA DEL SISTEMA PREFS
             val sharedPrefs = remember { getSharedPreferences("UPadPrefs", Context.MODE_PRIVATE) }
             val sistemaEstaEnOscuro = isSystemInDarkTheme()
 
-            // Forzar estado inicial instantáneo desde el almacenamiento local
             val isDarkModeFlow by routineViewModel.isDarkMode.collectAsState()
             var estadoTemaOscuroReal by remember {
                 mutableStateOf(sharedPrefs.getBoolean("pref_tema_oscuro", sistemaEstaEnOscuro))
             }
 
-            // Guardar en persistencia local cada vez que cambie en Ajustes (ViewModel)
             LaunchedEffect(isDarkModeFlow) {
                 estadoTemaOscuroReal = isDarkModeFlow
                 sharedPrefs.edit().putBoolean("pref_tema_oscuro", isDarkModeFlow).apply()
             }
 
-            // Control del estado Premium asíncrono
             val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = null)
 
             UPadTheme(darkTheme = estadoTemaOscuroReal, isPremium = isPremiumUser ?: false) {
@@ -146,7 +141,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 )
             }
-
         }
     }
 
@@ -204,27 +198,24 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         kioscoListener?.remove()
     }
+
     val ROUTE_HELP = "help_tutorial"
 }
 
+// ── DESTINO INICIAL ──────────────────────────────────────────────────────────
 private fun obtenerDestinoInicial(context: android.content.Context): String {
-    val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+    val auth = FirebaseAuth.getInstance()
     val sharedPreferences = context.getSharedPreferences("UPadPrefs", android.content.Context.MODE_PRIVATE)
-
     val usuarioLogueado = auth.currentUser != null
     val rolGuardado = sharedPreferences.getString("rol_usuario", null)
-
     return if (usuarioLogueado && !rolGuardado.isNullOrEmpty()) {
-        if (rolGuardado == "padre" || rolGuardado == "padre_directo") {
-            "parent_dashboard"
-        } else {
-            "child_start"
-        }
+        if (rolGuardado == "padre" || rolGuardado == "padre_directo") "parent_dashboard" else "child_start"
     } else {
         "role_selection"
     }
 }
 
+// ── TEMA ─────────────────────────────────────────────────────────────────────
 @Composable
 fun UPadTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -232,7 +223,6 @@ fun UPadTheme(
     content: @Composable () -> Unit
 ) {
     val colorAcabadoPrincipal = if (isPremium) Color(0xFFC5A059) else Color(0xFF4FC3F7)
-
     val colorScheme = if (darkTheme) {
         darkColorScheme(
             primary = colorAcabadoPrincipal,
@@ -250,13 +240,10 @@ fun UPadTheme(
             onSurface = Color(0xFF757575)
         )
     }
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        content = content
-    )
+    MaterialTheme(colorScheme = colorScheme, content = content)
 }
 
+// ── NAVEGACIÓN ───────────────────────────────────────────────────────────────
 @Composable
 fun UPadNavigation(
     bloqueoActivo: Boolean,
@@ -274,23 +261,19 @@ fun UPadNavigation(
     val rutaActual = navBackStackEntry?.destination?.route ?: ""
     val estaEnSeccionNiño = rutaActual.startsWith("child_")
 
-    LaunchedEffect(rutaActual) {
-        onRouteChanged(rutaActual)
-    }
+    LaunchedEffect(rutaActual) { onRouteChanged(rutaActual) }
 
     LaunchedEffect(bloqueoActivo, estaEnSeccionNiño) {
-        if (bloqueoActivo && estaEnSeccionNiño) {
-            onCambiarEstadoSistema(true)
-        } else {
-            onCambiarEstadoSistema(false)
-        }
+        if (bloqueoActivo && estaEnSeccionNiño) onCambiarEstadoSistema(true)
+        else onCambiarEstadoSistema(false)
     }
 
     val view = LocalView.current
     if (!view.isInEditMode && !(bloqueoActivo && estaEnSeccionNiño)) {
         val activity = view.context as Activity
         val window = activity.window
-        window.statusBarColor = if (isDarkMode) android.graphics.Color.parseColor("#1E1E1E") else android.graphics.Color.TRANSPARENT
+        window.statusBarColor = if (isDarkMode) android.graphics.Color.parseColor("#1E1E1E")
+        else android.graphics.Color.TRANSPARENT
         val windowInsetsController = WindowInsetsControllerCompat(window, window.decorView)
         windowInsetsController.isAppearanceLightStatusBars = !isDarkMode
     }
@@ -304,22 +287,17 @@ fun UPadNavigation(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues) // 👈 Esto evita que el contenido quede tapado por la barra inferior
+                .padding(paddingValues)
         ) {
             val contextoNav = androidx.compose.ui.platform.LocalContext.current
 
-            NavHost(
-                navController = navController,
-                startDestination = "sincronizando"
-            ) {
+            NavHost(navController = navController, startDestination = "sincronizando") {
+
+                // ── SINCRONIZANDO ────────────────────────────────────────────
                 composable("sincronizando") {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     }
-
                     if (isPremiumListo) {
                         LaunchedEffect(Unit) {
                             val destinoReal = obtenerDestinoInicial(contextoNav)
@@ -330,12 +308,12 @@ fun UPadNavigation(
                     }
                 }
 
+                // ── AUTH ─────────────────────────────────────────────────────
                 composable("role_selection") {
                     val contextoRol = androidx.compose.ui.platform.LocalContext.current
                     RoleSelectionScreen(
                         onRoleSelected = { role: String ->
                             val sharedPrefs = contextoRol.getSharedPreferences("UPadPrefs", android.content.Context.MODE_PRIVATE)
-
                             when (role) {
                                 "padre_directo" -> {
                                     sharedPrefs.edit().putString("rol_usuario", "padre_directo").apply()
@@ -391,23 +369,18 @@ fun UPadNavigation(
                     ForgotPasswordScreen(onBackToLogin = { navController.popBackStack() })
                 }
 
+                // ── SETUP ────────────────────────────────────────────────────
                 composable("subscription_plans") {
                     SubscriptionPlansScreen(
                         routineViewModel = routineViewModel,
-                        onNavigateToBenefits = {
-                            navController.navigate("change_plan")
-                        },
-                        onDirectToProfile = {
-                            navController.navigate("trial_disclaimer")
-                        }
+                        onNavigateToBenefits = { navController.navigate("change_plan") },
+                        onDirectToProfile = { navController.navigate("trial_disclaimer") }
                     )
                 }
 
                 composable("trial_disclaimer") {
                     TrialDisclaimerScreen(
-                        onStartTrialClick = {
-                            navController.navigate("child_profile_setup")
-                        },
+                        onStartTrialClick = { navController.navigate("child_profile_setup") },
                         onMoreInfoClick = {}
                     )
                 }
@@ -459,9 +432,10 @@ fun UPadNavigation(
                     )
                 }
 
+                // ── DASHBOARD PADRE ──────────────────────────────────────────
                 composable("parent_dashboard") {
                     LaunchedEffect(Unit) {
-                        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
                         routineViewModel.cargarRutinasDesdeFirebase(uid)
                     }
                     RoutineDashboardScreen(
@@ -475,31 +449,44 @@ fun UPadNavigation(
                         onNavigateToDeviceManagement = { navController.navigate("device_management") },
                         onNavigateToChangePlan = { navController.navigate("change_plan") },
                         onNavigateToTracking = { hijoId -> navController.navigate("tracking/$hijoId") },
-                        // 🎯 Agregamos la acción para que el botón de ayuda navegue a la nueva ruta
                         onNavigateToHelp = { navController.navigate("help_tutorial") }
                     )
                 }
 
-                // 🚀 Registramos la pantalla de ayuda justo debajo de tu dashboard
+                // ✅ FIX: help_tutorial ahora pasa onNavigateToHelp y onNavigateToProfile
                 composable("help_tutorial") {
                     HelpTutorialScreen(
                         routineViewModel = routineViewModel,
-                        onNavigateBack = { navController.popBackStack() }
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToHelp = { navController.navigate("help_tutorial") },
+                        onNavigateToProfile = { navController.navigate("profile") }
                     )
                 }
-                // 🚀 NUEVAS RUTAS EXCLUSIVAS PREMIUM / BÁSICO DINÁMICO
+
                 composable("today_calendar") {
-                    TodayCalendarScreen(routineViewModel = routineViewModel)
+                    TodayCalendarScreen(
+                        routineViewModel = routineViewModel,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToHelp = { navController.navigate("help_tutorial") },
+                        onNavigateToProfile = { navController.navigate("profile") }
+                    )
                 }
 
                 composable("emotions_track") {
-                    EmotionsTrackScreen(routineViewModel = routineViewModel)
+                    EmotionsTrackScreen(
+                        routineViewModel = routineViewModel,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToHelp = { navController.navigate("help_tutorial") },
+                        onNavigateToProfile = { navController.navigate("profile") }
+                    )
                 }
 
                 composable("notifications") {
                     NotificationsScreen(
                         routineViewModel = routineViewModel,
-                        onNavigateBack = { navController.popBackStack() }
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToHelp = { navController.navigate("help_tutorial") },
+                        onNavigateToProfile = { navController.navigate("profile") }
                     )
                 }
 
@@ -513,10 +500,13 @@ fun UPadNavigation(
                         routineViewModel = routineViewModel,
                         hijoId = hijoId,
                         trackingViewModel = trackingViewModel,
-                        onNavigateBack = { navController.popBackStack() }
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToHelp = { navController.navigate("help_tutorial") },
+                        onNavigateToProfile = { navController.navigate("profile") }
                     )
                 }
 
+                // ✅ FIX: profile ahora recibe onNavigateToHelp
                 composable("profile") {
                     val contextoPerfil = androidx.compose.ui.platform.LocalContext.current
                     ProfileScreen(
@@ -524,23 +514,26 @@ fun UPadNavigation(
                         onNavigateBack = { navController.popBackStack() },
                         onLogoutSuccess = {
                             val sharedPrefs = contextoPerfil.getSharedPreferences("UPadPrefs", android.content.Context.MODE_PRIVATE)
-                            // Limpieza de datos locales de sesión al salir
                             sharedPrefs.edit()
                                 .remove("rol_usuario")
                                 .remove("pref_tema_oscuro")
                                 .apply()
-
                             navController.navigate("role_selection") {
                                 popUpTo(0) { inclusive = true }
                             }
-                        }
+                        },
+                        // ✅ FIX: conectado — antes faltaba este parámetro
+                        onNavigateToHelp = { navController.navigate("help_tutorial") }
                     )
                 }
 
+                // ✅ FIX: settings recibe onNavigateToHelp si tu SettingsScreen lo tiene
                 composable("settings") {
                     SettingsScreen(
                         routineViewModel = routineViewModel,
-                        onNavigateBack = { navController.popBackStack() }
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToHelp = { navController.navigate("help_tutorial") },
+                        onNavigateToProfile = { navController.navigate("profile") }
                     )
                 }
 
@@ -548,7 +541,9 @@ fun UPadNavigation(
                     ConnectionScreen(
                         routineViewModel = routineViewModel,
                         onNavigateBack = { navController.popBackStack() },
-                        onLinkSuccess = { navController.popBackStack() }
+                        onLinkSuccess = { navController.popBackStack() },
+                        onNavigateToHelp = { navController.navigate("help_tutorial") },
+                        onNavigateToProfile = { navController.navigate("profile") }
                     )
                 }
 
@@ -556,17 +551,21 @@ fun UPadNavigation(
                     AnalyticsScreen(
                         routineViewModel = routineViewModel,
                         onNavigateBack = { navController.popBackStack() },
-                        onNavigateToPremium = { navController.navigate("subscription_plans") }
+                        onNavigateToPremium = { navController.navigate("subscription_plans") },
+                        onNavigateToHelp = { navController.navigate("help_tutorial") },
+                        onNavigateToProfile = { navController.navigate("profile") }
                     )
                 }
-
                 composable("device_management") {
                     DeviceManagementScreen(
                         routineViewModel = routineViewModel,
-                        onNavigateBack = { navController.popBackStack() }
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToHelp = { navController.navigate("help_tutorial") },
+                        onNavigateToProfile = { navController.navigate("profile") }
                     )
                 }
 
+                // ── CREATE ROUTINE ───────────────────────────────────────────
                 composable(
                     route = "create_routine/{routineTurn}/{selectedDay}",
                     arguments = listOf(
@@ -594,7 +593,7 @@ fun UPadNavigation(
                     }
 
                     LaunchedEffect(turnoNormalizado, diaNormalizado) {
-                        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
                         routineViewModel.cargarRutinasPorDia(uid, diaNormalizado)
                     }
 
@@ -612,16 +611,18 @@ fun UPadNavigation(
                         onNavigateToPictogramSearch = { navController.navigate("pictogram_selection/$turnoNormalizado/$diaNormalizado") },
                         onRemoveTaskClick = { index -> routineViewModel.removeTask(turnoNormalizado, index) },
                         onSendRoutine = {
-                            val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
                             routineViewModel.saveAll(uid, turnoNormalizado)
                             navController.navigate("parent_dashboard")
                         },
                         viewModel = routineViewModel,
                         drawableId = android.R.drawable.ic_menu_manage,
-                        diaInicial = diaNormalizado
+                        diaInicial = diaNormalizado,
+                        // ✅ FIX: conectado
                     )
                 }
 
+                // ── PICTOGRAM ────────────────────────────────────────────────
                 composable(
                     route = "pictogram_selection/{routineTurn}/{selectedDay}",
                     arguments = listOf(
@@ -632,44 +633,34 @@ fun UPadNavigation(
                     val turn = backStackEntry.arguments?.getString("routineTurn") ?: "MAÑANA"
                     val day = backStackEntry.arguments?.getString("selectedDay") ?: "LUNES"
                     val turnoNormalizado = when (turn.uppercase().trim()) {
-                        "MAÑANA", "MANANA" -> "MAÑANA"
-                        "TARDE" -> "TARDE"
-                        "NOCHE" -> "NOCHE"
-                        else -> "MAÑANA"
+                        "MAÑANA", "MANANA" -> "MAÑANA"; "TARDE" -> "TARDE"; "NOCHE" -> "NOCHE"; else -> "MAÑANA"
                     }
                     val diaNormalizado = when (day.uppercase().trim()) {
-                        "LUNES", "LUN" -> "LUNES"
-                        "MARTES", "MAR" -> "MARTES"
-                        "MIERCOLES", "MIE", "MIÉRCOLES" -> "MIERCOLES"
-                        "JUEVES", "JUE" -> "JUEVES"
-                        "VIERNES", "VIE" -> "VIERNES"
-                        "SABADO", "SAB", "SÁBADO" -> "SABADO"
-                        "DOMINGO", "DOM" -> "DOMINGO"
-                        else -> "LUNES"
+                        "LUNES", "LUN" -> "LUNES"; "MARTES", "MAR" -> "MARTES"
+                        "MIERCOLES", "MIE", "MIÉRCOLES" -> "MIERCOLES"; "JUEVES", "JUE" -> "JUEVES"
+                        "VIERNES", "VIE" -> "VIERNES"; "SABADO", "SAB", "SÁBADO" -> "SABADO"
+                        "DOMINGO", "DOM" -> "DOMINGO"; else -> "LUNES"
                     }
                     PictogramSelectionScreen(
                         viewModel = routineViewModel,
                         onBackClick = { navController.popBackStack() },
                         onPictogramSelected = { description, url ->
-                            val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
                             routineViewModel.addTaskConDia(turnoNormalizado, description, url, diaNormalizado, uid)
                             navController.popBackStack()
                         }
                     )
                 }
 
+                // ── SECCIÓN NIÑO ─────────────────────────────────────────────
                 composable("child_start") {
                     ChildStartScreen(
                         routineViewModel = routineViewModel,
                         onNavigateToTask = { actividadNombre, turno ->
                             navController.navigate("child_task_execution/$actividadNombre/$turno")
                         },
-                        onNavigateToCompleted = {
-                            navController.navigate("child_routine_completed")
-                        },
-                        onPadreIdObtenido = { pId ->
-                            padreIdDelHijo = pId
-                        }
+                        onNavigateToCompleted = { navController.navigate("child_routine_completed") },
+                        onPadreIdObtenido = { pId -> padreIdDelHijo = pId }
                     )
                 }
 
@@ -699,22 +690,18 @@ fun UPadNavigation(
                 ) { backStackEntry ->
                     val activityName = backStackEntry.arguments?.getString("activityName") ?: "Actividad"
                     val context = androidx.compose.ui.platform.LocalContext.current
-
                     TaskFeedbackScreen(
                         activityName = activityName,
                         onFeedbackSelected = { emocion ->
                             val idPadre = padreIdDelHijo.ifEmpty {
-                                com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-                                    ?: "PADRE_TEST"
+                                FirebaseAuth.getInstance().currentUser?.uid ?: "PADRE_TEST"
                             }
-
                             val horaActual = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
                             val turnoActual = when {
                                 horaActual < 13 -> "MAÑANA"
                                 horaActual in 13..17 -> "TARDE"
                                 else -> "NOCHE"
                             }
-
                             routineViewModel.registrarFeedbackEmocional(
                                 userId = idPadre,
                                 turn = turnoActual,
@@ -722,7 +709,6 @@ fun UPadNavigation(
                                 emocionSeleccionada = emocion,
                                 context = context
                             )
-
                             navController.navigate("child_routine_completed") {
                                 popUpTo("child_start") { inclusive = false }
                             }
@@ -741,8 +727,6 @@ fun UPadNavigation(
                     )
                 }
 
-
-
                 composable("achievement_report") {
                     AchievementReportScreen(
                         onBackClick = { navController.popBackStack() },
@@ -752,7 +736,7 @@ fun UPadNavigation(
 
                 composable("activity_details") {
                     LaunchedEffect(Unit) {
-                        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
                         routineViewModel.cargarRutinasDesdeFirebase(uid)
                     }
                     ActivityDetailsScreen(

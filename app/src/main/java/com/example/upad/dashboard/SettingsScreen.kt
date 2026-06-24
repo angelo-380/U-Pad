@@ -1,10 +1,13 @@
 package com.example.upad.dashboard
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Notifications
@@ -16,30 +19,54 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.stringResource
-import androidx.compose.foundation.clickable
 import com.example.upad.R
-import com.google.firebase.auth.FirebaseAuth
 import com.example.upad.components.UPADBackgroundWrapper
+import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
+import com.google.firebase.auth.FirebaseAuth
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     routineViewModel: RoutineViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToHelp: () -> Unit = {},
+    onNavigateToProfile: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
+
+    // ✅ FIX 1: Cargar imageUri igual que en ProfileScreen — reactivo y con LaunchedEffect
+    val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    LaunchedEffect(Unit) {
+        val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
+        imageUri = when {
+            saved != null -> Uri.parse(saved)
+            currentUser?.photoUrl != null -> currentUser.photoUrl
+            else -> null
+        }
+    }
+
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
     val appLanguage by routineViewModel.appLanguage.collectAsState()
 
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
     val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
+    val fuentePremium = FontFamily.SansSerif
 
-    // Configuración limpia de las superficies: Translúcidas en premium, sólidas y claras en básico
+    val colorFondoSolido = if (isPremiumUser) {
+        if (isDarkMode) Color(0xFF0F0C29) else Color(0xFFFBE9E7)
+    } else {
+        if (isDarkMode) Color(0xFF121212) else Color.White
+    }
+
     val colorSuperficieTarjetas = if (isPremiumUser) {
         if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.65f)
     } else {
@@ -49,31 +76,36 @@ fun SettingsScreen(
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
     var notificationsEnabled by remember { mutableStateOf(true) }
     var expandedLanguage by remember { mutableStateOf(false) }
-    val idiomasDisponibles = listOf(
-        "es" to "Español",
-        "en" to "English",
-        "fr" to "Français",
-        "de" to "Deutsch",
-        "ru" to "Русский",
-        "pt" to "Português"
-    )
+
+    val idiomasDisponibles = remember {
+        listOf(
+            "es" to "Español",
+            "en" to "English",
+            "fr" to "Français",
+            "de" to "Deutsch",
+            "ru" to "Русский",
+            "pt" to "Português"
+        )
+    }
+
+    val tituloAjustado = stringResource(R.string.settings_title)
 
     UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.settings_title), fontWeight = FontWeight.Bold, color = colorTextoPrincipal) },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Volver",
-                                tint = colorTextoPrincipal
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                UpadTopAppBar(
+                    title = tituloAjustado,
+                    // ✅ FIX 1: ahora sí pasa la foto cargada desde SharedPreferences/Firebase
+                    imageUri = imageUri,
+                    colorFondo = colorFondoSolido,
+                    colorIconos = colorTextoPrincipal,
+                    fuentePremium = fuentePremium,
+                    showBackButton = true,
+                    onBackPressed = onNavigateBack,
+                    // ✅ FIX 2: onNavigateToHelp conectado (vendrá de MainActivity)
+                    onNavigateToHelp = onNavigateToHelp,
+                    onNavigateToProfile = onNavigateToProfile
                 )
             }
         ) { paddingValues ->
@@ -85,9 +117,14 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
 
-                Text(stringResource(R.string.settings_subscription), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorTextoSecundario)
+                Text(
+                    text = stringResource(R.string.settings_subscription),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colorTextoSecundario
+                )
 
-                // 🛠️ Contenedor 1: Usamos Surface para desvincular los tintes grises automatizados de las Cards
+                // Membresía / Plan Actual
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -103,7 +140,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = if (isPremiumUser) Icons.Default.WorkspacePremium else Icons.Default.Star,
                                 contentDescription = null,
@@ -133,7 +170,7 @@ fun SettingsScreen(
                                 modifier = Modifier.padding(start = 8.dp)
                             ) {
                                 Text(
-                                    stringResource(R.string.active),
+                                    text = stringResource(R.string.active),
                                     color = Color.Black,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Black,
@@ -144,9 +181,14 @@ fun SettingsScreen(
                     }
                 }
 
-                Text(stringResource(R.string.settings_general), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorTextoSecundario)
+                Text(
+                    text = stringResource(R.string.settings_general),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colorTextoSecundario
+                )
 
-                // 🛠️ Contenedor 2 limpiado de herencias plomas de Material
+                // Notificaciones y Modo Oscuro
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -185,50 +227,63 @@ fun SettingsScreen(
                     }
                 }
 
-                Text(stringResource(R.string.settings_app), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colorTextoSecundario)
+                Text(
+                    text = stringResource(R.string.settings_app),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colorTextoSecundario
+                )
 
-                // 🛠️ Contenedor 3 purificado
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { expandedLanguage = true },
-                    shape = RoundedCornerShape(20.dp),
-                    color = colorSuperficieTarjetas,
-                    border = if (isPremiumUser) BorderStroke(1.dp, colorAcabadoPrincipal.copy(alpha = 0.25f)) else null,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp
-                ) {
-                    Row(
+                // Idioma
+                Box {
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .clickable { expandedLanguage = true },
+                        shape = RoundedCornerShape(20.dp),
+                        color = colorSuperficieTarjetas,
+                        border = if (isPremiumUser) BorderStroke(1.dp, colorAcabadoPrincipal.copy(alpha = 0.25f)) else null,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Language, contentDescription = null, tint = colorAcabadoPrincipal)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                Text(stringResource(R.string.settings_language), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colorTextoPrincipal)
-                                val nombreIdiomaActual = idiomasDisponibles.find { it.first == appLanguage }?.second ?: "Español"
-                                Text(nombreIdiomaActual, fontSize = 12.sp, color = colorTextoSecundario)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Language, contentDescription = null, tint = colorAcabadoPrincipal)
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column {
+                                    Text(
+                                        text = stringResource(R.string.settings_language),
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colorTextoPrincipal
+                                    )
+                                    val nombreIdiomaActual = idiomasDisponibles.find { it.first == appLanguage }?.second ?: "Español"
+                                    Text(text = nombreIdiomaActual, fontSize = 12.sp, color = colorTextoSecundario)
+                                }
                             }
                         }
+                    }
 
-                        DropdownMenu(
-                            expanded = expandedLanguage,
-                            onDismissRequest = { expandedLanguage = false }
-                        ) {
-                            idiomasDisponibles.forEach { (codigo, nombre) ->
-                                DropdownMenuItem(
-                                    text = { Text(nombre) },
-                                    onClick = {
-                                        expandedLanguage = false
-                                        val userId = FirebaseAuth.getInstance().currentUser?.uid
-                                        routineViewModel.changeLanguage(userId, codigo)
-                                    }
-                                )
-                            }
+                    DropdownMenu(
+                        expanded = expandedLanguage,
+                        onDismissRequest = { expandedLanguage = false },
+                        modifier = Modifier.background(colorSuperficieTarjetas)
+                    ) {
+                        idiomasDisponibles.forEach { (codigo, nombre) ->
+                            DropdownMenuItem(
+                                text = { Text(text = nombre, color = colorTextoPrincipal) },
+                                onClick = {
+                                    expandedLanguage = false
+                                    val userId = FirebaseAuth.getInstance().currentUser?.uid
+                                    routineViewModel.changeLanguage(userId, codigo)
+                                }
+                            )
                         }
                     }
                 }
