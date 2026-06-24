@@ -5,34 +5,43 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.upad.navigation.BottomBarScreen
 import com.example.upad.viewmodel.RoutineViewModel
-import androidx.compose.ui.unit.dp
+
 @Composable
 fun UPADBottomBar(
     navController: NavHostController,
     routineViewModel: RoutineViewModel
 ) {
-    // 🌗 Obtener estados dinámicos del tema
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
 
-    // Controlar qué pantalla está activa actualmente para iluminar el ícono correcto
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // Definimos la lista de las pantallas inferiores
-    val screens = listOf(
+    // 📋 Definimos los dos flujos de navegación separados
+    val basicScreens = listOf(
         BottomBarScreen.Dashboard,
         BottomBarScreen.Analytics,
         BottomBarScreen.Profile,
         BottomBarScreen.Settings
     )
 
-    // 🎨 Paleta adaptativa idéntica al resto de tu sistema
+    val premiumScreens = listOf(
+        BottomBarScreen.Dashboard,
+        BottomBarScreen.Calendario,
+        BottomBarScreen.Emociones,
+        BottomBarScreen.Notificaciones,
+        BottomBarScreen.Profile
+    )
+
+    // 🎯 Elegimos de manera reactiva qué lista usar
+    val activeScreens = if (isPremiumUser) premiumScreens else basicScreens
+
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
     val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
@@ -43,15 +52,15 @@ fun UPADBottomBar(
         if (isDarkMode) Color(0xFF1E1E1E) else Color.White
     }
 
-    // Ocultar la barra si se navega a sub-pantallas profundas (ej: "help_tutorial" o "create_routine")
-    val showBottomBar = screens.any { it.route == currentDestination?.route }
+    // Comprobar si la pantalla actual pertenece a la lista activa para decidir si renderizar la barra
+    val showBottomBar = activeScreens.any { it.route == currentDestination?.route }
 
     if (showBottomBar) {
         NavigationBar(
             containerColor = colorFondoBarra,
             tonalElevation = if (isPremiumUser) 0.dp else NavigationBarDefaults.Elevation
         ) {
-            screens.forEach { screen ->
+            activeScreens.forEach { screen ->
                 val isSelected = currentDestination?.route == screen.route
 
                 NavigationBarItem(
@@ -69,7 +78,6 @@ fun UPADBottomBar(
                     },
                     selected = isSelected,
                     onClick = {
-                        // Navegación inteligente para no duplicar pantallas en la pila trasera
                         if (!isSelected) {
                             navController.navigate(screen.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
@@ -85,7 +93,7 @@ fun UPADBottomBar(
                         selectedTextColor = colorTextoPrincipal,
                         unselectedIconColor = colorTextoSecundario,
                         unselectedTextColor = colorTextoSecundario,
-                        indicatorColor = colorAcabadoPrincipal // El óvalo detrás del ícono seleccionado
+                        indicatorColor = colorAcabadoPrincipal
                     )
                 )
             }

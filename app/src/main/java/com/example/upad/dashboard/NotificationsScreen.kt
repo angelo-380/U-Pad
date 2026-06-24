@@ -1,183 +1,228 @@
 package com.example.upad.dashboard
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeviceUnknown
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.upad.components.UPADBackgroundWrapper
+import com.example.upad.viewmodel.RoutineViewModel
+
+// Estructura de datos temporal para simular alertas reales de Firebase
+data class NotificationItem(
+    val id: String,
+    val title: String,
+    val description: String,
+    val time: String,
+    val type: NotificationType
+)
+
+enum class NotificationType {
+    SUCCESS, WARNING, INFO
+}
 
 @Composable
 fun NotificationsScreen(
-    onViewReportClick: () -> Unit
+    routineViewModel: RoutineViewModel,
+    onNavigateBack: () -> Unit
 ) {
-    val colorAzulTEA = Color(0xFF4FC3F7)
-    val colorFondoBase = Color(0xFFF0F4F8)
-    val colorVerdeLogro = Color(0xFF81C784)
+    val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
+    val isDarkMode by routineViewModel.isDarkMode.collectAsState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colorFondoBase)
-    ) {
-        // --- CABECERA ESTILO U-PAD ---
+    val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
+    val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
+
+    val colorSuperficieTarjetas = if (isPremiumUser) {
+        if (isDarkMode) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.7f)
+    } else {
+        if (isDarkMode) Color(0xFF1E1E1E) else Color.White
+    }
+
+    // Lista de notificaciones simulada basada en eventos comunes de U-Pad
+    val notificationsList = remember {
+        listOf(
+            NotificationItem(
+                id = "1",
+                title = "¡Rutina de la Mañana completada!",
+                description = "Tu hijo ha terminado con éxito todas las tareas asignadas para el turno de hoy.",
+                time = "Hace 10 min",
+                type = NotificationType.SUCCESS
+            ),
+            NotificationItem(
+                id = "2",
+                title = "Alerta de Bloqueo de Sistema",
+                description = "El modo Kiosco se activó correctamente en el dispositivo del menor.",
+                time = "Hace 1 hora",
+                type = NotificationType.INFO
+            ),
+            NotificationItem(
+                id = "3",
+                title = "Feedback Emocional Recibido",
+                description = "Se ha registrado una nueva emoción en la bitácora tras finalizar la tarea 'Lavarse los dientes'.",
+                time = "Hace 2 horas",
+                type = NotificationType.SUCCESS
+            ),
+            NotificationItem(
+                id = "4",
+                title = "Batería Baja en Dispositivo Vinculado",
+                description = "La tableta/teléfono de tu hijo se encuentra por debajo del 20%.",
+                time = "Ayer",
+                type = NotificationType.WARNING
+            )
+        )
+    }
+
+    UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(bottomStart = 45.dp, bottomEnd = 45.dp))
-                .background(Color.White)
-                .padding(top = 60.dp, bottom = 30.dp, start = 24.dp, end = 24.dp)
-        ) {
-            Text(
-                text = "AVISOS",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.LightGray,
-                modifier = Modifier.padding(start = 2.dp)
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Notificaciones",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Black,
-                    color = colorAzulTEA,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    Icons.Default.Notifications,
-                    contentDescription = null,
-                    tint = colorAzulTEA.copy(alpha = 0.3f),
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-        }
-
-        // --- LISTA DE NOTIFICACIONES ---
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 24.dp),
-            contentPadding = PaddingValues(top = 24.dp, bottom = 24.dp),
+                .fillMaxSize()
+                .padding(horizontal = 24.dp)
+                .padding(top = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item {
-                NotificationItem(
-                    title = "Mateo terminó su rutina",
-                    description = "Lavarse los dientes completado a las 7:45",
-                    time = "Hace 5 min",
-                    iconColor = colorVerdeLogro
-                )
-            }
+            Text(
+                text = "Centro de Alertas 🔔",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Black,
+                color = colorTextoPrincipal
+            )
 
-            // Ejemplo de otra notificación para ver cómo se llena
-            item {
-                NotificationItem(
-                    title = "Rutina pendiente",
-                    description = "Mateo aún no ha iniciado 'Vestirse'",
-                    time = "Hace 30 min",
-                    iconColor = Color(0xFFFFB74D) // Naranja amigable
-                )
-            }
-        }
+            Text(
+                text = "Mantente al tanto en tiempo real de los avances, estados y reportes del dispositivo de tu hijo.",
+                fontSize = 14.sp,
+                color = colorTextoSecundario,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
 
-        // --- BOTÓN INFERIOR ---
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp)
-        ) {
-            Button(
-                onClick = onViewReportClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(65.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = colorAzulTEA),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-            ) {
-                Text(
-                    "VER REPORTE DE HOY",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 16.sp
-                )
+            if (notificationsList.isEmpty()) {
+                // Estado vacío si no hay alertas
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = null,
+                            tint = colorTextoSecundario.copy(alpha = 0.4f),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "No tienes notificaciones por ahora",
+                            color = colorTextoSecundario,
+                            fontSize = 15.sp
+                        )
+                    }
+                }
+            } else {
+                // Listado optimizado y fluido con LazyColumn
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    items(notificationsList) { notification ->
+                        NotificationCard(
+                            notification = notification,
+                            backgroundColor = colorSuperficieTarjetas,
+                            textColor = colorTextoPrincipal,
+                            subTextColor = colorTextoSecundario
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun NotificationItem(
-    title: String,
-    description: String,
-    time: String,
-    iconColor: Color
+fun NotificationCard(
+    notification: NotificationItem,
+    backgroundColor: Color,
+    textColor: Color,
+    subTextColor: Color
 ) {
-    Card(
+    val (icon, iconColor) = when (notification.type) {
+        NotificationType.SUCCESS -> Icons.Default.CheckCircle to Color(0xFF4CAF50)
+        NotificationType.WARNING -> Icons.Default.Warning to Color(0xFFFF9800)
+        NotificationType.INFO -> Icons.Default.DeviceUnknown to Color(0xFF2196F3)
+    }
+
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = RoundedCornerShape(18.dp),
+        color = backgroundColor,
+        border = BorderStroke(1.dp, subTextColor.copy(alpha = 0.1f))
     ) {
         Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Círculo de icono
+            // Círculo contenedor para el ícono de estado
             Box(
                 modifier = Modifier
-                    .size(45.dp)
-                    .background(iconColor.copy(alpha = 0.15f), CircleShape),
+                    .size(40.dp)
+                    .background(iconColor.copy(alpha = 0.15f), shape = CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Default.CheckCircle,
+                    imageVector = icon,
                     contentDescription = null,
                     tint = iconColor,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column {
+            // Textos descriptivos de la notificación
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "U-Pad",
-                        fontSize = 12.sp,
+                        text = notification.title,
                         fontWeight = FontWeight.Bold,
-                        color = Color.LightGray
+                        fontSize = 15.sp,
+                        color = textColor,
+                        modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = time,
+                        text = notification.time,
                         fontSize = 11.sp,
-                        color = Color.LightGray
+                        color = subTextColor.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(end = 4.dp)
                     )
                 }
                 Text(
-                    text = title,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 15.sp,
-                    color = Color.DarkGray
-                )
-                Text(
-                    text = description,
+                    text = notification.description,
                     fontSize = 13.sp,
-                    color = Color.Gray,
+                    color = subTextColor,
                     lineHeight = 18.sp
                 )
             }

@@ -70,7 +70,9 @@ import com.example.upad.dashboard.AnalyticsScreen
 import com.example.upad.premium.PaymentViewScreen
 import android.content.Context
 import com.example.upad.components.UPADBottomBar
+import com.example.upad.dashboard.EmotionsTrackScreen
 import com.example.upad.dashboard.HelpTutorialScreen
+import com.example.upad.dashboard.TodayCalendarScreen
 import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : AppCompatActivity() {
@@ -485,6 +487,21 @@ fun UPadNavigation(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
+                // 🚀 NUEVAS RUTAS EXCLUSIVAS PREMIUM / BÁSICO DINÁMICO
+                composable("today_calendar") {
+                    TodayCalendarScreen(routineViewModel = routineViewModel)
+                }
+
+                composable("emotions_track") {
+                    EmotionsTrackScreen(routineViewModel = routineViewModel)
+                }
+
+                composable("notifications") {
+                    NotificationsScreen(
+                        routineViewModel = routineViewModel,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
 
                 composable(
                     route = "tracking/{hijoId}",
@@ -724,9 +741,7 @@ fun UPadNavigation(
                     )
                 }
 
-                composable("notifications") {
-                    NotificationsScreen(onViewReportClick = { navController.navigate("achievement_report") })
-                }
+
 
                 composable("achievement_report") {
                     AchievementReportScreen(
