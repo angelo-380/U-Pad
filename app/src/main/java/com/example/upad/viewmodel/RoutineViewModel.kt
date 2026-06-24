@@ -55,16 +55,47 @@ class RoutineViewModel(
     private val _appLanguage = MutableStateFlow("es")
     val appLanguage: StateFlow<String> = _appLanguage.asStateFlow()
 
+    // 🌓 ESTADO DEL TEMA OSCURO PERSISTENTE COLECTADO LOCALMENTE
+    private val _isDarkMode = MutableStateFlow(false)
+    val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
+
     init {
+        // Cargar estado premium
         viewModelScope.launch {
             dataStoreManager.isPremiumFlow.collectLatest { estadoReal ->
                 _isPremiumManual.value = estadoReal
             }
         }
+        // Cargar estado de idioma
         viewModelScope.launch {
             languageDataStore.languageFlow.collectLatest { lang ->
                 _appLanguage.value = lang
             }
+        }
+        // 🌓 CARGAR EL TEMA GUARDADO AUTOMÁTICAMENTE AL ARRANCAR
+        viewModelScope.launch {
+            // Buscamos si hay un registro guardado en la misma SharedPreferences compartida de la app "UPadPrefs"
+            val context = com.example.upad.UPadApplication.appContext
+            val sharedPrefs = context.getSharedPreferences("UPadPrefs", Context.MODE_PRIVATE)
+            _isDarkMode.value = sharedPrefs.getBoolean("pref_tema_oscuro", false)
+        }
+    }
+
+    // 🔄 SE MODIFICA ESTA FUNCIÓN: Ahora guarda inmediatamente en el almacenamiento local al cambiar el switch
+    fun setDarkMode(enabled: Boolean) {
+        _isDarkMode.value = enabled
+        viewModelScope.launch {
+            val context = com.example.upad.UPadApplication.appContext
+            val sharedPrefs = context.getSharedPreferences("UPadPrefs", Context.MODE_PRIVATE)
+            sharedPrefs.edit().putBoolean("pref_tema_oscuro", enabled).apply()
+        }
+    }
+
+    // 🚀 ÚNICO CAMBIO: Se añade la función requerida por tus vistas de pago para evitar el error en rojo
+    fun setPremiumUser(value: Boolean) {
+        _isPremiumManual.value = value
+        viewModelScope.launch {
+            dataStoreManager.setPremiumStatus(value)
         }
     }
 
@@ -102,7 +133,7 @@ class RoutineViewModel(
     fun iniciarEscuchaIdioma(userId: String) {
         languageListener?.remove()
         if (userId.isEmpty() || userId == "PADRE_TEST") return
-        
+
         languageListener = repository.listenUserLanguage(userId) { nuevoIdioma ->
             viewModelScope.launch {
                 languageDataStore.saveLanguage(nuevoIdioma)
@@ -113,11 +144,6 @@ class RoutineViewModel(
     fun detenerEscuchaIdioma() {
         languageListener?.remove()
     }
-
-    private val _isDarkMode = MutableStateFlow(false)
-    val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
-
-    fun setDarkMode(enabled: Boolean) { _isDarkMode.value = enabled }
 
     private val _currentRoutineName = MutableStateFlow("")
     val currentRoutineName: StateFlow<String> = _currentRoutineName
@@ -325,8 +351,8 @@ class RoutineViewModel(
 
                 when (turnoValido) {
                     "MAÑANA" -> _tasksManana.value = listLocal
-                    "TARDE" -> _tasksTarde.value = listLocal
-                    "NOCHE" -> _tasksNoche.value = listLocal
+                    "TARDE"  -> _tasksTarde.value = listLocal
+                    "NOCHE"  -> _tasksNoche.value = listLocal
                 }
 
                 try {

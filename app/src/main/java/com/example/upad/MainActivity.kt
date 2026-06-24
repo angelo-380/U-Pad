@@ -12,11 +12,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
@@ -66,6 +68,8 @@ import com.example.upad.viewmodel.RoutineViewModel
 import com.example.upad.dashboard.ConnectionScreen
 import com.example.upad.dashboard.AnalyticsScreen
 import com.example.upad.premium.PaymentViewScreen
+import android.content.Context
+import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : AppCompatActivity() {
 
@@ -104,13 +108,30 @@ class MainActivity : AppCompatActivity() {
                 evaluarYAplicarIdioma(appLanguage)
             }
 
-            val isDarkMode by routineViewModel.isDarkMode.collectAsState()
-            val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
+            // 💾 LEER CONFIGURACIÓN LOCAL INMEDIATA DEL SISTEMA PREFS
+            val sharedPrefs = remember { getSharedPreferences("UPadPrefs", Context.MODE_PRIVATE) }
+            val sistemaEstaEnOscuro = isSystemInDarkTheme()
 
-            UPadTheme(darkTheme = isDarkMode, isPremium = isPremiumUser) {
+            // Forzar estado inicial instantáneo desde el almacenamiento local
+            val isDarkModeFlow by routineViewModel.isDarkMode.collectAsState()
+            var estadoTemaOscuroReal by remember {
+                mutableStateOf(sharedPrefs.getBoolean("pref_tema_oscuro", sistemaEstaEnOscuro))
+            }
+
+            // Guardar en persistencia local cada vez que cambie en Ajustes (ViewModel)
+            LaunchedEffect(isDarkModeFlow) {
+                estadoTemaOscuroReal = isDarkModeFlow
+                sharedPrefs.edit().putBoolean("pref_tema_oscuro", isDarkModeFlow).apply()
+            }
+
+            // Control del estado Premium asíncrono
+            val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = null)
+
+            UPadTheme(darkTheme = estadoTemaOscuroReal, isPremium = isPremiumUser ?: false) {
                 UPadNavigation(
                     bloqueoActivo = ordenBloqueoPadreActiva,
                     routineViewModel = routineViewModel,
+                    isPremiumListo = isPremiumUser != null,
                     onCambiarEstadoSistema = ::gestionarRestriccionesSistema,
                     onRouteChanged = { route ->
                         currentRoute = route
@@ -180,6 +201,24 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
+private fun obtenerDestinoInicial(context: android.content.Context): String {
+    val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+    val sharedPreferences = context.getSharedPreferences("UPadPrefs", android.content.Context.MODE_PRIVATE)
+
+    val usuarioLogueado = auth.currentUser != null
+    val rolGuardado = sharedPreferences.getString("rol_usuario", null)
+
+    return if (usuarioLogueado && !rolGuardado.isNullOrEmpty()) {
+        if (rolGuardado == "padre" || rolGuardado == "padre_directo") {
+            "parent_dashboard"
+        } else {
+            "child_start"
+        }
+    } else {
+        "role_selection"
+    }
+}
+
 @Composable
 fun UPadTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -216,13 +255,13 @@ fun UPadTheme(
 fun UPadNavigation(
     bloqueoActivo: Boolean,
     routineViewModel: RoutineViewModel,
+    isPremiumListo: Boolean,
     onCambiarEstadoSistema: (Boolean) -> Unit,
     onRouteChanged: (String) -> Unit
 ) {
     val navController = rememberNavController()
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
 
-    // FIX: estado compartido que recibe el padreId real cuando el hijo se vincula
     var padreIdDelHijo by remember { mutableStateOf("") }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -256,19 +295,51 @@ fun UPadNavigation(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            val contextoNav = androidx.compose.ui.platform.LocalContext.current
+
             NavHost(
                 navController = navController,
-                startDestination = "role_selection"
+                startDestination = "sincronizando"
             ) {
+                composable("sincronizando") {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    }
+
+                    if (isPremiumListo) {
+                        LaunchedEffect(Unit) {
+                            val destinoReal = obtenerDestinoInicial(contextoNav)
+                            navController.navigate(destinoReal) {
+                                popUpTo("sincronizando") { inclusive = true }
+                            }
+                        }
+                    }
+                }
+
                 composable("role_selection") {
+                    val contextoRol = androidx.compose.ui.platform.LocalContext.current
                     RoleSelectionScreen(
-                        onRoleSelected = { role ->
+                        onRoleSelected = { role: String ->
+                            val sharedPrefs = contextoRol.getSharedPreferences("UPadPrefs", android.content.Context.MODE_PRIVATE)
+
                             when (role) {
-                                "padre_directo" -> navController.navigate("parent_dashboard") {
-                                    popUpTo("role_selection") { inclusive = true }
+                                "padre_directo" -> {
+                                    sharedPrefs.edit().putString("rol_usuario", "padre_directo").apply()
+                                    navController.navigate("parent_dashboard") {
+                                        popUpTo("role_selection") { inclusive = true }
+                                    }
                                 }
-                                "padre" -> navController.navigate("welcome")
-                                else -> navController.navigate("child_start")
+                                "padre" -> {
+                                    sharedPrefs.edit().putString("rol_usuario", "padre").apply()
+                                    navController.navigate("welcome")
+                                }
+                                else -> {
+                                    sharedPrefs.edit().putString("rol_usuario", "hijo").apply()
+                                    navController.navigate("child_start")
+                                }
                             }
                         }
                     )
@@ -311,18 +382,22 @@ fun UPadNavigation(
 
                 composable("subscription_plans") {
                     SubscriptionPlansScreen(
-                        onPlanSelected = { planType ->
-                            if (planType == "premium") navController.navigate("child_profile_setup")
-                            else navController.navigate("trial_disclaimer")
+                        routineViewModel = routineViewModel,
+                        onNavigateToBenefits = {
+                            navController.navigate("change_plan")
                         },
-                        onSkip = { navController.navigate("trial_disclaimer") }
+                        onDirectToProfile = {
+                            navController.navigate("trial_disclaimer")
+                        }
                     )
                 }
 
                 composable("trial_disclaimer") {
                     TrialDisclaimerScreen(
-                        onStartTrialClick = { navController.navigate("child_profile_setup") },
-                        onMoreInfoClick = { }
+                        onStartTrialClick = {
+                            navController.navigate("child_profile_setup")
+                        },
+                        onMoreInfoClick = {}
                     )
                 }
 
@@ -335,6 +410,7 @@ fun UPadNavigation(
 
                 composable("experience_setup") {
                     ExperienceSetupScreen(
+                        routineViewModel = routineViewModel,
                         onBackClick = { navController.popBackStack() },
                         onNextClick = { navController.navigate("device_pairing") }
                     )
@@ -398,7 +474,7 @@ fun UPadNavigation(
                     val hijoId = backStackEntry.arguments?.getString("hijoId") ?: ""
                     val trackingViewModel: com.example.upad.viewmodel.TrackingViewModel = viewModel()
                     HijoTrackingScreen(
-                        routineViewModel = routineViewModel, // 👈 Pasamos el ViewModel global aquí en primer lugar
+                        routineViewModel = routineViewModel,
                         hijoId = hijoId,
                         trackingViewModel = trackingViewModel,
                         onNavigateBack = { navController.popBackStack() }
@@ -406,12 +482,20 @@ fun UPadNavigation(
                 }
 
                 composable("profile") {
+                    val contextoPerfil = androidx.compose.ui.platform.LocalContext.current
                     ProfileScreen(
-                        routineViewModel = routineViewModel, // 👈 Pasamos el ViewModel aquí para que compile correctamente
+                        routineViewModel = routineViewModel,
                         onNavigateBack = { navController.popBackStack() },
                         onLogoutSuccess = {
-                            navController.navigate("welcome") {
-                                popUpTo("parent_dashboard") { inclusive = true }
+                            val sharedPrefs = contextoPerfil.getSharedPreferences("UPadPrefs", android.content.Context.MODE_PRIVATE)
+                            // Limpieza de datos locales de sesión al salir
+                            sharedPrefs.edit()
+                                .remove("rol_usuario")
+                                .remove("pref_tema_oscuro")
+                                .apply()
+
+                            navController.navigate("role_selection") {
+                                popUpTo(0) { inclusive = true }
                             }
                         }
                     )
@@ -426,7 +510,7 @@ fun UPadNavigation(
 
                 composable("connection_code") {
                     ConnectionScreen(
-                        routineViewModel = routineViewModel, // 👈 Pásale tu instancia del ViewModel aquí
+                        routineViewModel = routineViewModel,
                         onNavigateBack = { navController.popBackStack() },
                         onLinkSuccess = { navController.popBackStack() }
                     )
@@ -473,7 +557,6 @@ fun UPadNavigation(
                         else -> "LUNES"
                     }
 
-                    // Force the ViewModel to load the correct day's tasks
                     LaunchedEffect(turnoNormalizado, diaNormalizado) {
                         val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
                         routineViewModel.cargarRutinasPorDia(uid, diaNormalizado)
@@ -539,7 +622,6 @@ fun UPadNavigation(
                     )
                 }
 
-                // FIX: child_start ahora propaga el padreId real
                 composable("child_start") {
                     ChildStartScreen(
                         routineViewModel = routineViewModel,
@@ -585,8 +667,6 @@ fun UPadNavigation(
                     TaskFeedbackScreen(
                         activityName = activityName,
                         onFeedbackSelected = { emocion ->
-                            // FIX: usar padreIdDelHijo en lugar de FirebaseAuth
-                            // el hijo no está autenticado, así que currentUser sería null
                             val idPadre = padreIdDelHijo.ifEmpty {
                                 com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
                                     ?: "PADRE_TEST"

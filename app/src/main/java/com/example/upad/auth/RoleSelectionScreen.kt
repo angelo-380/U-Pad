@@ -1,16 +1,20 @@
 package com.example.upad.auth
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -28,7 +32,8 @@ fun RoleSelectionScreen(
     onRoleSelected: (String) -> Unit
 ) {
     val colorAzulTEA = Color(0xFF4FC3F7)
-    val colorFondoBase = Color(0xFFF0F4F8)
+    val colorFondoBase = Color(0xFFF0F4F8) // Mantenemos tu fondo claro original
+    val colorMoradoTutor = Color(0xFF9575CD)
 
     // --- ELEMENTOS CONTEXTUALES PARA BIOMETRÍA Y SEGURIDAD ---
     val context = LocalContext.current
@@ -54,7 +59,8 @@ fun RoleSelectionScreen(
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Black,
                 color = colorAzulTEA,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                letterSpacing = 0.5.sp
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -66,7 +72,7 @@ fun RoleSelectionScreen(
             )
         }
 
-        // --- CUERPO DE SELECCIÓN ---
+        // --- CUERPO DE SELECCIÓN CON CONTENEDORES ANIMADOS ---
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -84,29 +90,24 @@ fun RoleSelectionScreen(
                     modifier = Modifier.weight(1f),
                     title = "SOY PADRE\nO TUTOR",
                     imageRes = R.drawable.tutor,
-                    colorTheme = Color(0xFF9575CD),
+                    colorTheme = colorMoradoTutor,
                     onClick = {
                         if (usuarioFirebase != null) {
-                            // Si ya inició sesión antes y el dispositivo soporta biometría
                             if (activity != null && BiometricHelper.esBiometriaDisponible(context)) {
                                 BiometricHelper.lanzarLectorHuella(
                                     activity = activity,
                                     onSuccess = {
-                                        // 🔓 Huella correcta: viaja al Dashboard directamente
                                         onRoleSelected("padre_directo")
                                     },
                                     onError = { error ->
-                                        // Cancelado o erróneo: lo enviamos al login tradicional
                                         android.util.Log.d("Biometria", "Fallo o cancelación: $error")
                                         onRoleSelected("padre")
                                     }
                                 )
                             } else {
-                                // Logueado pero sin hardware de huella: pasa directo al Dashboard
                                 onRoleSelected("padre_directo")
                             }
                         } else {
-                            // 🚪 Primera vez: directo al login ordinario
                             onRoleSelected("padre")
                         }
                     }
@@ -142,13 +143,28 @@ fun RoleOptionCard(
     colorTheme: Color,
     onClick: () -> Unit
 ) {
-    Card(
+    // Captura del estado táctil para la animación de escala
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val scaleAnimated by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1.0f,
+        animationSpec = tween(durationMillis = 100),
+        label = "PulsacionRolAnimation"
+    )
+
+    Surface(
         modifier = modifier
             .aspectRatio(0.8f)
-            .clickable { onClick() },
+            .scale(scaleAnimated)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null // Quita el recuadro gris brusco por defecto al hacer click
+            ) { onClick() },
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        color = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 6.dp // Sombra suave para darle volumen sobre el fondo claro
     ) {
         Column(
             modifier = Modifier
@@ -157,17 +173,21 @@ fun RoleOptionCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Contenedor interno estilizado para aislar y destacar la ilustración
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp)),
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(colorTheme.copy(alpha = 0.08f)), // Sutil tinte del color del rol
                 contentAlignment = Alignment.Center
             ) {
                 Image(
                     painter = painterResource(id = imageRes),
                     contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(14.dp),
                     contentScale = ContentScale.Fit
                 )
             }
@@ -176,11 +196,12 @@ fun RoleOptionCard(
 
             Text(
                 text = title,
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Black,
                 color = colorTheme,
                 textAlign = TextAlign.Center,
-                lineHeight = 18.sp
+                lineHeight = 18.sp,
+                letterSpacing = 0.2.sp
             )
         }
     }

@@ -2,6 +2,7 @@ package com.example.upad.setup
 
 import android.content.Context
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -34,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.example.upad.R
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,10 +49,16 @@ fun ChildProfileSetupScreen(
     val configuration = LocalConfiguration.current
     val pantallaPequeña = configuration.screenHeightDp < 650
 
+    // 🔐 Instancias globales de Firebase
+    val auth = remember { FirebaseAuth.getInstance() }
+    val firestore = remember { FirebaseFirestore.getInstance() }
+    val storage = remember { FirebaseStorage.getInstance() }
+
+    // Estado para controlar la pantalla de carga durante la subida a la red
+    var cargando by remember { mutableStateOf(false) }
+
     // --- PERSISTENCIA LOCAL (SharedPreferences) ---
     val prefs = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
-
-    // 🔥 SOLUCIÓN AQUÍ: Forzamos la lectura reactiva del estado del tema
     val esTemaOscuro by remember { mutableStateOf(prefs.getBoolean("TEMA_OSCURO", false)) }
 
     var name by remember { mutableStateOf(prefs.getString("CHILD_NAME", "") ?: "") }
@@ -68,11 +78,10 @@ fun ChildProfileSetupScreen(
         }
     }
 
-    // --- CONFIGURACIÓN DE COLORES MULTI-TEMA CORREGIDA ---
+    // --- CONFIGURACIÓN DE COLORES MULTI-TEMA ---
     val colorAzulTEA = Color(0xFF4FC3F7)
     val colorAmarilloTEA = Color(0xFFFFD54F)
 
-    // Si esTemaOscuro es true, aplicará tonos oscuros. Si no, usará blanco/gris.
     val colorFondoBase = if (esTemaOscuro) Color(0xFF0F172A) else Color(0xFFF8FAFC)
     val colorSuperficie = if (esTemaOscuro) Color(0xFF1E293B) else Color.White
     val colorTextoPrincipal = if (esTemaOscuro) Color(0xFFF1F5F9) else Color(0xFF1E293B)
@@ -99,7 +108,7 @@ fun ChildProfileSetupScreen(
                     end = 24.dp
                 )
         ) {
-            IconButton(onClick = onBackClick) {
+            IconButton(onClick = onBackClick, enabled = !cargando) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Atrás", tint = colorAzulTEA)
             }
             Spacer(modifier = Modifier.height(2.dp))
@@ -132,11 +141,11 @@ fun ChildProfileSetupScreen(
         ) {
             Spacer(modifier = Modifier.height(if (pantallaPequeña) 16.dp else 24.dp))
 
-            // Avatar
+            // Avatar interactivo
             Box(
                 modifier = Modifier
                     .size(if (pantallaPequeña) 120.dp else 140.dp)
-                    .clickable { galleryLauncher.launch("image/*") },
+                    .clickable(enabled = !cargando) { galleryLauncher.launch("image/*") },
                 contentAlignment = Alignment.BottomEnd
             ) {
                 Surface(
@@ -182,7 +191,6 @@ fun ChildProfileSetupScreen(
 
             Spacer(modifier = Modifier.height(if (pantallaPequeña) 16.dp else 24.dp))
 
-            // Tarjeta Adaptativa
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = colorSuperficie),
@@ -203,6 +211,7 @@ fun ChildProfileSetupScreen(
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
+                        enabled = !cargando,
                         label = { Text("Nombre del niño", color = colorTextoSecundario) },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = colorTextoSecundario) },
                         modifier = Modifier.fillMaxWidth(),
@@ -223,6 +232,7 @@ fun ChildProfileSetupScreen(
                     OutlinedTextField(
                         value = age,
                         onValueChange = { age = it },
+                        enabled = !cargando,
                         label = { Text("Edad", color = colorTextoSecundario) },
                         leadingIcon = { Icon(Icons.Default.Face, contentDescription = null, tint = colorTextoSecundario) },
                         modifier = Modifier.fillMaxWidth(),
@@ -254,6 +264,7 @@ fun ChildProfileSetupScreen(
                     OutlinedTextField(
                         value = interests,
                         onValueChange = { interests = it },
+                        enabled = !cargando,
                         label = { Text("¿Qué cosas le encantan?", color = colorTextoSecundario) },
                         leadingIcon = { Icon(Icons.Default.Favorite, contentDescription = null, tint = colorTextoSecundario) },
                         modifier = Modifier.fillMaxWidth(),
@@ -274,7 +285,7 @@ fun ChildProfileSetupScreen(
             Spacer(modifier = Modifier.height(20.dp))
         }
 
-        // --- BOTÓN INFERIOR ---
+        // --- BOTÓN INFERIOR ADAPTADO ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -286,28 +297,82 @@ fun ChildProfileSetupScreen(
                     val nombreFinal = name.ifBlank { "Mateo" }
                     val edadFinal = age.ifBlank { "6" }
                     val interesesFinal = interests.ifBlank { "Dinosaurios, Rompecabezas" }
+                    val uidPadre = auth.currentUser?.uid
 
-                    prefs.edit().apply {
-                        putString("CHILD_NAME", nombreFinal)
-                        putString("CHILD_AGE", edadFinal)
-                        putString("CHILD_INTERESTS", interesesFinal)
-                        apply()
+                    if (uidPadre != null) {
+                        cargando = true
+
+                        // Guardado preliminar local
+                        prefs.edit().apply {
+                            putString("CHILD_NAME", nombreFinal)
+                            putString("CHILD_AGE", edadFinal)
+                            putString("CHILD_INTERESTS", interesesFinal)
+                            apply()
+                        }
+
+                        // Lógica de guardado en la nube
+                        val guardarDatosEnFirestore = { urlDescarga: String ->
+                            val perfilHijoMap = hashMapOf(
+                                "nombre" to nombreFinal,
+                                "edad" to edadFinal,
+                                "intereses" to interesesFinal,
+                                "fotoUrl" to urlDescarga,
+                                "fechaRegistro" to com.google.firebase.Timestamp.now()
+                            )
+
+                            firestore.collection("usuarios").document(uidPadre)
+                                .collection("hijos").document("perfil")
+                                .set(perfilHijoMap, com.google.firebase.firestore.SetOptions.merge())
+                                .addOnSuccessListener {
+                                    cargando = false
+                                    onSaveClick()
+                                }
+                                .addOnFailureListener { e ->
+                                    cargando = false
+                                    Toast.makeText(context, "Error al guardar perfil: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                        }
+
+                        if (imageUri != null) {
+                            // Subir archivo real a Firebase Storage estructurado en la ruta: /usuarios/{uid}/perfil_hijo.jpg
+                            val storageRef = storage.reference.child("usuarios/$uidPadre/perfil_hijo.jpg")
+                            storageRef.putFile(imageUri!!)
+                                .addOnSuccessListener {
+                                    // Conseguir el enlace HTTPS persistente
+                                    storageRef.downloadUrl.addOnSuccessListener { uriDescarga ->
+                                        guardarDatosEnFirestore(uriDescarga.toString())
+                                    }
+                                }
+                                .addOnFailureListener { e ->
+                                    cargando = false
+                                    Toast.makeText(context, "Error al subir imagen: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                        } else {
+                            // Si el usuario no cargó foto propia, guardamos una cadena vacía o URL predeterminada
+                            guardarDatosEnFirestore("")
+                        }
+                    } else {
+                        Toast.makeText(context, "Sesión no válida. Inicia sesión de nuevo.", Toast.LENGTH_LONG).show()
                     }
-                    onSaveClick()
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(if (pantallaPequeña) 54.dp else 60.dp),
+                enabled = !cargando,
                 shape = RoundedCornerShape(18.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = colorAzulTEA),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
             ) {
-                Text(
-                    text = "CONTINUAR CONFIGURACIÓN ➡️",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black,
-                    color = if (esTemaOscuro) Color.Black else Color.White
-                )
+                if (cargando) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    Text(
+                        text = "CONTINUAR CONFIGURACIÓN ➡️",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (esTemaOscuro) Color.Black else Color.White
+                    )
+                }
             }
         }
     }

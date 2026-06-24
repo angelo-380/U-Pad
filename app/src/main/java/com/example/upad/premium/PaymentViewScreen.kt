@@ -16,15 +16,20 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upad.viewmodel.RoutineViewModel
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
 fun PaymentViewScreen(
     routineViewModel: RoutineViewModel,
-    onPaymentConfirmed: () -> Unit
+    onPaymentConfirmed: () -> Unit // 👶 Callback definitivo que te lleva a ChildProfileSetupScreen
 ) {
     val scope = rememberCoroutineScope()
+    val auth = remember { FirebaseAuth.getInstance() }
+    val firestore = remember { FirebaseFirestore.getInstance() }
+
     var procesandoPago by remember { mutableStateOf(false) }
 
     Column(
@@ -63,7 +68,6 @@ fun PaymentViewScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Tarjeta de simulación de pago
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E24)),
@@ -88,8 +92,25 @@ fun PaymentViewScreen(
                 onClick = {
                     scope.launch {
                         procesandoPago = true
-                        delay(2500) // Simula la verificación bancaria
-                        onPaymentConfirmed() // Desparrama el callback hacia el MainActivity
+                        delay(2500) // Simulación elegante de verificación bancaria
+
+                        // 1. 🌟 Actualizamos la base de datos de Firebase con la suscripción Premium Activa
+                        val uid = auth.currentUser?.uid
+                        if (uid != null) {
+                            val datosPremium = hashMapOf(
+                                "planSuscripcion" to "premium",
+                                "estadoSuscripcion" to "Activo",
+                                "fechaSeleccionPlan" to com.google.firebase.Timestamp.now()
+                            )
+                            firestore.collection("usuarios").document(uid)
+                                .set(datosPremium, com.google.firebase.firestore.SetOptions.merge())
+                        }
+
+                        // 2. 🔥 Cambiamos el estado reactivo global en el ViewModel a Premium
+                        routineViewModel.setPremiumUser(true)
+
+                        // 3. 👶 Saltamos a la pantalla de Perfil del niño
+                        onPaymentConfirmed()
                     }
                 },
                 modifier = Modifier
@@ -101,7 +122,6 @@ fun PaymentViewScreen(
                 Text("Confirmar Pago Simulado", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         } else {
-            // Pantalla de Carga/Procesando elegante
             CircularProgressIndicator(color = Color(0xFFD4AF37))
             Spacer(modifier = Modifier.height(16.dp))
             Text("Procesando pago seguro...", color = Color.White, fontWeight = FontWeight.Medium)

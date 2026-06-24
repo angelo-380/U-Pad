@@ -26,18 +26,16 @@ import kotlinx.coroutines.launch
 @Composable
 fun ChangePlanScreen(
     onBackClick: () -> Unit,
-    onNavigateToPayment: () -> Unit
+    onNavigateToPayment: () -> Unit // 💳 Te lleva a la pasarela PaymentViewScreen
 ) {
     val scope = rememberCoroutineScope()
 
-    // 🔄 Vinculed al ecosistema global de MaterialTheme (Cambia dinámicamente)
     val colorAcabadoPrincipal = MaterialTheme.colorScheme.primary
     val colorFondoBase = MaterialTheme.colorScheme.background
     val colorSuperficieTarjetas = MaterialTheme.colorScheme.surface
     val colorTextoPrincipal = MaterialTheme.colorScheme.onBackground
     val colorTextoSecundario = MaterialTheme.colorScheme.onSurface
 
-    // Paletas complementarias adaptables
     val colorOroBanner = Color(0xFFC5A059)
     val colorVerdeExito = Color(0xFF4CAF50)
 
@@ -200,49 +198,25 @@ fun ChangePlanScreen(
             )
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Botón 1: Tarjeta de Crédito
             Button(
-                onClick = {
-                    scope.launch {
-                        onNavigateToPayment()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
+                onClick = { scope.launch { onNavigateToPayment() } },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = colorAcabadoPrincipal),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = colorAcabadoPrincipal)
             ) {
-                Text(
-                    text = "PAGAR CON TARJETA DE CRÉDITO 💳",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White
-                )
+                Text("PAGAR CON TARJETA DE CRÉDITO 💳", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color.White)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Botón 2: Google Pay
             OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        onNavigateToPayment()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
+                onClick = { scope.launch { onNavigateToPayment() } },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colorTextoPrincipal),
                 border = androidx.compose.foundation.BorderStroke(1.5.dp, colorTextoSecundario.copy(alpha = 0.4f))
             ) {
-                Text(
-                    text = "PAGAR CON GOOGLE  🚀",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black
-                )
+                Text("PAGAR CON GOOGLE  🚀", fontSize = 15.sp, fontWeight = FontWeight.Black)
             }
 
             Spacer(modifier = Modifier.height(32.dp))

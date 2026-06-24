@@ -18,18 +18,37 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upad.R
+import com.example.upad.viewmodel.RoutineViewModel
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
 fun SubscriptionPlansScreen(
-    onPlanSelected: (String) -> Unit, // CAMBIADO: Ahora recibe un String
-    onSkip: () -> Unit
+    routineViewModel: RoutineViewModel,
+    onNavigateToBenefits: () -> Unit, // 🚀 Te lleva a ChangePlanScreen (Ver beneficios)
+    onDirectToProfile: () -> Unit      // 🚀 Te lleva directo a ChildProfileSetupScreen (Plan Básico)
+
 ) {
     val colorAzulTEA = Color(0xFF4FC3F7)
     val colorAmarilloTEA = Color(0xFFFFD54F)
     val colorFondoBase = Color(0xFFF0F4F8)
 
-    // Estado para saber qué plan está seleccionado visualmente
+    val auth = remember { FirebaseAuth.getInstance() }
+    val firestore = remember { FirebaseFirestore.getInstance() }
     var selectedPlan by remember { mutableStateOf("premium") }
+
+    val guardarPlanBasicoEnFirebase = {
+        val uid = auth.currentUser?.uid
+        if (uid != null) {
+            val datosPlan = hashMapOf(
+                "planSuscripcion" to "basico",
+                "estadoSuscripcion" to "Gratuito",
+                "fechaSeleccionPlan" to com.google.firebase.Timestamp.now()
+            )
+            firestore.collection("usuarios").document(uid)
+                .set(datosPlan, com.google.firebase.firestore.SetOptions.merge())
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -62,7 +81,7 @@ fun SubscriptionPlansScreen(
             )
         }
 
-        // --- CONTENIDO DE PLANES ---
+        // --- CUERPO ---
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -71,7 +90,6 @@ fun SubscriptionPlansScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Tarjeta Plan Básico
             PlanCard(
                 title = "PLAN BÁSICO",
                 price = "Gratis",
@@ -83,7 +101,6 @@ fun SubscriptionPlansScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Tarjeta Plan Premium
             PlanCard(
                 title = "PLAN PREMIUM",
                 price = "$9.99 / mes",
@@ -94,7 +111,7 @@ fun SubscriptionPlansScreen(
             )
         }
 
-        // --- PANEL DE ACCIÓN INFERIOR ---
+        // --- ACCIONES INFERIORES ---
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -104,8 +121,15 @@ fun SubscriptionPlansScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Button(
-                // CAMBIADO: Ahora enviamos el valor de selectedPlan ("basico" o "premium")
-                onClick = { onPlanSelected(selectedPlan) },
+                onClick = {
+                    if (selectedPlan == "premium") {
+                        onNavigateToBenefits() // Va a ver lo que incluye el plan
+                    } else {
+                        routineViewModel.setPremiumUser(false)
+                        guardarPlanBasicoEnFirebase()
+                        onDirectToProfile()    // Va directo a configurar el niño en básico
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(70.dp),
@@ -116,20 +140,20 @@ fun SubscriptionPlansScreen(
             }
 
             TextButton(
-                onClick = onSkip,
+                onClick = {
+                    routineViewModel.setPremiumUser(false)
+                    guardarPlanBasicoEnFirebase()
+                    onDirectToProfile()
+                },
                 modifier = Modifier.padding(top = 8.dp)
             ) {
-                Text(
-                    "En otro momento",
-                    color = Color.LightGray,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("En otro momento", color = Color.LightGray, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
-// El componente PlanCard se mantiene igual, ya que solo maneja la parte visual
+// (Tu PlanCard se mantiene igual, omitido por brevedad)
 @Composable
 fun PlanCard(
     title: String,
