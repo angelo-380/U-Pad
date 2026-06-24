@@ -295,13 +295,9 @@ fun RoutineDashboardScreen(
 
                 if (esPremium) {
                     NavigationDrawerItem(
-                        icon = { Text(text = "📍", fontSize = 20.sp) },
+                        icon = { Icon(Icons.Default.LocationOn, contentDescription = "Ubicar hijo") },
                         label = { Text(text = "Ubicar a mi Hijo", fontWeight = FontWeight.Bold, color = colorTextoPrincipal, fontFamily = fuentePremium) },
-                        badge = {
-                            Surface(color = Color(0xFFFFD700), shape = RoundedCornerShape(6.dp)) {
-                                Text("PRO", fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp), color = Color.Black, fontFamily = fuentePremium)
-                            }
-                        },
+
                         selected = false,
                         onClick = { scope.launch { drawerState.close() }; onUbicarHijoAccionUnificada() },
                         colors = drawerColors,
@@ -378,9 +374,17 @@ fun RoutineDashboardScreen(
                         shape = CircleShape
                     ) {
                         if (esPremium) {
-                            Text(text = "🗺️", fontSize = 26.sp)
+                            Icon(
+                                imageVector = Icons.Default.Map,
+                                contentDescription = "Ver mapa",
+                                modifier = Modifier.size(28.dp)
+                            )
                         } else {
-                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create_new_routine), modifier = Modifier.size(30.dp))
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = stringResource(R.string.create_new_routine),
+                                modifier = Modifier.size(30.dp)
+                            )
                         }
                     }
                 }
@@ -422,7 +426,7 @@ fun RoutineDashboardScreen(
                             )
 
                             Text(
-                                text = if (esPremium) stringResource(R.string.child_routines) + " ⭐" else stringResource(R.string.child_routines),
+                                text = stringResource(R.string.child_routines),
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.Black,
                                 color = colorTextoPrincipal,
