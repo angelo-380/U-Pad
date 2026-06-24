@@ -1,6 +1,7 @@
 package com.example.upad.dashboard
 
 import android.content.Context
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -8,8 +9,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -17,7 +20,6 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,10 +55,15 @@ fun ProfileScreen(
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
 
+    // 🔄 DETECTAR ORIENTACIÓN DE PANTALLA
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val scrollState = rememberScrollState()
+
     // 🔄 ESTADO DE SUB-PANTALLA: false = Vista Perfil / true = Editar Perfil
     var isEditingMode by remember { mutableStateOf(false) }
 
-    // 📸 PERSISTENCIA DE IMAGEN DE PERFIL (Carga inicial desde SharedPreferences)
+    // 📸 PERSISTENCIA DE IMAGEN DE PERFIL
     var imageUri by remember {
         mutableStateOf<Uri?>(
             sharedPreferences.getString("PROFILE_IMAGE_URI", null)?.let { Uri.parse(it) } ?: currentUser?.photoUrl
@@ -70,7 +78,7 @@ fun ProfileScreen(
     var nameInput by remember { mutableStateOf(initialName) }
     var emailInput by remember { mutableStateOf(currentUser?.email ?: "") }
 
-    // Lanzador de la galería (Solo ejecutable en modo edición)
+    // Lanzador de la galería
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -111,10 +119,12 @@ fun ProfileScreen(
                 )
             }
         ) { paddingValues ->
+            // El contenedor principal ahora implementa scroll dinámico responsivo sin romper la interfaz
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -124,7 +134,7 @@ fun ProfileScreen(
                 // 📸 SECCIÓN DEL AVATAR (VISTA DINÁMICA DE EDICIÓN)
                 // ==========================================
                 Box(
-                    modifier = Modifier.size(110.dp),
+                    modifier = Modifier.size(if (isLandscape) 90.dp else 110.dp),
                     contentAlignment = Alignment.BottomEnd
                 ) {
                     Box(
@@ -132,7 +142,6 @@ fun ProfileScreen(
                             .fillMaxSize()
                             .clip(CircleShape)
                             .background(colorAcabadoPrincipal.copy(alpha = 0.15f))
-                            // 🔒 REGLA: Solo es clickable si isEditingMode es TRUE
                             .clickable(enabled = isEditingMode) { galleryLauncher.launch("image/*") },
                         contentAlignment = Alignment.Center
                     ) {
@@ -148,12 +157,11 @@ fun ProfileScreen(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = null,
                                 tint = colorAcabadoPrincipal,
-                                modifier = Modifier.size(54.dp)
+                                modifier = Modifier.size(if (isLandscape) 44.dp else 54.dp)
                             )
                         }
                     }
 
-                    // 📷 El badge de la cámara solo se renderiza si estás editando activamente
                     if (isEditingMode) {
                         Box(
                             modifier = Modifier
@@ -174,7 +182,7 @@ fun ProfileScreen(
                 }
 
                 // ==========================================
-                // MODO 1: VISTA DE PERFIL (CON DATOS PRECARGADOS ABAJO)
+                // MODO 1: VISTA DE PERFIL
                 // ==========================================
                 if (!isEditingMode) {
                     Spacer(modifier = Modifier.height(14.dp))
@@ -203,7 +211,7 @@ fun ProfileScreen(
 
                     Spacer(modifier = Modifier.height(28.dp))
 
-                    // 🗂️ CONTENEDOR DE DATOS ACTUALES (Carga Nombre y Correo al entrar)
+                    // 🗂️ CONTENEDOR DE DATOS ACTUALES
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(22.dp),
@@ -240,7 +248,7 @@ fun ProfileScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Opciones de menú estructuradas en filas con flecha (Mockup Izquierdo)
+                    // Opciones de menú estructuradas en filas
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         MenuOptionRow(
                             icon = Icons.Default.Person,
@@ -252,29 +260,11 @@ fun ProfileScreen(
                             colorTextoSec = colorTextoSecundario,
                             onClick = { isEditingMode = true }
                         )
-                        MenuOptionRow(
-                            icon = Icons.Default.Language,
-                            title = "Idioma",
-                            colorSuperficie = colorSuperficieTarjetas,
-                            isPremium = isPremiumUser,
-                            colorPrincipal = colorAcabadoPrincipal,
-                            colorTexto = colorTextoPrincipal,
-                            colorTextoSec = colorTextoSecundario,
-                            onClick = { /* Navegación a Idiomas si se requiere */ }
-                        )
-                        MenuOptionRow(
-                            icon = Icons.Default.Lock,
-                            title = "Privacidad y Seguridad",
-                            colorSuperficie = colorSuperficieTarjetas,
-                            isPremium = isPremiumUser,
-                            colorPrincipal = colorAcabadoPrincipal,
-                            colorTexto = colorTextoPrincipal,
-                            colorTextoSec = colorTextoSecundario,
-                            onClick = { /* Navegación a Seguridad */ }
-                        )
+
                     }
 
-                    Spacer(modifier = Modifier.weight(1f))
+                    // Dinámico en vez de weight(1f) fijo para no reventar con el scroll vertical
+                    Spacer(modifier = Modifier.height(if (isLandscape) 24.dp else 45.dp))
 
                     // Botón para Cerrar Sesión inferior
                     MenuOptionRow(
@@ -293,7 +283,7 @@ fun ProfileScreen(
                 }
 
                 // ==========================================
-                // MODO 2: FORMULARIO DE EDICIÓN (CAMPOS ACTIVER)
+                // MODO 2: FORMULARIO DE EDICIÓN
                 // ==========================================
                 else {
                     Spacer(modifier = Modifier.height(28.dp))
@@ -346,9 +336,10 @@ fun ProfileScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.weight(1f))
+                    // Dinámico en vez de weight(1f) fijo para no romper con el scroll vertical
+                    Spacer(modifier = Modifier.height(if (isLandscape) 30.dp else 60.dp))
 
-                    // Botones inferiores de Cancelar y Guardar (Mockup Derecho)
+                    // Botones inferiores de Cancelar y Guardar
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -367,7 +358,6 @@ fun ProfileScreen(
 
                         Button(
                             onClick = {
-                                // Persistir Datos e Imagen permanentemente en las SharedPreferences locales
                                 sharedPreferences.edit().apply {
                                     putString("PARENT_NAME", nameInput)
                                     imageUri?.let { putString("PROFILE_IMAGE_URI", it.toString()) }
