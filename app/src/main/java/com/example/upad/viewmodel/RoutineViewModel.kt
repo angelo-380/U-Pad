@@ -64,6 +64,7 @@ class RoutineViewModel(
         viewModelScope.launch {
             dataStoreManager.isPremiumFlow.collectLatest { estadoReal ->
                 _isPremiumManual.value = estadoReal
+                notificarCambioAlWidget()
             }
         }
         // Cargar estado de idioma
@@ -221,14 +222,32 @@ class RoutineViewModel(
             val progTarde  = calcularPorcentaje(_tasksTarde.value, prefijoDia)
             val progNoche  = calcularPorcentaje(_tasksNoche.value, prefijoDia)
 
+            val (totalManana, compManana) = RoutineProgressCalculator.calcularProgreso(_tasksManana.value, prefijoDia)
+            val (totalTarde, compTarde) = RoutineProgressCalculator.calcularProgreso(_tasksTarde.value, prefijoDia)
+            val (totalNoche, compNoche) = RoutineProgressCalculator.calcularProgreso(_tasksNoche.value, prefijoDia)
+
+            val totalTareasDia = totalManana + totalTarde + totalNoche
+            val completadasTareasDia = compManana + compTarde + compNoche
+            val pendientesTareasDia = totalTareasDia - completadasTareasDia
+            val porcentajeGlobal = if (totalTareasDia > 0) (completadasTareasDia * 100) / totalTareasDia else 0
+
             prefs.edit().apply {
                 putInt("PROGRESO_MANANA", progManana)
                 putInt("PROGRESO_TARDE", progTarde)
                 putInt("PROGRESO_NOCHE", progNoche)
+                
+                // Nuevas estadísticas para el widget Premium
+                putInt("TOTAL_TAREAS_DIA", totalTareasDia)
+                putInt("COMPLETADAS_TAREAS_DIA", completadasTareasDia)
+                putInt("PENDIENTES_TAREAS_DIA", pendientesTareasDia)
+                putInt("PORCENTAJE_GLOBAL", porcentajeGlobal)
+                putBoolean("IS_PREMIUM", _isPremiumManual.value)
+
                 putLong("ULTIMO_FETCH", System.currentTimeMillis())
                 apply()
             }
             com.example.upad.widget.ParentRoutineWidgetProvider.notificarCambioDatos(context)
+            com.example.upad.widget.PremiumProgressWidgetProvider.notificarCambioDatos(context)
         } catch (e: Exception) {
             e.printStackTrace()
         }
