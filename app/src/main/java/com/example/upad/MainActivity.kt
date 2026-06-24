@@ -69,6 +69,7 @@ import com.example.upad.dashboard.ConnectionScreen
 import com.example.upad.dashboard.AnalyticsScreen
 import com.example.upad.premium.PaymentViewScreen
 import android.content.Context
+import com.example.upad.dashboard.HelpTutorialScreen
 import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : AppCompatActivity() {
@@ -199,6 +200,7 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         kioscoListener?.remove()
     }
+    val ROUTE_HELP = "help_tutorial"
 }
 
 private fun obtenerDestinoInicial(context: android.content.Context): String {
@@ -463,7 +465,17 @@ fun UPadNavigation(
                         onNavigateToAnalytics = { navController.navigate("analytics") },
                         onNavigateToDeviceManagement = { navController.navigate("device_management") },
                         onNavigateToChangePlan = { navController.navigate("change_plan") },
-                        onNavigateToTracking = { hijoId -> navController.navigate("tracking/$hijoId") }
+                        onNavigateToTracking = { hijoId -> navController.navigate("tracking/$hijoId") },
+                        // 🎯 Agregamos la acción para que el botón de ayuda navegue a la nueva ruta
+                        onNavigateToHelp = { navController.navigate("help_tutorial") }
+                    )
+                }
+
+                // 🚀 Registramos la pantalla de ayuda justo debajo de tu dashboard
+                composable("help_tutorial") {
+                    HelpTutorialScreen(
+                        routineViewModel = routineViewModel,
+                        onNavigateBack = { navController.popBackStack() }
                     )
                 }
 

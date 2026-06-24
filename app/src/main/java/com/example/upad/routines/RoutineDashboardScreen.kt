@@ -56,7 +56,9 @@ fun RoutineDashboardScreen(
     onNavigateToConnection: () -> Unit = {},
     onNavigateToDeviceManagement: () -> Unit = {},
     onNavigateToChangePlan: () -> Unit = {},
-    onNavigateToTracking: (String) -> Unit = {}
+    onNavigateToTracking: (String) -> Unit = {},
+    onNavigateToHelp: () -> Unit = {}
+
 ) {
     val firebaseAuth = remember { FirebaseAuth.getInstance() }
     val currentUser = firebaseAuth.currentUser
@@ -398,22 +400,44 @@ fun RoutineDashboardScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     // Cabecera superior interactiva adaptada al tema
+                    // Cabecera superior interactiva adaptada al tema
                     item {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 24.dp)
                         ) {
-                            IconButton(
-                                onClick = { scope.launch { drawerState.open() } },
-                                modifier = Modifier.size(32.dp).align(Alignment.Start)
+                            // 🔄 Alineamos las 3 líneas a la izquierda y la Ayuda a la derecha en la misma fila
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween, // 👈 Esto empuja los iconos a las esquinas opuestas
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Menu,
-                                    contentDescription = "Abrir menú",
-                                    tint = colorTextoPrincipal,
-                                    modifier = Modifier.size(28.dp)
-                                )
+                                // Esquina Izquierda: 3 líneas del menú
+                                IconButton(
+                                    onClick = { scope.launch { drawerState.open() } },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Menu,
+                                        contentDescription = "Abrir menú",
+                                        tint = colorTextoPrincipal,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+
+                                // 🎯 Esquina Derecha: Ícono de ayuda/tutorial
+                                IconButton(
+                                    onClick = { onNavigateToHelp() }, // 👈 Te llevará a la pantalla de ayuda
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.HelpOutline, // Signo de interrogación estilizado
+                                        contentDescription = "Ayuda y Tutorial",
+                                        tint = colorTextoPrincipal,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(10.dp))
