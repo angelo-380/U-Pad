@@ -40,9 +40,11 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.upad.R
 import com.example.upad.viewmodel.RoutineViewModel
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import java.util.Calendar
 
 @Composable
@@ -66,6 +68,12 @@ fun ChildStartScreen(
     var codigoGeneradoEnSesion by remember { mutableStateOf(false) }
 
     val firestore = remember { FirebaseFirestore.getInstance() }
+
+    var mostrarDialogoDesvincular by remember { mutableStateOf(false) }
+    var emailPadre by remember { mutableStateOf("") }
+    var passwordPadre by remember { mutableStateOf("") }
+    var cargandoDesvinculacion by remember { mutableStateOf(false) }
+    var errorDesvinculacion by remember { mutableStateOf("") }
 
     DisposableEffect(deviceId) {
         var devicesListener: ListenerRegistration? = null
@@ -177,10 +185,10 @@ fun ChildStartScreen(
     val listaVariacionesDia = when (numeroDia) {
         Calendar.MONDAY -> listOf("LUN", "LUNES")
         Calendar.TUESDAY -> listOf("MAR", "MARTES")
-        Calendar.WEDNESDAY -> listOf("MIÉ", "MIERCOLES", "MIÉRCOLES")
+        Calendar.WEDNESDAY -> listOf("MIE", "MIÉ", "MIERCOLES", "MIÉRCOLES")
         Calendar.THURSDAY -> listOf("JUE", "JUEVES")
         Calendar.FRIDAY -> listOf("VIE", "VIERNES")
-        Calendar.SATURDAY -> listOf("SÁB", "SABADO", "SÁBADO")
+        Calendar.SATURDAY -> listOf("SAB", "SÁB", "SABADO", "SÁBADO")
         Calendar.SUNDAY -> listOf("DOM", "DOMINGO")
         else -> emptyList()
     }
@@ -237,30 +245,58 @@ fun ChildStartScreen(
                 if (!estaVinculado) {
                     Text(
                         text = stringResource(R.string.child_pairing_instructions),
-                        fontSize = 24.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF1A1A1A),
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 40.dp)
                     )
                     Spacer(modifier = Modifier.height(32.dp))
-                    Card(
-                        shape = RoundedCornerShape(24.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
                     ) {
-                        Text(
-                            text = if (codigoNiño.length == 6) "${codigoNiño.take(3)} ${codigoNiño.drop(3)}" else codigoNiño,
-                            fontSize = 54.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF0D47A1),
-                            modifier = Modifier.padding(horizontal = 40.dp, vertical = 20.dp),
-                            letterSpacing = 4.sp
-                        )
+                        val codeStr = codigoNiño
+                        for (i in 0 until 6) {
+                            val digit = codeStr.getOrNull(i)?.toString() ?: "-"
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8)),
+                                border = BorderStroke(2.5.dp, Color(0xFF0D47A1)),
+                                modifier = Modifier.size(width = 44.dp, height = 62.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Text(
+                                        text = digit,
+                                        fontSize = 32.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFF0D47A1),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                            if (i == 2) {
+                                Spacer(modifier = Modifier.width(10.dp))
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(32.dp))
                     CircularProgressIndicator(color = Color(0xFF0D47A1), strokeWidth = 5.dp)
                 } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = { mostrarDialogoDesvincular = true },
+                            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFD32F2F))
+                        ) {
+                            Text("⚙️ DESVINCULAR DISPOSITIVO", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+
                     if (esPremiumPorPadre || verTareasModoBasico) {
                         Text(
                             text = stringResource(R.string.my_activities_today),
@@ -347,6 +383,127 @@ fun ChildStartScreen(
             }
         }
     }
+
+    if (mostrarDialogoDesvincular) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!cargandoDesvinculacion) {
+                    mostrarDialogoDesvincular = false
+                    emailPadre = ""
+                    passwordPadre = ""
+                    errorDesvinculacion = ""
+                }
+            },
+            title = {
+                Text(
+                    text = "Confirmación del Padre",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = Color(0xFF1A1A1A)
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Introduce el correo y la contraseña de tu padre/tutor para desvincular este dispositivo.",
+                        fontSize = 14.sp,
+                        color = Color.Gray
+                    )
+                    OutlinedTextField(
+                        value = emailPadre,
+                        onValueChange = { emailPadre = it },
+                        label = { Text("Correo electrónico del Padre") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !cargandoDesvinculacion
+                    )
+                    OutlinedTextField(
+                        value = passwordPadre,
+                        onValueChange = { passwordPadre = it },
+                        label = { Text("Contraseña del Padre") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !cargandoDesvinculacion
+                    )
+                    if (errorDesvinculacion.isNotEmpty()) {
+                        Text(
+                            text = errorDesvinculacion,
+                            color = Color(0xFFD32F2F),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (emailPadre.isNotBlank() && passwordPadre.isNotBlank()) {
+                            cargandoDesvinculacion = true
+                            errorDesvinculacion = ""
+                            val auth = FirebaseAuth.getInstance()
+                            
+                            auth.signInWithEmailAndPassword(emailPadre.trim(), passwordPadre.trim())
+                                .addOnCompleteListener { task ->
+                                    if (task.isSuccessful) {
+                                        val padreIdLogueado = task.result?.user?.uid
+                                        if (padreIdLogueado == padreIdAsociado) {
+                                            firestore.collection("dispositivos_niños")
+                                                .document(deviceId)
+                                                .delete()
+                                                .addOnSuccessListener {
+                                                    auth.signOut()
+                                                    cargandoDesvinculacion = false
+                                                    mostrarDialogoDesvincular = false
+                                                    emailPadre = ""
+                                                    passwordPadre = ""
+                                                    errorDesvinculacion = ""
+                                                }
+                                                .addOnFailureListener { e ->
+                                                    auth.signOut()
+                                                    cargandoDesvinculacion = false
+                                                    errorDesvinculacion = "Error al desvincular: ${e.localizedMessage}"
+                                                }
+                                        } else {
+                                            auth.signOut()
+                                            cargandoDesvinculacion = false
+                                            errorDesvinculacion = "El correo no coincide con el padre enlazado a este dispositivo."
+                                        }
+                                    } else {
+                                        cargandoDesvinculacion = false
+                                        errorDesvinculacion = task.exception?.localizedMessage ?: "Credenciales incorrectas"
+                                    }
+                                }
+                        } else {
+                            errorDesvinculacion = "Por favor, completa todos los campos."
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                    enabled = !cargandoDesvinculacion
+                ) {
+                    if (cargandoDesvinculacion) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("DESVINCULAR", color = Color.White)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        mostrarDialogoDesvincular = false
+                        emailPadre = ""
+                        passwordPadre = ""
+                        errorDesvinculacion = ""
+                    },
+                    enabled = !cargandoDesvinculacion
+                ) {
+                    Text("CANCELAR")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -417,15 +574,14 @@ fun BloqueListaTareas(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             tareas.forEachIndexed { index, task ->
                 val clase = task.javaClass
-
                 val nombreActividad = try {
-                    clase.getMethod("getActividad").invoke(task).toString()
+                    clase.getMethod("getActividad").invoke(task)?.toString() ?: ""
                 } catch (e: Exception) { "" }
 
                 var duracionText = try {
-                    clase.getMethod("getDuration").invoke(task).toString()
+                    clase.getMethod("getDuration").invoke(task)?.toString() ?: "5"
                 } catch (e: Exception) {
-                    try { clase.getMethod("getDuracion").invoke(task).toString() } catch (ex: Exception) { "5" }
+                    try { clase.getMethod("getDuracion").invoke(task)?.toString() ?: "5" } catch (ex: Exception) { "5" }
                 }
 
                 if (duracionText.trim() == "55" || duracionText.trim() == "0") {
@@ -433,7 +589,7 @@ fun BloqueListaTareas(
                 }
 
                 val imageUrlText = try {
-                    clase.getMethod("getImageUrl").invoke(task).toString()
+                    clase.getMethod("getImageUrl").invoke(task)?.toString() ?: ""
                 } catch (e: Exception) { "" }
 
                 val completada = try {
