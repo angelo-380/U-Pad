@@ -2,6 +2,7 @@ package com.example.upad.auth
 
 import android.content.Context
 import android.util.Log
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -112,11 +114,11 @@ fun WelcomeScreen(
                 color = colorFondoBase.copy(alpha = 0.5f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.logo_upad),
+                    Image(
+                        painter = painterResource(id = R.drawable.upad_icono),
                         contentDescription = "U-Pad Logo",
-                        modifier = Modifier.size(80.dp),
-                        tint = colorAzulTEA
+                        modifier = Modifier.size(90.dp),
+                        contentScale = ContentScale.Fit
                     )
                 }
             }

@@ -74,7 +74,7 @@ fun TrialDisclaimerScreen(
                 color = Color.Transparent
             ) {
                 Image(
-                    painter = painterResource(id = R.drawable.logo_upad), // Asegúrate de tener esta imagen
+                    painter = painterResource(id = R.drawable.upad_icono), // Asegúrate de tener esta imagen
                     contentDescription = "Ilustración de inicio",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
