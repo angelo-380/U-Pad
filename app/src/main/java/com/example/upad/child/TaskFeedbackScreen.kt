@@ -20,6 +20,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.example.upad.R
 
 @Composable
 fun TaskFeedbackScreen(
@@ -55,7 +57,7 @@ fun TaskFeedbackScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "¡LO HICISTE GENIAL! 🎉",
+                    text = stringResource(R.string.feedback_great_job),
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Black,
                     color = Color(0xFF2E7D32), // Verde motivacional
@@ -65,7 +67,7 @@ fun TaskFeedbackScreen(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "¿Cómo te sientes después de:",
+                    text = stringResource(R.string.feedback_question),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color.Gray,
@@ -121,7 +123,7 @@ fun TaskFeedbackScreen(
                 FeedbackCard(
                     modifier = Modifier.weight(1f),
                     emoji = "😊",
-                    label = "FELIZ",
+                    label = stringResource(R.string.feedback_happy),
                     colorBase = Color(0xFFE8F5E9),  // Fondo verde pastel
                     colorBorde = Color(0xFF4CAF50), // Borde verde fuerte
                     onClick = { onFeedbackSelected("feliz") }
@@ -129,7 +131,7 @@ fun TaskFeedbackScreen(
                 FeedbackCard(
                     modifier = Modifier.weight(1f),
                     emoji = "😐",
-                    label = "NEUTRAL",
+                    label = stringResource(R.string.feedback_neutral),
                     colorBase = Color(0xFFFFFDE7),  // Fondo amarillo pastel
                     colorBorde = Color(0xFFFFC107), // Borde amarillo fuerte
                     onClick = { onFeedbackSelected("neutral") }
@@ -140,7 +142,7 @@ fun TaskFeedbackScreen(
             FeedbackCard(
                 modifier = Modifier.fillMaxWidth(0.85f),
                 emoji = "🙁",
-                label = "TRISTE",
+                label = stringResource(R.string.feedback_sad),
                 colorBase = Color(0xFFFFEBEE),  // Fondo rojo pastel
                 colorBorde = Color(0xFFE57373), // Borde rojo fuerte
                 onClick = { onFeedbackSelected("triste") }

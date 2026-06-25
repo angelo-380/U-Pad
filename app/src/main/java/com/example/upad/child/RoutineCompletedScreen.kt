@@ -21,9 +21,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upad.R
 
+import androidx.compose.ui.res.stringResource
+
 @Composable
 fun RoutineCompletedScreen(
-    nextActivityPreview: String = "¡Felicidades! Completaste todo",
+    nextActivityPreview: String = "",
     onFinishClick: () -> Unit
 ) {
     val colorAzulTEA = Color(0xFF0288D1)     // Azul más vivo y con mejor contraste
@@ -37,7 +39,8 @@ fun RoutineCompletedScreen(
         )
     )
 
-    val esFinDeRutina = nextActivityPreview == "¡Felicidades! Completaste todo"
+    val esFinDeRutina = nextActivityPreview.isEmpty() || nextActivityPreview == "¡Felicidades! Completaste todo"
+    val textToShow = if (esFinDeRutina) stringResource(R.string.routine_completed_default_preview) else nextActivityPreview
 
     Column(
         modifier = Modifier
@@ -61,7 +64,7 @@ fun RoutineCompletedScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "¡LO LOGRASTE! 🎉",
+                    text = stringResource(R.string.routine_completed_title),
                     fontSize = 38.sp,
                     fontWeight = FontWeight.Black,
                     color = colorVerdeExito,
@@ -70,7 +73,7 @@ fun RoutineCompletedScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = if (esFinDeRutina) "No tienes tareas pendientes" else "Completaste la actividad con éxito",
+                    text = if (esFinDeRutina) stringResource(R.string.no_pending_tasks) else stringResource(R.string.activity_completed_success),
                     fontSize = 17.sp,
                     color = Color.Gray,
                     fontWeight = FontWeight.Bold,
@@ -126,7 +129,7 @@ fun RoutineCompletedScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = if (esFinDeRutina) "ESTADO DE HOY:" else "SIGUIENTE ACTIVIDAD:",
+                    text = if (esFinDeRutina) stringResource(R.string.today_status_label) else stringResource(R.string.next_activity_label),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.DarkGray,
@@ -142,7 +145,7 @@ fun RoutineCompletedScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = nextActivityPreview.uppercase(),
+                        text = textToShow.uppercase(),
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Black,
                         color = colorAzulTEA,
@@ -156,7 +159,7 @@ fun RoutineCompletedScreen(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = if (esFinDeRutina) "¡Es hora de descansar o jugar! ⭐" else "¡Sigue así, vas muy bien!",
+                    text = if (esFinDeRutina) stringResource(R.string.time_to_rest_or_play) else stringResource(R.string.keep_it_up),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.Gray,
@@ -177,7 +180,7 @@ fun RoutineCompletedScreen(
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                 ) {
                     Text(
-                        text = "¡ENTENDIDO! ➔",
+                        text = stringResource(R.string.understood_btn),
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White,

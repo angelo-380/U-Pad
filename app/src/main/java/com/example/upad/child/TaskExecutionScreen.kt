@@ -2,6 +2,7 @@ package com.example.upad.child
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,10 +19,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.upad.R
 import com.example.upad.viewmodel.RoutineViewModel
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun TaskExecutionScreen(
@@ -111,7 +114,7 @@ fun TaskExecutionScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = Color(0xFF0288D1), strokeWidth = 5.dp)
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Cargando tu actividad...", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF01579B))
+                Text(stringResource(R.string.loading_activity), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF01579B))
             }
         }
         else if (mostrandoCelebracionIdivual) {
@@ -122,9 +125,9 @@ fun TaskExecutionScreen(
             ) {
                 Text(text = "✨ ⭐ 🏆 ⭐ ✨", fontSize = 60.sp, textAlign = TextAlign.Center)
                 Spacer(modifier = Modifier.height(24.dp))
-                Text(text = "¡MISION CUMPLIDA!", fontSize = 36.sp, fontWeight = FontWeight.Black, color = colorVerdeExito, textAlign = TextAlign.Center)
+                Text(text = stringResource(R.string.mission_accomplished), fontSize = 36.sp, fontWeight = FontWeight.Black, color = colorVerdeExito, textAlign = TextAlign.Center)
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(text = "¡Hiciste un gran trabajo concentrándote!", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0288D1), textAlign = TextAlign.Center)
+                Text(text = stringResource(R.string.focused_great_job), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0288D1), textAlign = TextAlign.Center)
             }
         }
         else {
@@ -135,7 +138,7 @@ fun TaskExecutionScreen(
             ) {
                 // Cabecera indicadora
                 Text(
-                    text = "🎯 ENFOQUE ACTIVO",
+                    text = stringResource(R.string.active_focus),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Black,
                     color = Color(0xFF0288D1),
@@ -180,31 +183,54 @@ fun TaskExecutionScreen(
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
 
-                // ⏱️ SECCIÓN POMODORO MEJORADA VISUALMENTE
-                Card(
-                    shape = RoundedCornerShape(50.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (tiempoCumplido) Color(0xFFE8F5E9) else Color(0xFFFFE0B2)
-                    ),
-                    modifier = Modifier.padding(vertical = 4.dp)
+                // ⏱️ RELOJ VISUAL TIME TIMER (CIRCULO ROJO PASTEL DECRECIENTE) PARA NIÑOS CON TEA
+                val progreso = if (tiempoInicialSegundos > 0) tiempoRestanteSegundos.toFloat() / tiempoInicialSegundos else 0f
+                val colorRojoPastel = Color(0xFFFF8A80)
+                val colorVerdePastel = Color(0xFF81C784)
+                val colorFondoGris = Color(0xFFECEFF1)
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(vertical = 12.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(150.dp)
                     ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            // Círculo de fondo gris
+                            drawCircle(
+                                color = colorFondoGris,
+                                radius = size.minDimension / 2
+                            )
+                            // Arco de tiempo restante (se reduce hacia 0)
+                            val sweepAngle = 360f * progreso
+                            drawArc(
+                                color = if (tiempoCumplido) colorVerdePastel else colorRojoPastel,
+                                startAngle = -90f,
+                                sweepAngle = sweepAngle,
+                                useCenter = true
+                            )
+                        }
+
+                        // Reloj digital o indicador en el centro
                         Text(
-                            text = if (tiempoCumplido) "⏰ ¡TIEMPO LISTO!: " else "⏳ TRABAJANDO: ",
-                            fontSize = 16.sp,
+                            text = if (tiempoCumplido) "🎉" else textoTemporizador,
+                            fontSize = if (tiempoCumplido) 44.sp else 30.sp,
                             fontWeight = FontWeight.Black,
-                            color = if (tiempoCumplido) Color(0xFF2E7D32) else Color(0xFFE65100)
-                        )
-                        Text(
-                            text = textoTemporizador,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Black,
-                            color = if (tiempoCumplido) Color(0xFF2E7D32) else colorNaranjaPomodoro
+                            color = Color(0xFF37474F)
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = if (tiempoCumplido) stringResource(R.string.time_completed) else stringResource(R.string.watch_clock_run),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (tiempoCumplido) Color(0xFF2E7D32) else Color(0xFF546E7A)
+                    )
                 }
 
                 // 🚨 BOTÓN DE FINALIZACIÓN CONTROLADO
@@ -233,7 +259,7 @@ fun TaskExecutionScreen(
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = if (tiempoCumplido) 6.dp else 0.dp)
                 ) {
                     Text(
-                        text = if (tiempoCumplido) "¡TERMINAR! 🎉" else "ESPERA QUE TERMINE EL RELOJ 🔒",
+                        text = if (tiempoCumplido) stringResource(R.string.finish_btn) else stringResource(R.string.wait_clock),
                         fontSize = if (tiempoCumplido) 24.sp else 16.sp,
                         fontWeight = FontWeight.Black,
                         color = if (tiempoCumplido) Color.White else Color(0xFF546E7A),
