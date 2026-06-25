@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.asStateFlow
 import com.google.firebase.firestore.ListenerRegistration
 import com.example.upad.utils.RoutineProgressCalculator
+import kotlinx.coroutines.tasks.await
 
 data class TaskItem(
     val actividad: String = "",
@@ -169,14 +170,20 @@ class RoutineViewModel(
 
     fun updateName(newName: String) { _currentRoutineName.value = newName }
 
+    private var padreIdActual: String = ""
+
     var ultimoDiaCargado: String = "LUNES"
         private set
 
     fun cargarRutinasDesdeFirebase(userId: String) {
+        padreIdActual = userId
         cargarRutinasPorDia(userId, RoutineProgressCalculator.obtenerDiaDeHoy())
     }
 
     fun cargarRutinasPorDia(userId: String, dia: String) {
+        if (userId.isNotEmpty() && userId != "PADRE_TEST") {
+            padreIdActual = userId
+        }
         val uidValido = obtenerUidSeguro(userId)
         val diaKey = dia.uppercase().trim().replace("É", "E").replace("Á", "A")
         val diaFull = when (diaKey.take(3)) {
@@ -399,8 +406,28 @@ class RoutineViewModel(
         }
 
         viewModelScope.launch {
+            // Resolver el padreId real (uidValido) de forma robusta
+            var finalUid = uidValido
+            if (finalUid.isEmpty() || finalUid == "PADRE_TEST") {
+                finalUid = padreIdActual
+            }
+            if (finalUid.isEmpty() || finalUid == "PADRE_TEST") {
+                try {
+                    val context = com.example.upad.UPadApplication.appContext
+                    val deviceId = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+                    val doc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        .collection("dispositivos_niños")
+                        .document(deviceId)
+                        .get()
+                        .await()
+                    finalUid = doc.getString("padreId") ?: ""
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
             val listaActual = try {
-                repository.obtenerRutinasDelPadreDirectoPorDia(uidValido, turnoValido, diaFull).toMutableList()
+                repository.obtenerRutinasDelPadreDirectoPorDia(finalUid, turnoValido, diaFull).toMutableList()
             } catch (e: Exception) {
                 when (turnoValido) {
                     "MAÑANA" -> _tasksManana.value.toMutableList()
@@ -427,7 +454,66 @@ class RoutineViewModel(
                 }
 
                 try {
-                    repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listaActual)
+                    repository.saveRoutinePorDia(finalUid, turnoValido, diaFull, listaActual)
+
+                    if (finalUid.isNotEmpty() && finalUid != "PADRE_TEST") {
+                        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        val lang = appLanguage.value
+
+                        // 1. Enviar notificación por la tarea completada
+                        val (taskTitle, taskDesc) = when (lang) {
+                            "en" -> "Activity completed! 🌟" to "Your child has completed the activity: ${actividadTexto.lowercase()}."
+                            "fr" -> "Activité complétée! 🌟" to "Votre enfant a complété l'activité: ${actividadTexto.lowercase()}."
+                            "de" -> "Aktivität abgeschlossen! 🌟" to "Ihr Kind hat die Aktivität abgeschlossen: ${actividadTexto.lowercase()}."
+                            "pt" -> "Atividade concluída! 🌟" to "Seu filho concluiu a atividade: ${actividadTexto.lowercase()}."
+                            "ru" -> "Активность завершена! 🌟" to "Ваш ребенок выполнил активность: ${actividadTexto.lowercase()}."
+                            else -> "¡Actividad completada! 🌟" to "Tu hijo ha completado la actividad: ${actividadTexto.lowercase()}."
+                        }
+
+                        val taskNotifData = mapOf(
+                            "title" to taskTitle,
+                            "description" to taskDesc,
+                            "type" to "INFO",
+                            "timestamp" to com.google.firebase.Timestamp.now()
+                        )
+                        db.collection("users")
+                            .document(finalUid)
+                            .collection("notifications")
+                            .add(taskNotifData)
+
+                        // 2. Verificar si todas las tareas de este turno aplicables a hoy están completadas
+                        val targetPrefijo = RoutineProgressCalculator.obtenerPrefijoDia(diaActual)
+                        val tareasDeHoy = listaActual.filter { tarea ->
+                            tarea.dias.isEmpty() || tarea.dias.any { d ->
+                                val dClean = d.uppercase().trim().replace("É", "E").replace("Á", "A")
+                                dClean == targetPrefijo || dClean.take(3) == targetPrefijo.take(3)
+                            }
+                        }
+
+                        val todasCompletadas = tareasDeHoy.isNotEmpty() && tareasDeHoy.all { it.estaCompletadaHoy(diaActual) }
+
+                        if (todasCompletadas) {
+                            val (routineTitle, routineDesc) = when (lang) {
+                                "en" -> "Routine completed! 🎉" to "Your child has successfully completed all tasks for the ${turnoValido.lowercase()} routine."
+                                "fr" -> "Routine terminée! 🎉" to "Votre enfant a terminé avec succès toutes les tâches de la routine du ${if (turnoValido == "MAÑANA") "matin" else if (turnoValido == "TARDE") "midi" else "soir"}."
+                                "de" -> "Routine abgeschlossen! 🎉" to "Ihr Kind hat alle Aufgaben für die ${if (turnoValido == "MAÑANA") "Morgen" else if (turnoValido == "TARDE") "Nachmittag" else "Abend"}-Routine erfolgreich abgeschlossen."
+                                "pt" -> "Rotina concluída! 🎉" to "Seu filho concluiu com sucesso todas as tarefas da rotina da ${turnoValido.lowercase()}."
+                                "ru" -> "Рутина завершена! 🎉" to "Ваш ребенок успешно выполнил все задачи для рутины (${if (turnoValido == "MAÑANA") "утро" else if (turnoValido == "TARDE") "день" else "вечер"})."
+                                else -> "¡Rutina de la ${turnoValido.lowercase()} completada! 🎉" to "Tu hijo ha terminado con éxito todas las tareas de la rutina de la ${turnoValido.lowercase()}."
+                            }
+
+                            val routineNotifData = mapOf(
+                                "title" to routineTitle,
+                                "description" to routineDesc,
+                                "type" to "SUCCESS",
+                                "timestamp" to com.google.firebase.Timestamp.now()
+                            )
+                            db.collection("users")
+                                .document(finalUid)
+                                .collection("notifications")
+                                .add(routineNotifData)
+                        }
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }

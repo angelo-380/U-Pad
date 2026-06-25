@@ -28,6 +28,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -68,6 +71,68 @@ fun ChildStartScreen(
     var codigoGeneradoEnSesion by remember { mutableStateOf(false) }
 
     val firestore = remember { FirebaseFirestore.getInstance() }
+
+    var tienePermisoUbicacion by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val launcherPermisos = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { aceptado ->
+        tienePermisoUbicacion = aceptado
+    }
+
+    LaunchedEffect(estaVinculado, esPremiumPorPadre) {
+        if (estaVinculado && esPremiumPorPadre && !tienePermisoUbicacion) {
+            launcherPermisos.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    DisposableEffect(estaVinculado, esPremiumPorPadre, tienePermisoUbicacion) {
+        var callback: LocationCallback? = null
+        var client: com.google.android.gms.location.FusedLocationProviderClient? = null
+
+        if (estaVinculado && esPremiumPorPadre && tienePermisoUbicacion) {
+            try {
+                client = LocationServices.getFusedLocationProviderClient(context)
+                val locationRequest = LocationRequest.Builder(
+                    Priority.PRIORITY_HIGH_ACCURACY, 10000L
+                ).setMinUpdateIntervalMillis(5000L).build()
+
+                callback = object : LocationCallback() {
+                    override fun onLocationResult(locationResult: LocationResult) {
+                        val location = locationResult.lastLocation
+                        if (location != null) {
+                            val data = mapOf(
+                                "latitud" to location.latitude,
+                                "longitud" to location.longitude,
+                                "ultimaActualizacion" to com.google.firebase.Timestamp.now()
+                            )
+                            firestore.collection("dispositivos_niños")
+                                .document(deviceId)
+                                .set(data, SetOptions.merge())
+                        }
+                    }
+                }
+
+                client.requestLocationUpdates(
+                    locationRequest,
+                    callback,
+                    android.os.Looper.getMainLooper()
+                )
+            } catch (e: SecurityException) {
+                e.printStackTrace()
+            }
+        }
+
+        onDispose {
+            if (client != null && callback != null) {
+                client.removeLocationUpdates(callback)
+            }
+        }
+    }
 
     var mostrarDialogoDesvincular by remember { mutableStateOf(false) }
     var emailPadre by remember { mutableStateOf("") }
@@ -116,7 +181,10 @@ fun ChildStartScreen(
                                     val pId = codeSnapshot.getString("padreId")
                                     if (estado == "enlazado" && !pId.isNullOrEmpty()) {
                                         firestore.collection("dispositivos_niños").document(deviceId)
-                                            .set(mapOf("padreId" to pId), SetOptions.merge())
+                                            .set(mapOf(
+                                                "padreId" to pId,
+                                                "modelo" to android.os.Build.MODEL
+                                            ), SetOptions.merge())
                                         firestore.collection("codigos_vinculacion")
                                             .document(nuevoCodigo).delete()
                                     }
@@ -137,6 +205,7 @@ fun ChildStartScreen(
                     padreIdAsociado = padreId
                     onPadreIdObtenido(padreId)  // FIX: propagar el padreId real al NavHost
                     routineViewModel.cargarRutinasDesdeFirebase(padreId)
+                    routineViewModel.iniciarEscuchaIdioma(padreId)
 
                     premiumListener?.remove()
                     premiumListener = firestore.collection("users").document(padreId)
@@ -160,6 +229,7 @@ fun ChildStartScreen(
             devicesListener?.remove()
             premiumListener?.remove()
             pairingCodeListener?.remove()
+            routineViewModel.detenerEscuchaIdioma()
         }
     }
 
@@ -284,19 +354,6 @@ fun ChildStartScreen(
                     Spacer(modifier = Modifier.height(32.dp))
                     CircularProgressIndicator(color = Color(0xFF0D47A1), strokeWidth = 5.dp)
                 } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = { mostrarDialogoDesvincular = true },
-                            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFD32F2F))
-                        ) {
-                            Text("⚙️ DESVINCULAR DISPOSITIVO", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-                    }
-
                     if (esPremiumPorPadre || verTareasModoBasico) {
                         Text(
                             text = stringResource(R.string.my_activities_today),
@@ -396,7 +453,7 @@ fun ChildStartScreen(
             },
             title = {
                 Text(
-                    text = "Confirmación del Padre",
+                    text = stringResource(R.string.parent_confirmation_title),
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
                     color = Color(0xFF1A1A1A)
@@ -405,14 +462,14 @@ fun ChildStartScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Introduce el correo y la contraseña de tu padre/tutor para desvincular este dispositivo.",
+                        text = stringResource(R.string.parent_confirmation_desc),
                         fontSize = 14.sp,
                         color = Color.Gray
                     )
                     OutlinedTextField(
                         value = emailPadre,
                         onValueChange = { emailPadre = it },
-                        label = { Text("Correo electrónico del Padre") },
+                        label = { Text(stringResource(R.string.parent_email_label)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !cargandoDesvinculacion
@@ -420,7 +477,7 @@ fun ChildStartScreen(
                     OutlinedTextField(
                         value = passwordPadre,
                         onValueChange = { passwordPadre = it },
-                        label = { Text("Contraseña del Padre") },
+                        label = { Text(stringResource(R.string.parent_password_label)) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
@@ -463,20 +520,20 @@ fun ChildStartScreen(
                                                 .addOnFailureListener { e ->
                                                     auth.signOut()
                                                     cargandoDesvinculacion = false
-                                                    errorDesvinculacion = "Error al desvincular: ${e.localizedMessage}"
+                                                    errorDesvinculacion = context.getString(R.string.error_unlink_failed, e.localizedMessage ?: "")
                                                 }
                                         } else {
                                             auth.signOut()
                                             cargandoDesvinculacion = false
-                                            errorDesvinculacion = "El correo no coincide con el padre enlazado a este dispositivo."
+                                            errorDesvinculacion = context.getString(R.string.error_email_mismatch)
                                         }
                                     } else {
                                         cargandoDesvinculacion = false
-                                        errorDesvinculacion = task.exception?.localizedMessage ?: "Credenciales incorrectas"
+                                        errorDesvinculacion = task.exception?.localizedMessage ?: context.getString(R.string.error_incorrect_credentials)
                                     }
                                 }
                         } else {
-                            errorDesvinculacion = "Por favor, completa todos los campos."
+                            errorDesvinculacion = context.getString(R.string.error_fill_all_fields)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
@@ -485,7 +542,7 @@ fun ChildStartScreen(
                     if (cargandoDesvinculacion) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("DESVINCULAR", color = Color.White)
+                        Text(stringResource(R.string.unlink_action_btn), color = Color.White)
                     }
                 }
             },
@@ -499,10 +556,38 @@ fun ChildStartScreen(
                     },
                     enabled = !cargandoDesvinculacion
                 ) {
-                    Text("CANCELAR")
+                    Text(stringResource(R.string.cancel_action_btn))
                 }
             }
         )
+    }
+
+    if (estaVinculado && !cargando) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            contentAlignment = Alignment.TopEnd
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onLongPress = {
+                                mostrarDialogoDesvincular = true
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "⚙️",
+                    fontSize = 20.sp,
+                    modifier = Modifier.alpha(0.25f)
+                )
+            }
+        }
     }
 }
 

@@ -68,6 +68,7 @@ import com.example.upad.dashboard.ConnectionScreen
 import com.example.upad.dashboard.AnalyticsScreen
 import com.example.upad.premium.PaymentViewScreen
 import android.content.Context
+import android.content.Intent
 import com.example.upad.components.UPADBottomBar
 import com.example.upad.dashboard.EmotionsTrackScreen
 import com.example.upad.dashboard.HelpTutorialScreen
@@ -82,10 +83,16 @@ class MainActivity : AppCompatActivity() {
     private var ordenBloqueoPadreActiva by mutableStateOf(false)
     private val firestore = FirebaseFirestore.getInstance()
     private var kioscoListener: ListenerRegistration? = null
+    private var notificationsListener: ListenerRegistration? = null
+    private var parentPremiumListener: ListenerRegistration? = null
+    private val listenerStartTime = System.currentTimeMillis()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+
+        createNotificationChannel()
+        requestNotificationPermission()
 
         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
 
@@ -105,6 +112,23 @@ class MainActivity : AppCompatActivity() {
             val routineViewModel: RoutineViewModel = viewModel(
                 factory = com.example.upad.viewmodel.RoutineViewModelFactory(repository)
             )
+
+            LaunchedEffect(routineViewModel) {
+                FirebaseAuth.getInstance().addAuthStateListener { auth ->
+                    val user = auth.currentUser
+                    if (user != null) {
+                        val sharedPrefs = getSharedPreferences("UPadPrefs", Context.MODE_PRIVATE)
+                        val rol = sharedPrefs.getString("rol_usuario", null)
+                        if (rol == "padre" || rol == "padre_directo") {
+                            iniciarEscuchaNotificacionesPadre(user.uid)
+                            iniciarEscuchaPremiumPadre(user.uid, routineViewModel)
+                        }
+                    } else {
+                        notificationsListener?.remove()
+                        parentPremiumListener?.remove()
+                    }
+                }
+            }
 
             val appLanguage by routineViewModel.appLanguage.collectAsState()
             LaunchedEffect(appLanguage) {
@@ -164,6 +188,26 @@ class MainActivity : AppCompatActivity() {
         if (currentLocales != appLocale) {
             AppCompatDelegate.setApplicationLocales(appLocale)
         }
+
+        // Guardar idioma para los widgets
+        try {
+            val widgetPrefs = getSharedPreferences("WIDGET_PREFS", Context.MODE_PRIVATE)
+            widgetPrefs.edit().putString("app_language", idiomaCode).apply()
+
+            val sessionPrefs = getSharedPreferences("SESSION_WIDGET_PREFS", Context.MODE_PRIVATE)
+            sessionPrefs.edit().putString("app_language", idiomaCode).apply()
+
+            // Notificar a los widgets para que se redibujen con el nuevo idioma
+            com.example.upad.widget.ParentRoutineWidgetProvider.notificarCambioDatos(this)
+            com.example.upad.widget.PremiumProgressWidgetProvider.notificarCambioDatos(this)
+
+            val intent = Intent(this, com.example.upad.widget.ChildSessionMonitorWidgetProvider::class.java).apply {
+                action = com.example.upad.widget.ParentRoutineWidgetProvider.ACTION_DATA_CHANGED
+            }
+            sendBroadcast(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun gestionarRestriccionesSistema(activarFijacionKiosco: Boolean) {
@@ -194,9 +238,125 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Notificaciones de Rutina"
+            val descriptionText = "Alertas sobre el estado de las rutinas del niño"
+            val importance = android.app.NotificationManager.IMPORTANCE_HIGH
+            val channel = android.app.NotificationChannel("upad_notifications_channel", name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager: android.app.NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    1001
+                )
+            }
+        }
+    }
+
+    private fun iniciarEscuchaNotificacionesPadre(userId: String) {
+        notificationsListener?.remove()
+        if (userId.isEmpty() || userId == "PADRE_TEST") return
+
+        notificationsListener = firestore.collection("users")
+            .document(userId)
+            .collection("notifications")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+                if (snapshot != null) {
+                    for (dc in snapshot.documentChanges) {
+                        if (dc.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
+                            val doc = dc.document
+                            val timestamp = doc.getTimestamp("timestamp")
+                            val tMillis = timestamp?.toDate()?.time ?: 0L
+                            if (tMillis > listenerStartTime - 5000) {
+                                val title = doc.getString("title") ?: "U-Pad Alerta"
+                                val description = doc.getString("description") ?: ""
+                                mostrarNotificacionLocal(title, description)
+                            }
+                        }
+                    }
+                }
+            }
+    }
+
+    private fun mostrarNotificacionLocal(title: String, description: String) {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            }
+        )
+
+        val builder = androidx.core.app.NotificationCompat.Builder(this, "upad_notifications_channel")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(description)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+
+        with(androidx.core.app.NotificationManagerCompat.from(this)) {
+            try {
+                val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        android.Manifest.permission.POST_NOTIFICATIONS
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                } else {
+                    true
+                }
+
+                if (hasPermission) {
+                    notify((System.currentTimeMillis() % 100000).toInt(), builder.build())
+                }
+            } catch (e: SecurityException) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun iniciarEscuchaPremiumPadre(userId: String, routineViewModel: RoutineViewModel) {
+        parentPremiumListener?.remove()
+        if (userId.isEmpty() || userId == "PADRE_TEST") return
+
+        parentPremiumListener = firestore.collection("users")
+            .document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+                if (snapshot != null && snapshot.exists()) {
+                    val isPremium = snapshot.getBoolean("isPremium") ?: false
+                    routineViewModel.setPremiumUser(isPremium)
+                }
+            }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         kioscoListener?.remove()
+        notificationsListener?.remove()
+        parentPremiumListener?.remove()
     }
 
     val ROUTE_HELP = "help_tutorial"
@@ -424,7 +584,8 @@ fun UPadNavigation(
                     PaymentViewScreen(
                         routineViewModel = routineViewModel,
                         onPaymentConfirmed = {
-                            routineViewModel.setSuscripcionManual(true)
+                            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                            routineViewModel.setSuscripcionManual(true, uid)
                             navController.navigate("parent_dashboard") {
                                 popUpTo("parent_dashboard") { inclusive = true }
                             }
@@ -718,7 +879,7 @@ fun UPadNavigation(
 
                 composable("child_routine_completed") {
                     RoutineCompletedScreen(
-                        nextActivityPreview = "¡Felicidades! Completaste todo",
+                        nextActivityPreview = "",
                         onFinishClick = {
                             navController.navigate("child_start") {
                                 popUpTo("child_start") { inclusive = true }
