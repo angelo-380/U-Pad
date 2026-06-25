@@ -157,10 +157,13 @@ class ParentRoutineWidgetProvider : AppWidgetProvider() {
         }
 
         private suspend fun obtenerTareasDeTurno(db: FirebaseFirestore, userId: String, turn: String): List<TaskItem> {
+            val diaDeHoy = RoutineProgressCalculator.obtenerDiaDeHoy()
             val document = db.collection("routines")
                 .document(userId)
                 .collection("turns")
                 .document(turn.uppercase())
+                .collection("days")
+                .document(diaDeHoy)
                 .get()
                 .await()
 

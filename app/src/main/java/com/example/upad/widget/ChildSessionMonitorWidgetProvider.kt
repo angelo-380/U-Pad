@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.provider.Settings
 import android.util.Log
 import android.widget.RemoteViews
 import com.example.upad.R
@@ -68,12 +69,23 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
             val cachedActividad = prefs.getString("ACTUAL_ACTIVIDAD", "Buscando actividad...") ?: "Buscando actividad..."
             val cachedMinutos = prefs.getInt("ACTUAL_MINUTOS", 0)
             val cachedEstado = prefs.getString("ACTUAL_ESTADO", "") ?: ""
+            val cachedCompletada = prefs.getBoolean("RUTINA_COMPLETADA", false)
 
             views.setTextViewText(R.id.tv_actividad_actual, cachedActividad)
-            if (cachedActividad == "Libre" || cachedActividad == "Buscando actividad...") {
-                views.setTextViewText(R.id.tv_tiempo_restante, "---")
+            if (cachedCompletada) {
+                val emocionTexto = when (cachedEstado.lowercase().trim()) {
+                    "feliz" -> "Feliz 😊"
+                    "neutral" -> "Neutral 😐"
+                    "triste" -> "Triste 🙁"
+                    else -> "Sin registrar"
+                }
+                views.setTextViewText(R.id.tv_tiempo_restante, "Rutina terminada. Se sintió: $emocionTexto")
             } else {
-                views.setTextViewText(R.id.tv_tiempo_restante, "Siguiente actividad en: $cachedMinutos min")
+                if (cachedActividad == "Libre" || cachedActividad == "Buscando actividad...") {
+                    views.setTextViewText(R.id.tv_tiempo_restante, "---")
+                } else {
+                    views.setTextViewText(R.id.tv_tiempo_restante, "Siguiente actividad en: $cachedMinutos min")
+                }
             }
 
             // Actualizar vista de los emojis con la caché
@@ -86,11 +98,17 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
 
             if (forzarActualizacion || (tiempoActual - ultimoFetch > 5 * 60 * 1000)) {
                 CoroutineScope(Dispatchers.IO).launch {
-                    val userId = FirebaseAuth.getInstance().currentUser?.uid
-                    if (userId != null) {
-                        try {
-                            val db = FirebaseFirestore.getInstance()
+                    try {
+                        val db = FirebaseFirestore.getInstance()
+                        val currentAuthId = FirebaseAuth.getInstance().currentUser?.uid
+                        val userId = if (!currentAuthId.isNullOrEmpty()) {
+                            currentAuthId
+                        } else {
+                            val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+                            db.collection("dispositivos_niños").document(deviceId).get().await().getString("padreId")
+                        }
 
+                        if (userId != null && userId.isNotEmpty()) {
                             // Determinar turno actual basado en la hora local
                             val horaActual = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
                             val turnoActual = when {
@@ -99,17 +117,22 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
                                 else -> "NOCHE"
                             }
 
+                            val diaDeHoy = RoutineProgressCalculator.obtenerDiaDeHoy()
                             val document = db.collection("routines")
                                 .document(userId)
                                 .collection("turns")
                                 .document(turnoActual)
+                                .collection("days")
+                                .document(diaDeHoy)
                                 .get()
                                 .await()
 
                             var actividadActualStr = "Libre"
                             var tiempoRestante = 0
                             var estadoEmocionalActual = ""
-                            val diaDeHoy = RoutineProgressCalculator.obtenerDiaDeHoy()
+                            var ultimaTareaApplicable: Map<*, *>? = null
+                            var tieneTareasHoy = false
+                            var todasCompletadas = true
                             val prefijoDia = RoutineProgressCalculator.obtenerPrefijoDia(diaDeHoy)
 
                             if (document.exists()) {
@@ -123,6 +146,9 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
                                         val aplicaHoy = dias.isEmpty() || dias.any { it.uppercase().trim().startsWith(prefijoDia.uppercase()) }
 
                                         if (aplicaHoy) {
+                                            tieneTareasHoy = true
+                                            ultimaTareaApplicable = taskItem
+
                                             val rawEstados = taskItem["estadosPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
                                             val estadosPorDia = rawEstados.entries.associate {
                                                 it.key.toString() to (it.value as? Boolean ?: false)
@@ -137,6 +163,7 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
                                                     estadoEmocionalActual = emocionDeEstaTarea
                                                 }
                                             } else {
+                                                todasCompletadas = false
                                                 actividadActualStr = taskItem["actividad"] as? String ?: "Actividad"
                                                 val durationNum = taskItem["duration"] as? Number ?: 15
                                                 tiempoRestante = durationNum.toInt()
@@ -147,29 +174,45 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
                                 }
                             }
 
+                            val rutinaCompletada = tieneTareasHoy && todasCompletadas
+                            if (rutinaCompletada && ultimaTareaApplicable != null) {
+                                actividadActualStr = ultimaTareaApplicable["actividad"] as? String ?: "Libre"
+                                tiempoRestante = 0
+                            }
+
                             // Guardar en caché
                             prefs.edit().apply {
                                 putString("ACTUAL_ACTIVIDAD", actividadActualStr)
                                 putInt("ACTUAL_MINUTOS", tiempoRestante)
                                 putString("ACTUAL_ESTADO", estadoEmocionalActual)
+                                putBoolean("RUTINA_COMPLETADA", rutinaCompletada)
                                 putLong("ULTIMO_FETCH_SESSION", tiempoActual)
                                 apply()
                             }
 
                             // Actualizar UI con datos reales
                             views.setTextViewText(R.id.tv_actividad_actual, actividadActualStr)
-                            if (actividadActualStr == "Libre") {
-                                views.setTextViewText(R.id.tv_tiempo_restante, "---")
+                            if (rutinaCompletada) {
+                                val emocionTexto = when (estadoEmocionalActual.lowercase().trim()) {
+                                    "feliz" -> "Feliz 😊"
+                                    "neutral" -> "Neutral 😐"
+                                    "triste" -> "Triste 🙁"
+                                    else -> "Sin registrar"
+                                }
+                                views.setTextViewText(R.id.tv_tiempo_restante, "Rutina terminada. Se sintió: $emocionTexto")
                             } else {
-                                views.setTextViewText(R.id.tv_tiempo_restante, "Siguiente actividad en: $tiempoRestante min")
+                                if (actividadActualStr == "Libre" || actividadActualStr == "Buscando actividad...") {
+                                    views.setTextViewText(R.id.tv_tiempo_restante, "---")
+                                } else {
+                                    views.setTextViewText(R.id.tv_tiempo_restante, "Siguiente actividad en: $tiempoRestante min")
+                                }
                             }
 
                             configurarVisualizacionDeEmocion(context, views, estadoEmocionalActual)
                             appWidgetManager.updateAppWidget(appWidgetId, views)
-
-                        } catch (e: Exception) {
-                            Log.e("ChildSessionMonitor", "Error cargando rutina actual", e)
                         }
+                    } catch (e: Exception) {
+                        Log.e("ChildSessionMonitor", "Error cargando rutina actual", e)
                     }
                 }
             }
