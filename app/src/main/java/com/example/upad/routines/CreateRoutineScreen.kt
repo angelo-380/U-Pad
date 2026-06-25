@@ -37,6 +37,8 @@ import java.util.Calendar
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import com.example.upad.R
 import coil.compose.AsyncImage
 import com.example.upad.components.UPADBackgroundWrapper
 
@@ -203,7 +205,7 @@ fun CreateRoutineScreen(
                             ),
                             border = BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.3f))
                         ) {
-                            Text("CANCELAR", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(stringResource(id = R.string.cancel), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
 
                         Button(
@@ -215,7 +217,7 @@ fun CreateRoutineScreen(
                                 contentColor = Color.White
                             )
                         ) {
-                            Text("GUARDAR", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                            Text(stringResource(id = R.string.save_action), fontWeight = FontWeight.Black, fontSize = 13.sp)
                         }
                     }
                 }
@@ -243,7 +245,7 @@ fun CreateRoutineScreen(
                             IconButton(onClick = onBackClick) {
                                 Icon(
                                     Icons.Default.ArrowBack,
-                                    contentDescription = "Atrás",
+                                    contentDescription = stringResource(id = R.string.back),
                                     tint = colorAcabadoPrincipal
                                 )
                             }
@@ -271,7 +273,7 @@ fun CreateRoutineScreen(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            "PREMIUM",
+                                            stringResource(id = R.string.premium_badge),
                                             color = colorAcabadoPrincipal,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Black
@@ -295,7 +297,7 @@ fun CreateRoutineScreen(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        "Basic",
+                                        stringResource(id = R.string.basic_badge),
                                         color = colorAcabadoPrincipal,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
@@ -306,8 +308,15 @@ fun CreateRoutineScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
+                        val localizedTurn = when (routineTurn.uppercase()) {
+                            "MAÑANA" -> stringResource(id = R.string.morning)
+                            "TARDE" -> stringResource(id = R.string.afternoon)
+                            "NOCHE" -> stringResource(id = R.string.evening)
+                            else -> routineTurn
+                        }
+
                         Text(
-                            text = "TURNO: ${routineTurn.uppercase()}",
+                            text = stringResource(id = R.string.turn_label, localizedTurn.uppercase()),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
                             color = colorTextoSecundario.copy(alpha = 0.8f),
@@ -315,7 +324,7 @@ fun CreateRoutineScreen(
                             letterSpacing = 1.sp
                         )
                         Text(
-                            text = "Editar Actividades",
+                            text = stringResource(id = R.string.edit_activities_title),
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Black,
                             color = colorTextoPrincipal,
@@ -332,7 +341,7 @@ fun CreateRoutineScreen(
                                 routineName = it
                                 viewModel.updateName(it)
                             },
-                            label = { Text("Nombre de la Rutina", color = colorTextoSecundario) },
+                            label = { Text(stringResource(id = R.string.routine_name_label), color = colorTextoSecundario) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -356,7 +365,7 @@ fun CreateRoutineScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "AÑADIR ACTIVIDAD",
+                                    text = stringResource(id = R.string.add_activity_section),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colorAcabadoPrincipal,
@@ -370,7 +379,7 @@ fun CreateRoutineScreen(
                                     onValueChange = { nombreActividad = it },
                                     placeholder = {
                                         Text(
-                                            "Ej: Estudiar inglés, comer fruta...",
+                                            stringResource(id = R.string.add_activity_placeholder),
                                             color = colorTextoSecundario.copy(alpha = 0.6f)
                                         )
                                     },
@@ -388,7 +397,7 @@ fun CreateRoutineScreen(
                                 Spacer(modifier = Modifier.height(14.dp))
 
                                 Text(
-                                    text = "Días programados:",
+                                    text = stringResource(id = R.string.scheduled_days_label),
                                     fontSize = 13.sp,
                                     color = colorTextoSecundario
                                 )
@@ -401,6 +410,15 @@ fun CreateRoutineScreen(
                                 ) {
                                     diasDeLaSemana.forEach { dia ->
                                         val estaSeleccionado = diasSeleccionados.contains(dia)
+                                        val dayResId = when (dia) {
+                                            "Lun" -> R.string.day_mon
+                                            "Mar" -> R.string.day_tue
+                                            "Mié" -> R.string.day_wed
+                                            "Jue" -> R.string.day_thu
+                                            "Vie" -> R.string.day_fri
+                                            "Sáb" -> R.string.day_sat
+                                            else -> R.string.day_sun
+                                        }
                                         Box(
                                             modifier = Modifier
                                                 .weight(1f)
@@ -417,7 +435,7 @@ fun CreateRoutineScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
-                                                text = dia,
+                                                text = stringResource(id = dayResId),
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (estaSeleccionado) Color.White
@@ -459,7 +477,7 @@ fun CreateRoutineScreen(
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("AÑADIR MANUAL ➕", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text(stringResource(id = R.string.add_manually_btn), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
 
                                 // ✅ BOTÓN IA CON GROQ
@@ -566,7 +584,7 @@ fun CreateRoutineScreen(
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text(
-                                                "PROCESANDO CON IA...",
+                                                stringResource(id = R.string.processing_ai),
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 13.sp
                                             )
@@ -578,7 +596,7 @@ fun CreateRoutineScreen(
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text(
-                                                "SUGERIR ACTIVIDAD IA ✨",
+                                                stringResource(id = R.string.suggest_activity_ai),
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 13.sp
                                             )
@@ -593,7 +611,7 @@ fun CreateRoutineScreen(
                 item {
                     Column(modifier = Modifier.padding(vertical = 8.dp)) {
                         Text(
-                            text = "VER AGENDA SEMANAL:",
+                            text = stringResource(id = R.string.view_weekly_schedule),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = colorTextoSecundario,
@@ -607,6 +625,17 @@ fun CreateRoutineScreen(
                             items(diasDeLaSemana) { dia ->
                                 val esElDiaActivo = (dia == diaFiltroSeleccionado)
                                 val esHoyDelSistema = (dia == diaActualDelReloj)
+
+                                val dayResId = when (dia) {
+                                    "Lun" -> R.string.day_mon
+                                    "Mar" -> R.string.day_tue
+                                    "Mié" -> R.string.day_wed
+                                    "Jue" -> R.string.day_thu
+                                    "Vie" -> R.string.day_fri
+                                    "Sáb" -> R.string.day_sat
+                                    else -> R.string.day_sun
+                                }
+                                val dayName = stringResource(id = dayResId)
 
                                 Box(
                                     modifier = Modifier
@@ -626,7 +655,7 @@ fun CreateRoutineScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (esHoyDelSistema) "$dia (Hoy)" else dia,
+                                        text = if (esHoyDelSistema) "$dayName ${stringResource(id = R.string.today_label_parenthesis)}" else dayName,
                                         fontSize = 13.sp,
                                         fontWeight = if (esElDiaActivo || esHoyDelSistema)
                                             FontWeight.Bold else FontWeight.Medium,
@@ -641,9 +670,23 @@ fun CreateRoutineScreen(
                 }
 
                 item {
+                    val activeDayResId = when (diaFiltroSeleccionado) {
+                        "Lun" -> R.string.day_mon
+                        "Mar" -> R.string.day_tue
+                        "Mié" -> R.string.day_wed
+                        "Jue" -> R.string.day_thu
+                        "Vie" -> R.string.day_fri
+                        "Sáb" -> R.string.day_sat
+                        else -> R.string.day_sun
+                    }
+                    val activeDayName = stringResource(id = activeDayResId)
+
                     Text(
-                        text = "ACTIVIDADES DEL ${diaFiltroSeleccionado.uppercase()} " +
-                                "(${pasosFiltradosPorDia.size})",
+                        text = stringResource(
+                            id = R.string.activities_of_day_count,
+                            activeDayName.uppercase(),
+                            pasosFiltradosPorDia.size
+                        ),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = colorTextoPrincipal,
@@ -655,8 +698,18 @@ fun CreateRoutineScreen(
 
                 if (pasosFiltradosPorDia.isEmpty()) {
                     item {
+                        val activeDayResId = when (diaFiltroSeleccionado) {
+                            "Lun" -> R.string.day_mon
+                            "Mar" -> R.string.day_tue
+                            "Mié" -> R.string.day_wed
+                            "Jue" -> R.string.day_thu
+                            "Vie" -> R.string.day_fri
+                            "Sáb" -> R.string.day_sat
+                            else -> R.string.day_sun
+                        }
+                        val activeDayName = stringResource(id = activeDayResId)
                         Text(
-                            text = "No hay actividades para el día $diaFiltroSeleccionado.",
+                            text = stringResource(id = R.string.no_activities_for_day, activeDayName),
                             fontSize = 14.sp,
                             color = colorTextoSecundario,
                             textAlign = TextAlign.Center,
@@ -717,7 +770,7 @@ fun AIOptionsDialog(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Recomendaciones IA",
+                    text = stringResource(id = R.string.ai_recommendations),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = colorTexto,
@@ -731,7 +784,7 @@ fun AIOptionsDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Selecciona la actividad que deseas añadir a la agenda de tu hijo:",
+                    text = stringResource(id = R.string.select_ai_activity_desc),
                     fontSize = 13.sp,
                     color = colorTextoSec,
                     textAlign = TextAlign.Center,
@@ -771,7 +824,7 @@ fun AIOptionsDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(
-                    "CANCELAR",
+                    stringResource(id = R.string.cancel),
                     color = colorTextoSec,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp
@@ -810,8 +863,14 @@ fun SendingRoutineDialog(
                     modifier = Modifier.size(54.dp)
                 )
                 Spacer(modifier = Modifier.height(24.dp))
+                val localizedTurn = when (routineTurn.uppercase()) {
+                    "MAÑANA" -> stringResource(id = R.string.morning)
+                    "TARDE" -> stringResource(id = R.string.afternoon)
+                    "NOCHE" -> stringResource(id = R.string.evening)
+                    else -> routineTurn
+                }
                 Text(
-                    text = "Guardando cambios en el turno\n$routineTurn...",
+                    text = stringResource(id = R.string.saving_routine_progress, localizedTurn),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = colorTexto,
@@ -878,11 +937,31 @@ fun PasoItemCard(
                     fontSize = 15.sp
                 )
                 Spacer(modifier = Modifier.height(4.dp))
+                val localizedDays = tarea.dias.map { dia ->
+                    val clean = dia.uppercase()
+                        .replace("Á", "A")
+                        .replace("É", "E")
+                        .replace("Í", "I")
+                        .replace("Ó", "O")
+                        .replace("Ú", "U")
+                        .trim()
+                    val dayResId = when (clean) {
+                        "LUN" -> R.string.day_mon
+                        "MAR" -> R.string.day_tue
+                        "MIE", "MIÉ" -> R.string.day_wed
+                        "JUE" -> R.string.day_thu
+                        "VIE" -> R.string.day_fri
+                        "SAB", "SÁB" -> R.string.day_sat
+                        "DOM" -> R.string.day_sun
+                        else -> R.string.day_mon
+                    }
+                    stringResource(id = dayResId)
+                }
                 Text(
                     text = if (tarea.dias.isNotEmpty())
-                        "Días: ${tarea.dias.joinToString(", ")}"
+                        stringResource(id = R.string.days_label_prefix, localizedDays.joinToString(", "))
                     else
-                        "Días: Todos los días",
+                        stringResource(id = R.string.days_all),
                     fontSize = 12.sp,
                     color = colorTextoSec
                 )
@@ -891,7 +970,7 @@ fun PasoItemCard(
             IconButton(onClick = onDeleteClick) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Eliminar",
+                    contentDescription = stringResource(id = R.string.delete),
                     tint = Color(0xFFEF5350)
                 )
             }

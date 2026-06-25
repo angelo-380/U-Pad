@@ -92,8 +92,16 @@ class ParentRoutineWidgetProvider : AppWidgetProvider() {
             val tardeProgreso = prefs.getInt("PROGRESO_TARDE", 0)
             val nocheProgreso = prefs.getInt("PROGRESO_NOCHE", 0)
 
+            val localizedContext = obtenerContextoLocalizado(context)
+
+            // Configurar textos estáticos dinámicamente
+            views.setTextViewText(R.id.widget_title, localizedContext.getString(R.string.todays_progress))
+            views.setTextViewText(R.id.legend_morning_txt, localizedContext.getString(R.string.legend_morning))
+            views.setTextViewText(R.id.legend_afternoon_txt, localizedContext.getString(R.string.legend_afternoon))
+            views.setTextViewText(R.id.legend_evening_txt, localizedContext.getString(R.string.legend_evening))
+
             // Renderizar inmediatamente usando datos cacheados
-            val bitmapInicial = generarGraficoBarras(mananaProgreso, tardeProgreso, nocheProgreso)
+            val bitmapInicial = generarGraficoBarras(localizedContext, mananaProgreso, tardeProgreso, nocheProgreso)
             views.setImageViewBitmap(R.id.chart_image, bitmapInicial)
             appWidgetManager.updateAppWidget(appWidgetId, views)
 
@@ -145,7 +153,7 @@ class ParentRoutineWidgetProvider : AppWidgetProvider() {
                             }
 
                             // Actualizar vista
-                            val bitmapActualizado = generarGraficoBarras(progManana, progTarde, progNoche)
+                            val bitmapActualizado = generarGraficoBarras(localizedContext, progManana, progTarde, progNoche)
                             views.setImageViewBitmap(R.id.chart_image, bitmapActualizado)
                             appWidgetManager.updateAppWidget(appWidgetId, views)
                         } catch (e: Exception) {
@@ -207,7 +215,7 @@ class ParentRoutineWidgetProvider : AppWidgetProvider() {
             return if (total > 0) (completadas * 100) / total else 0
         }
 
-        private fun generarGraficoBarras(progManana: Int, progTarde: Int, progNoche: Int): Bitmap {
+        private fun generarGraficoBarras(context: Context, progManana: Int, progTarde: Int, progNoche: Int): Bitmap {
             val width = 300
             val height = 150
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -225,7 +233,11 @@ class ParentRoutineWidgetProvider : AppWidgetProvider() {
 
             val progresos = listOf(progManana, progTarde, progNoche)
             val colores = listOf(colorManana, colorTarde, colorNoche)
-            val nombres = listOf("M", "T", "N")
+            val nombres = listOf(
+                context.getString(R.string.axis_morning),
+                context.getString(R.string.axis_afternoon),
+                context.getString(R.string.axis_evening)
+            )
 
             val barWidth = 32f
             val spacing = 50f
@@ -267,6 +279,16 @@ class ParentRoutineWidgetProvider : AppWidgetProvider() {
             }
 
             return bitmap
+        }
+
+        private fun obtenerContextoLocalizado(context: Context): Context {
+            val prefs = context.getSharedPreferences("WIDGET_PREFS", Context.MODE_PRIVATE)
+            val idiomaCode = prefs.getString("app_language", "es") ?: "es"
+            val locale = java.util.Locale.forLanguageTag(idiomaCode)
+            java.util.Locale.setDefault(locale)
+            val config = android.content.res.Configuration(context.resources.configuration)
+            config.setLocale(locale)
+            return context.createConfigurationContext(config)
         }
     }
 }

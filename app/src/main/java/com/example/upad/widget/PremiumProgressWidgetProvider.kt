@@ -95,6 +95,16 @@ class PremiumProgressWidgetProvider : AppWidgetProvider() {
             val porcentaje = prefs.getInt("PORCENTAJE_GLOBAL", 0)
             val esPremium = prefs.getBoolean("IS_PREMIUM", false)
 
+            val localizedContext = obtenerContextoLocalizado(context)
+
+            // Configurar textos estáticos dinámicamente según la localización
+            views.setTextViewText(R.id.widget_title, localizedContext.getString(R.string.todays_progress))
+            views.setTextViewText(R.id.txt_total_label, localizedContext.getString(R.string.total_tasks))
+            views.setTextViewText(R.id.txt_completed_label, localizedContext.getString(R.string.completed_tasks))
+            views.setTextViewText(R.id.txt_pending_label, localizedContext.getString(R.string.pending_tasks))
+            views.setTextViewText(R.id.txt_premium_locked_title, localizedContext.getString(R.string.todays_progress))
+            views.setTextViewText(R.id.txt_premium_locked_desc, localizedContext.getString(R.string.available_in_premium))
+
             // Renderizar la interfaz según estado premium
             if (esPremium) {
                 views.setViewVisibility(R.id.layout_premium_active, View.VISIBLE)
@@ -268,6 +278,16 @@ class PremiumProgressWidgetProvider : AppWidgetProvider() {
             canvas.drawText(text, size / 2f, size / 2f + textOffset, paint)
 
             return bitmap
+        }
+
+        private fun obtenerContextoLocalizado(context: Context): Context {
+            val prefs = context.getSharedPreferences("WIDGET_PREFS", Context.MODE_PRIVATE)
+            val idiomaCode = prefs.getString("app_language", "es") ?: "es"
+            val locale = java.util.Locale.forLanguageTag(idiomaCode)
+            java.util.Locale.setDefault(locale)
+            val config = android.content.res.Configuration(context.resources.configuration)
+            config.setLocale(locale)
+            return context.createConfigurationContext(config)
         }
     }
 }

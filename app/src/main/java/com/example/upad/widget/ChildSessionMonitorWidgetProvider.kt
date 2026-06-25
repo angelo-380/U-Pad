@@ -66,25 +66,38 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.btn_refresh_session, refreshPendingIntent)
 
             // Leer de caché rápida
+            val localizedContext = obtenerContextoLocalizado(context)
+
+            // Configurar textos estáticos dinámicamente
+            views.setTextViewText(R.id.tv_widget_title, localizedContext.getString(R.string.widget_progreso))
+            views.setTextViewText(R.id.tv_registro_emocional_title, localizedContext.getString(R.string.widget_registro_emocional))
+
+            // Leer de caché rápida
             val cachedActividad = prefs.getString("ACTUAL_ACTIVIDAD", "Buscando actividad...") ?: "Buscando actividad..."
             val cachedMinutos = prefs.getInt("ACTUAL_MINUTOS", 0)
             val cachedEstado = prefs.getString("ACTUAL_ESTADO", "") ?: ""
             val cachedCompletada = prefs.getBoolean("RUTINA_COMPLETADA", false)
 
-            views.setTextViewText(R.id.tv_actividad_actual, cachedActividad)
+            val cachedActividadLocalized = when (cachedActividad) {
+                "Buscando actividad..." -> localizedContext.getString(R.string.widget_buscando)
+                "Libre" -> localizedContext.getString(R.string.widget_free_time)
+                else -> cachedActividad
+            }
+            views.setTextViewText(R.id.tv_actividad_actual, cachedActividadLocalized)
+
             if (cachedCompletada) {
                 val emocionTexto = when (cachedEstado.lowercase().trim()) {
-                    "feliz" -> "Feliz 😊"
-                    "neutral" -> "Neutral 😐"
-                    "triste" -> "Triste 🙁"
-                    else -> "Sin registrar"
+                    "feliz" -> localizedContext.getString(R.string.widget_feeling_happy)
+                    "neutral" -> localizedContext.getString(R.string.widget_feeling_neutral)
+                    "triste" -> localizedContext.getString(R.string.widget_feeling_sad)
+                    else -> localizedContext.getString(R.string.widget_feeling_unregistered)
                 }
-                views.setTextViewText(R.id.tv_tiempo_restante, "Rutina terminada. Se sintió: $emocionTexto")
+                views.setTextViewText(R.id.tv_tiempo_restante, localizedContext.getString(R.string.widget_routine_completed_feedback, emocionTexto))
             } else {
                 if (cachedActividad == "Libre" || cachedActividad == "Buscando actividad...") {
                     views.setTextViewText(R.id.tv_tiempo_restante, "---")
                 } else {
-                    views.setTextViewText(R.id.tv_tiempo_restante, "Siguiente actividad en: $cachedMinutos min")
+                    views.setTextViewText(R.id.tv_tiempo_restante, localizedContext.getString(R.string.widget_next_activity_minutes, cachedMinutos))
                 }
             }
 
@@ -191,20 +204,25 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
                             }
 
                             // Actualizar UI con datos reales
-                            views.setTextViewText(R.id.tv_actividad_actual, actividadActualStr)
+                            val actividadActualStrLocalized = when (actividadActualStr) {
+                                "Buscando actividad..." -> localizedContext.getString(R.string.widget_buscando)
+                                "Libre" -> localizedContext.getString(R.string.widget_free_time)
+                                else -> actividadActualStr
+                            }
+                            views.setTextViewText(R.id.tv_actividad_actual, actividadActualStrLocalized)
                             if (rutinaCompletada) {
                                 val emocionTexto = when (estadoEmocionalActual.lowercase().trim()) {
-                                    "feliz" -> "Feliz 😊"
-                                    "neutral" -> "Neutral 😐"
-                                    "triste" -> "Triste 🙁"
-                                    else -> "Sin registrar"
+                                    "feliz" -> localizedContext.getString(R.string.widget_feeling_happy)
+                                    "neutral" -> localizedContext.getString(R.string.widget_feeling_neutral)
+                                    "triste" -> localizedContext.getString(R.string.widget_feeling_sad)
+                                    else -> localizedContext.getString(R.string.widget_feeling_unregistered)
                                 }
-                                views.setTextViewText(R.id.tv_tiempo_restante, "Rutina terminada. Se sintió: $emocionTexto")
+                                views.setTextViewText(R.id.tv_tiempo_restante, localizedContext.getString(R.string.widget_routine_completed_feedback, emocionTexto))
                             } else {
                                 if (actividadActualStr == "Libre" || actividadActualStr == "Buscando actividad...") {
                                     views.setTextViewText(R.id.tv_tiempo_restante, "---")
                                 } else {
-                                    views.setTextViewText(R.id.tv_tiempo_restante, "Siguiente actividad en: $tiempoRestante min")
+                                    views.setTextViewText(R.id.tv_tiempo_restante, localizedContext.getString(R.string.widget_next_activity_minutes, tiempoRestante))
                                 }
                             }
 
@@ -239,6 +257,16 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.btn_emoji_tranquilo, emptyIntent)
             views.setOnClickPendingIntent(R.id.btn_emoji_ansioso, emptyIntent)
             views.setOnClickPendingIntent(R.id.btn_emoji_crisis, emptyIntent)
+        }
+
+        private fun obtenerContextoLocalizado(context: Context): Context {
+            val prefs = context.getSharedPreferences("SESSION_WIDGET_PREFS", Context.MODE_PRIVATE)
+            val idiomaCode = prefs.getString("app_language", "es") ?: "es"
+            val locale = java.util.Locale.forLanguageTag(idiomaCode)
+            java.util.Locale.setDefault(locale)
+            val config = android.content.res.Configuration(context.resources.configuration)
+            config.setLocale(locale)
+            return context.createConfigurationContext(config)
         }
     }
 }

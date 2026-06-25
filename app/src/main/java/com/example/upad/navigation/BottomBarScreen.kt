@@ -12,50 +12,50 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class BottomBarScreen(
     val route: String,
-    val title: String,
+    val titleResId: Int,
     val icon: ImageVector
 ) {
     // 🏠 Comunes / Básicos
     object Dashboard : BottomBarScreen(
         route = "parent_dashboard",
-        title = "Inicio",
+        titleResId = com.example.upad.R.string.nav_home,
         icon = Icons.Default.Dashboard
     )
 
     object Analytics : BottomBarScreen(
         route = "analytics",
-        title = "Análisis",
+        titleResId = com.example.upad.R.string.nav_analytics,
         icon = Icons.Default.Analytics
     )
 
     object Profile : BottomBarScreen(
         route = "profile",
-        title = "Perfil",
+        titleResId = com.example.upad.R.string.nav_profile,
         icon = Icons.Default.Person
     )
 
     object Settings : BottomBarScreen(
         route = "settings",
-        title = "Ajustes",
+        titleResId = com.example.upad.R.string.nav_settings,
         icon = Icons.Default.Settings
     )
 
     // 🌟 Exclusivos Premium
     object Calendario : BottomBarScreen(
         route = "today_calendar",
-        title = "Calendario",
+        titleResId = com.example.upad.R.string.nav_calendar,
         icon = Icons.Default.CalendarMonth
     )
 
     object Emociones : BottomBarScreen(
         route = "emotions_track",
-        title = "Emociones",
+        titleResId = com.example.upad.R.string.nav_emotions,
         icon = Icons.Default.EmojiEmotions
     )
 
     object Notificaciones : BottomBarScreen(
         route = "notifications",
-        title = "Alertas",
+        titleResId = com.example.upad.R.string.nav_alerts,
         icon = Icons.Default.Notifications
     )
 }

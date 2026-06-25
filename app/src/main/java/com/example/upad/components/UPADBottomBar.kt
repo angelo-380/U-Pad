@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.compose.ui.res.stringResource
 import com.example.upad.navigation.BottomBarScreen
 import com.example.upad.viewmodel.RoutineViewModel
 
@@ -66,14 +67,14 @@ fun UPADBottomBar(
                 NavigationBarItem(
                     label = {
                         Text(
-                            text = screen.title,
+                            text = stringResource(id = screen.titleResId),
                             color = if (isSelected) colorTextoPrincipal else colorTextoSecundario
                         )
                     },
                     icon = {
                         Icon(
                             imageVector = screen.icon,
-                            contentDescription = screen.title
+                            contentDescription = stringResource(id = screen.titleResId)
                         )
                     },
                     selected = isSelected,

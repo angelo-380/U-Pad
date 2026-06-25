@@ -14,11 +14,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.upad.R
 
 /**
  * Contenido del ModalDrawer del Dashboard.
@@ -156,7 +158,7 @@ fun DashboardDrawerContent(
             },
             label = {
                 Text(
-                    text = if (esPremium) "Cambiar a Plan Básico" else "Cambiar a Plan Premium",
+                    text = if (esPremium) stringResource(R.string.change_basic_plan) else stringResource(R.string.change_premium_plan),
                     fontWeight = FontWeight.Bold,
                     color = colorTextoPrincipal,
                     fontFamily = fuentePremium
@@ -176,7 +178,7 @@ fun DashboardDrawerContent(
                 },
                 label = {
                     Text(
-                        text = "Ubicar a mi Hijo",
+                        text = stringResource(R.string.locate_child),
                         fontWeight = FontWeight.Bold,
                         color = colorTextoPrincipal,
                         fontFamily = fuentePremium
@@ -194,7 +196,7 @@ fun DashboardDrawerContent(
             icon = { Icon(Icons.Default.Analytics, contentDescription = null) },
             label = {
                 Text(
-                    "Análisis de Desempeño",
+                    text = stringResource(R.string.performance_analysis),
                     fontWeight = FontWeight.Medium,
                     color = colorTextoPrincipal,
                     fontFamily = fuentePremium
@@ -211,7 +213,7 @@ fun DashboardDrawerContent(
             icon = { Icon(Icons.Default.Lock, contentDescription = null) },
             label = {
                 Text(
-                    "Bloquear Dispositivo",
+                    text = stringResource(R.string.lock_device),
                     fontWeight = FontWeight.Medium,
                     color = colorTextoPrincipal,
                     fontFamily = fuentePremium
@@ -228,7 +230,7 @@ fun DashboardDrawerContent(
             icon = { Icon(Icons.Default.Link, contentDescription = null) },
             label = {
                 Text(
-                    "Conectar con el Niño (Código)",
+                    text = stringResource(R.string.connect_child),
                     fontWeight = FontWeight.Medium,
                     color = colorTextoPrincipal,
                     fontFamily = fuentePremium
@@ -245,7 +247,7 @@ fun DashboardDrawerContent(
             icon = { Icon(Icons.Default.Person, contentDescription = null) },
             label = {
                 Text(
-                    "Mi Perfil",
+                    text = stringResource(R.string.my_profile),
                     fontWeight = FontWeight.Medium,
                     color = colorTextoPrincipal,
                     fontFamily = fuentePremium
@@ -262,7 +264,7 @@ fun DashboardDrawerContent(
             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
             label = {
                 Text(
-                    "Ajustes",
+                    text = stringResource(R.string.settings_title),
                     fontWeight = FontWeight.Medium,
                     color = colorTextoPrincipal,
                     fontFamily = fuentePremium

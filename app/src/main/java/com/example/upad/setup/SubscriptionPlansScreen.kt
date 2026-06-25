@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import com.example.upad.R
 import com.example.upad.viewmodel.RoutineViewModel
 import com.google.firebase.auth.FirebaseAuth
@@ -65,7 +66,7 @@ fun SubscriptionPlansScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "¡ELIGE UN PLAN!",
+                text = stringResource(id = R.string.choose_a_plan),
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Black,
                 color = colorAzulTEA,
@@ -73,7 +74,7 @@ fun SubscriptionPlansScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Desbloquea herramientas increíbles para el desarrollo de Mateo.",
+                text = stringResource(id = R.string.choose_a_plan_desc),
                 fontSize = 16.sp,
                 color = Color.Gray,
                 textAlign = TextAlign.Center,
@@ -91,8 +92,8 @@ fun SubscriptionPlansScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             PlanCard(
-                title = "PLAN BÁSICO",
-                price = "Gratis",
+                title = stringResource(id = R.string.plan_basic_title),
+                price = stringResource(id = R.string.free_price),
                 imageRes = R.drawable.plan_basico,
                 isSelected = selectedPlan == "basico",
                 colorTheme = Color.Gray,
@@ -102,8 +103,8 @@ fun SubscriptionPlansScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             PlanCard(
-                title = "PLAN PREMIUM",
-                price = "$9.99 / mes",
+                title = stringResource(id = R.string.plan_premium_title),
+                price = stringResource(id = R.string.premium_price),
                 imageRes = R.drawable.plan_premium,
                 isSelected = selectedPlan == "premium",
                 colorTheme = colorAmarilloTEA,
@@ -136,7 +137,7 @@ fun SubscriptionPlansScreen(
                 shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = colorAzulTEA)
             ) {
-                Text("ESCOGER PLAN", fontSize = 20.sp, fontWeight = FontWeight.Black)
+                Text(stringResource(id = R.string.choose_plan_btn), fontSize = 20.sp, fontWeight = FontWeight.Black)
             }
 
             TextButton(
@@ -147,7 +148,7 @@ fun SubscriptionPlansScreen(
                 },
                 modifier = Modifier.padding(top = 8.dp)
             ) {
-                Text("En otro momento", color = Color.LightGray, fontWeight = FontWeight.Bold)
+                Text(stringResource(id = R.string.other_moment), color = Color.LightGray, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -203,9 +204,9 @@ fun PlanCard(
                     fontWeight = FontWeight.Bold,
                     color = colorTheme
                 )
-                if (title.contains("PREMIUM")) {
+                if (title.contains("PREMIUM") || title.contains(stringResource(id = R.string.plan_premium_title))) {
                     Text(
-                        text = "Pictogramas ilimitados",
+                        text = stringResource(id = R.string.unlimited_pictograms),
                         fontSize = 12.sp,
                         color = Color.Gray
                     )

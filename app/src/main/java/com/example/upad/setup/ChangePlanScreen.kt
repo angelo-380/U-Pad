@@ -18,6 +18,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.stringResource
+import com.example.upad.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -42,10 +44,10 @@ fun ChangePlanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Plan de Suscripción", fontWeight = FontWeight.Black, fontSize = 20.sp, color = colorTextoPrincipal) },
+                title = { Text(stringResource(id = R.string.plan_subscription_title), fontWeight = FontWeight.Black, fontSize = 20.sp, color = colorTextoPrincipal) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Atrás", tint = colorAcabadoPrincipal)
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(id = R.string.back), tint = colorAcabadoPrincipal)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colorSuperficieTarjetas)
@@ -73,7 +75,7 @@ fun ChangePlanScreen(
                     Icon(Icons.Default.Star, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "EL PLAN MÁS RECOMENDADO",
+                        text = stringResource(id = R.string.most_recommended_plan),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White,
@@ -94,7 +96,7 @@ fun ChangePlanScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "UPAD PREMIUM",
+                        text = stringResource(id = R.string.plan_premium_title),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Black,
                         color = colorAcabadoPrincipal,
@@ -113,7 +115,7 @@ fun ChangePlanScreen(
                             color = colorTextoPrincipal
                         )
                         Text(
-                            text = " / mes",
+                            text = stringResource(id = R.string.per_month),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = colorTextoSecundario,
@@ -123,7 +125,7 @@ fun ChangePlanScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Acompañamiento inteligente sin límites para tu hijo.",
+                        text = stringResource(id = R.string.premium_desc),
                         fontSize = 13.sp,
                         color = colorTextoSecundario,
                         textAlign = TextAlign.Center
@@ -134,12 +136,12 @@ fun ChangePlanScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     val beneficiosPremium = listOf(
-                        "Recomendaciones adaptativas con IA según el progreso diario.",
-                        "Conexión con Docente/Tutor para asignar tareas en clase.",
-                        "Sincronización con Google Calendar (citas y alarmas).",
-                        "Creación ilimitada de rutinas y secuencias pictográficas.",
-                        "Bloqueo avanzado de Hardware y entorno anti-distracciones.",
-                        "Sincronización instantánea en la nube (Padre - Hijo)."
+                        R.string.benefit_1,
+                        R.string.benefit_2,
+                        R.string.benefit_3,
+                        R.string.benefit_4,
+                        R.string.benefit_5,
+                        R.string.benefit_6
                     )
 
                     beneficiosPremium.forEach { beneficio ->
@@ -157,7 +159,7 @@ fun ChangePlanScreen(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = beneficio,
+                                text = stringResource(id = beneficio),
                                 fontSize = 14.sp,
                                 color = colorTextoPrincipal
                             )
@@ -176,7 +178,7 @@ fun ChangePlanScreen(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "Renovación mensual automática. Cancela en cualquier momento desde los ajustes de la app sin cargos adicionales.",
+                        text = stringResource(id = R.string.renewal_desc),
                         fontSize = 12.sp,
                         color = colorTextoSecundario,
                         lineHeight = 16.sp,
@@ -187,8 +189,8 @@ fun ChangePlanScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = "MÉTODOS DE PAGO SEGUROS",
+             Text(
+                text = stringResource(id = R.string.secure_payment_methods),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 color = colorTextoSecundario,
@@ -204,7 +206,7 @@ fun ChangePlanScreen(
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = colorAcabadoPrincipal)
             ) {
-                Text("PAGAR CON TARJETA DE CRÉDITO 💳", fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color.White)
+                Text(stringResource(id = R.string.pay_with_credit_card), fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color.White)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -216,7 +218,7 @@ fun ChangePlanScreen(
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colorTextoPrincipal),
                 border = androidx.compose.foundation.BorderStroke(1.5.dp, colorTextoSecundario.copy(alpha = 0.4f))
             ) {
-                Text("PAGAR CON GOOGLE  🚀", fontSize = 15.sp, fontWeight = FontWeight.Black)
+                Text(stringResource(id = R.string.pay_with_google), fontSize = 15.sp, fontWeight = FontWeight.Black)
             }
 
             Spacer(modifier = Modifier.height(32.dp))

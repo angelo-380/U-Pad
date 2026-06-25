@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.example.upad.R
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.upad.components.UPADBackgroundWrapper
@@ -118,7 +120,7 @@ fun ProfileScreen(
             containerColor = Color.Transparent,
             topBar = {
                 UpadTopAppBar(
-                    title = if (isEditingMode) "Editar Perfil" else "Mi Perfil",
+                    title = if (isEditingMode) stringResource(id = R.string.edit_profile_title) else stringResource(id = R.string.my_profile),
                     // FIX: pasamos imageUri reactivo — se actualiza cuando el usuario cambia foto
                     imageUri = imageUri,
                     colorFondo = colorFondoSolido,
@@ -165,7 +167,7 @@ fun ProfileScreen(
                                     .data(imageUri)
                                     .crossfade(true)
                                     .build(),
-                                contentDescription = "Foto de perfil",
+                                contentDescription = stringResource(id = R.string.nav_profile),
                                 modifier = Modifier.fillMaxSize().clip(CircleShape),
                                 contentScale = ContentScale.Crop
                             )
@@ -190,7 +192,7 @@ fun ProfileScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CameraAlt,
-                                contentDescription = "Cambiar foto",
+                                contentDescription = stringResource(id = R.string.change_photo),
                                 tint = if (isPremiumUser && !isDarkMode) Color(0xFF111111) else Color.White,
                                 modifier = Modifier.size(14.dp)
                             )
@@ -216,7 +218,7 @@ fun ProfileScreen(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
-                            text = "Active",
+                            text = stringResource(id = R.string.active),
                             color = Color(0xFF2E7D32),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -249,7 +251,7 @@ fun ProfileScreen(
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text("Nombre", fontSize = 11.sp, color = colorTextoSecundario, fontWeight = FontWeight.Medium)
+                                    Text(stringResource(id = R.string.name_label), fontSize = 11.sp, color = colorTextoSecundario, fontWeight = FontWeight.Medium)
                                     Text(nameInput, fontSize = 15.sp, color = colorTextoPrincipal, fontWeight = FontWeight.Bold)
                                 }
                             }
@@ -264,7 +266,7 @@ fun ProfileScreen(
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text("Correo Electrónico", fontSize = 11.sp, color = colorTextoSecundario, fontWeight = FontWeight.Medium)
+                                    Text(stringResource(id = R.string.email_label), fontSize = 11.sp, color = colorTextoSecundario, fontWeight = FontWeight.Medium)
                                     Text(emailInput, fontSize = 15.sp, color = colorTextoPrincipal, fontWeight = FontWeight.Bold)
                                 }
                             }
@@ -276,7 +278,7 @@ fun ProfileScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         MenuOptionRow(
                             icon = Icons.Default.Person,
-                            title = "Editar Perfil",
+                            title = stringResource(id = R.string.edit_profile_title),
                             colorSuperficie = colorSuperficieTarjetas,
                             isPremium = isPremiumUser,
                             colorPrincipal = colorAcabadoPrincipal,
@@ -290,7 +292,7 @@ fun ProfileScreen(
 
                     MenuOptionRow(
                         icon = Icons.Default.ExitToApp,
-                        title = "Cerrar Sesión",
+                        title = stringResource(id = R.string.logout),
                         colorSuperficie = Color(0xFFFEEBEE),
                         isPremium = false,
                         colorPrincipal = Color(0xFFEF5350),
@@ -312,7 +314,7 @@ fun ProfileScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Column {
-                            Text("Nombre de Usuario", fontSize = 13.sp, color = colorTextoSecundario, fontWeight = FontWeight.Bold)
+                            Text(stringResource(id = R.string.username_label), fontSize = 13.sp, color = colorTextoSecundario, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(6.dp))
                             TextField(
                                 value = nameInput,
@@ -333,7 +335,7 @@ fun ProfileScreen(
                         }
 
                         Column {
-                            Text("Correo Electrónico", fontSize = 13.sp, color = colorTextoSecundario, fontWeight = FontWeight.Bold)
+                            Text(stringResource(id = R.string.email_label), fontSize = 13.sp, color = colorTextoSecundario, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(6.dp))
                             TextField(
                                 value = emailInput,
@@ -368,7 +370,7 @@ fun ProfileScreen(
                             shape = RoundedCornerShape(24.dp),
                             border = BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.4f))
                         ) {
-                            Text("Cancelar", color = colorTextoPrincipal, fontWeight = FontWeight.Medium)
+                            Text(stringResource(id = R.string.cancel), color = colorTextoPrincipal, fontWeight = FontWeight.Medium)
                         }
 
                         Button(
@@ -395,7 +397,7 @@ fun ProfileScreen(
                             shape = RoundedCornerShape(24.dp)
                         ) {
                             Text(
-                                text = "Guardar",
+                                text = stringResource(id = R.string.save_action),
                                 color = if (isPremiumUser && !isDarkMode) Color(0xFF111111) else Color.White,
                                 fontWeight = FontWeight.Bold
                             )

@@ -30,6 +30,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.example.upad.R
 import coil.request.ImageRequest
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
@@ -125,7 +127,7 @@ fun AnalyticsScreen(
             containerColor = Color.Transparent,
             topBar = {
                 UpadTopAppBar(
-                    title = "Reporte Semanal",
+                    title = stringResource(id = R.string.weekly_report),
                     imageUri = imageUri,
                     colorFondo = colorFondoSolido,
                     colorIconos = colorTextoPrincipal,
@@ -158,17 +160,26 @@ fun AnalyticsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Efectividad de Hoy ($diaActualTexto)", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            val localizedDiaActual = when (diaActualTexto) {
+                                "LUN" -> stringResource(id = R.string.day_mon)
+                                "MAR" -> stringResource(id = R.string.day_tue)
+                                "MIÉ", "MIE" -> stringResource(id = R.string.day_wed)
+                                "JUE" -> stringResource(id = R.string.day_thu)
+                                "VIE" -> stringResource(id = R.string.day_fri)
+                                "SÁB", "SAB" -> stringResource(id = R.string.day_sat)
+                                else -> stringResource(id = R.string.day_sun)
+                            }
+                            Text(text = stringResource(id = R.string.effectiveness_today, localizedDiaActual), color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (totalTasksAsignadas > 0) "$generalPercentage% Logrado" else "Sin actividad",
+                                text = if (totalTasksAsignadas > 0) stringResource(id = R.string.achieved_percentage, generalPercentage) else stringResource(id = R.string.no_activity),
                                 color = Color.White,
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Black
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Progreso distribuido por los tres turnos diarios del niño.",
+                                text = stringResource(id = R.string.progress_desc),
                                 color = Color.White.copy(alpha = 0.9f),
                                 fontSize = 12.sp
                             )
@@ -200,14 +211,14 @@ fun AnalyticsScreen(
                         horizontalArrangement = Arrangement.SpaceAround,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        LegendItem(text = "Mañana", color = colorTurnoManana, icon = Icons.Default.LightMode, textColor = colorTextoPrincipal)
-                        LegendItem(text = "Tarde", color = colorTurnoTarde, icon = Icons.Default.WbTwilight, textColor = colorTextoPrincipal)
-                        LegendItem(text = "Noche", color = colorTurnoNoche, icon = Icons.Default.NightsStay, textColor = colorTextoPrincipal)
+                        LegendItem(text = stringResource(id = R.string.morning), color = colorTurnoManana, icon = Icons.Default.LightMode, textColor = colorTextoPrincipal)
+                        LegendItem(text = stringResource(id = R.string.afternoon), color = colorTurnoTarde, icon = Icons.Default.WbTwilight, textColor = colorTextoPrincipal)
+                        LegendItem(text = stringResource(id = R.string.evening), color = colorTurnoNoche, icon = Icons.Default.NightsStay, textColor = colorTextoPrincipal)
                     }
                 }
 
                 Text(
-                    text = "CUMPLIMIENTO SEMANAL POR TURNOS",
+                    text = stringResource(id = R.string.weekly_turn_compliance),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
                     color = colorTextoSecundario.copy(alpha = 0.7f),
@@ -247,8 +258,18 @@ fun AnalyticsScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.Top
                             ) {
+                                val dayResId = when (dia) {
+                                    "LUNES" -> R.string.monday
+                                    "MARTES" -> R.string.tuesday
+                                    "MIÉRCOLES", "MIERCOLES" -> R.string.wednesday
+                                    "JUEVES" -> R.string.thursday
+                                    "VIERNES" -> R.string.friday
+                                    "SÁBADO", "SABADO" -> R.string.saturday
+                                    else -> R.string.sunday
+                                }
+                                val dayText = stringResource(id = dayResId)
                                 Text(
-                                    text = dia.lowercase().replaceFirstChar { it.uppercase() },
+                                    text = dayText.lowercase().replaceFirstChar { it.uppercase() },
                                     modifier = Modifier
                                         .width(75.dp)
                                         .padding(top = 4.dp),
@@ -276,7 +297,7 @@ fun AnalyticsScreen(
 
                 // --- 🤖 SECCIÓN MÓDULO DE IA ---
                 Text(
-                    text = "RECOMENDACIONES COMPORTAMENTALES",
+                    text = stringResource(id = R.string.behavioral_recommendations),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
                     color = colorTextoSecundario.copy(alpha = 0.7f),
@@ -297,11 +318,11 @@ fun AnalyticsScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = colorTextoIAActiva, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("UPAD AI Mind Activo", fontWeight = FontWeight.Black, fontSize = 14.sp, color = colorTextoIAActiva)
+                                Text(stringResource(id = R.string.upad_ai_mind_active), fontWeight = FontWeight.Black, fontSize = 14.sp, color = colorTextoIAActiva)
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Detectamos que el bloque de la 'Tarde' los jueves disminuye su efectividad. Sugerimos adelantar 15 minutos el pictograma de descanso para prevenir sobrecarga sensorial.",
+                                text = stringResource(id = R.string.ai_analysis_recommendation_desc),
                                 fontSize = 13.sp,
                                 color = colorTextoPrincipal,
                                 lineHeight = 18.sp
@@ -326,14 +347,14 @@ fun AnalyticsScreen(
                                 Icon(Icons.Default.Lock, contentDescription = null, tint = colorTextoSecundario.copy(alpha = 0.4f), modifier = Modifier.size(22.dp))
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
-                                    text = "Desbloquea el asistente de IA para predecir crisis y optimizar descansos.",
+                                    text = stringResource(id = R.string.unlock_ai_desc),
                                     fontSize = 13.sp,
                                     color = colorTextoSecundario,
                                     lineHeight = 18.sp
                                 )
                             }
                             TextButton(onClick = onNavigateToPremium) {
-                                Text("PRO", color = colorAcabadoPrincipal, fontWeight = FontWeight.Black)
+                                Text(stringResource(id = R.string.pro_badge), color = colorAcabadoPrincipal, fontWeight = FontWeight.Black)
                             }
                         }
                     }

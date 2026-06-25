@@ -29,8 +29,8 @@ import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
-// Estructura de datos temporal para simular alertas reales de Firebase
 data class NotificationItem(
     val id: String = "",
     val title: String = "",
@@ -41,6 +41,22 @@ data class NotificationItem(
 
 enum class NotificationType {
     SUCCESS, WARNING, INFO
+}
+
+fun formatRelativeTime(timestamp: com.google.firebase.Timestamp?): String {
+    if (timestamp == null) return "Hace un momento"
+    val diff = System.currentTimeMillis() - timestamp.toDate().time
+    val seconds = diff / 1000
+    val minutes = seconds / 60
+    val hours = minutes / 60
+    val days = hours / 24
+
+    return when {
+        seconds < 60 -> "Hace un momento"
+        minutes < 60 -> "Hace $minutes min"
+        hours < 24 -> "Hace $hours h"
+        else -> "Hace $days d"
+    }
 }
 
 @Composable
@@ -84,38 +100,52 @@ fun NotificationsScreen(
         if (isDarkMode) Color(0xFF1E1E1E) else Color.White
     }
 
-    // Lista de notificaciones simulada basada en eventos comunes de U-Pad
-    val notificationsList = remember {
-        listOf(
-            NotificationItem(
-                id = "1",
-                title = "¡Rutina de la Mañana completada!",
-                description = "Tu hijo ha terminado con éxito todas las tareas asignadas para el turno de hoy.",
-                time = "Hace 10 min",
-                type = NotificationType.SUCCESS
-            ),
-            NotificationItem(
-                id = "2",
-                title = "Alerta de Bloqueo de Sistema",
-                description = "El modo Kiosco se activó correctamente en el dispositivo del menor.",
-                time = "Hace 1 hora",
-                type = NotificationType.INFO
-            ),
-            NotificationItem(
-                id = "3",
-                title = "Feedback Emocional Recibido",
-                description = "Se ha registrado una nueva emoción en la bitácora tras finalizar la tarea 'Lavarse los dientes'.",
-                time = "Hace 2 horas",
-                type = NotificationType.SUCCESS
-            ),
-            NotificationItem(
-                id = "4",
-                title = "Batería Baja en Dispositivo Vinculado",
-                description = "La tableta/teléfono de tu hijo se encuentra por debajo del 20%.",
-                time = "Ayer",
-                type = NotificationType.WARNING
-            )
-        )
+    val padreId = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+    val firestore = remember { FirebaseFirestore.getInstance() }
+    val notificationsList = remember { mutableStateListOf<NotificationItem>() }
+    var loadingNotifications by remember { mutableStateOf(true) }
+
+    LaunchedEffect(padreId) {
+        if (padreId.isNotEmpty()) {
+            firestore.collection("users")
+                .document(padreId)
+                .collection("notifications")
+                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .addSnapshotListener { snapshot, error ->
+                    loadingNotifications = false
+                    if (error != null) {
+                        error.printStackTrace()
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null) {
+                        notificationsList.clear()
+                        for (doc in snapshot.documents) {
+                            val title = doc.getString("title") ?: ""
+                            val description = doc.getString("description") ?: ""
+                            val typeStr = doc.getString("type") ?: "INFO"
+                            val type = try {
+                                NotificationType.valueOf(typeStr.uppercase())
+                            } catch (e: Exception) {
+                                NotificationType.INFO
+                            }
+                            val timestamp = doc.getTimestamp("timestamp")
+                            val relativeTime = formatRelativeTime(timestamp)
+
+                            notificationsList.add(
+                                NotificationItem(
+                                    id = doc.id,
+                                    title = title,
+                                    description = description,
+                                    time = relativeTime,
+                                    type = type
+                                )
+                            )
+                        }
+                    }
+                }
+        } else {
+            loadingNotifications = false
+        }
     }
 
     UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
@@ -150,7 +180,16 @@ fun NotificationsScreen(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
-                if (notificationsList.isEmpty()) {
+                if (loadingNotifications) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    }
+                } else if (notificationsList.isEmpty()) {
                     // Estado vacío si no hay alertas
                     Box(
                         modifier = Modifier

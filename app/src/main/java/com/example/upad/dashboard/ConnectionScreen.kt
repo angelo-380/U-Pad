@@ -25,6 +25,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.request.ImageRequest
+import androidx.compose.ui.res.stringResource
+import com.example.upad.R
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
@@ -121,7 +123,7 @@ fun ConnectionScreen(
             containerColor = Color.Transparent,
             topBar = {
                 UpadTopAppBar(
-                    title = "Dispositivos",
+                    title = stringResource(id = R.string.devices_title),
                     imageUri = imageUri,
                     colorFondo = colorFondoSolido,
                     colorIconos = colorTextoPrincipal,
@@ -181,7 +183,7 @@ fun ConnectionScreen(
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
-                                    text = "Gestión de Equipos",
+                                    text = stringResource(id = R.string.device_management_title),
                                     fontSize = 24.sp,
                                     fontWeight = FontWeight.Black,
                                     color = colorTextoPrincipal,
@@ -189,7 +191,7 @@ fun ConnectionScreen(
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "Vincula la tablet o celular de tu hijo para sincronizar sus rutinas visuales en tiempo real.",
+                                    text = stringResource(id = R.string.device_management_desc),
                                     fontSize = 14.sp,
                                     color = colorTextoSecundario,
                                     textAlign = TextAlign.Center,
@@ -209,7 +211,7 @@ fun ConnectionScreen(
                             ) {
                                 Column(modifier = Modifier.padding(20.dp)) {
                                     Text(
-                                        text = "CONECTAR NUEVO DISPOSITIVO",
+                                        text = stringResource(id = R.string.connect_new_device),
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = colorAcabadoPrincipal,
@@ -220,7 +222,7 @@ fun ConnectionScreen(
                                     OutlinedTextField(
                                         value = codigoIngresado,
                                         onValueChange = { if (it.length <= 6) codigoIngresado = it },
-                                        label = { Text("Código de 6 dígitos del niño") },
+                                        label = { Text(stringResource(id = R.string.child_code_label)) },
                                         singleLine = true,
                                         shape = RoundedCornerShape(14.dp),
                                         modifier = Modifier.fillMaxWidth(),
@@ -265,17 +267,17 @@ fun ConnectionScreen(
                                                                     onLinkSuccess()
                                                                 }
                                                                 .addOnFailureListener {
-                                                                    mensajeError = "Error de red en la vinculación."
+                                                                    mensajeError = context.getString(R.string.network_error_linking)
                                                                 }
                                                         } else {
-                                                            mensajeError = "El código no existe o ha expirado."
+                                                            mensajeError = context.getString(R.string.code_invalid_expired)
                                                         }
                                                     }
                                                     .addOnFailureListener {
-                                                        mensajeError = "Error de red en la vinculación."
+                                                        mensajeError = context.getString(R.string.network_error_linking)
                                                     }
                                             } else {
-                                                mensajeError = "Por favor, introduce los 6 números."
+                                                mensajeError = context.getString(R.string.enter_6_numbers)
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = colorVerdePremium),
@@ -284,7 +286,7 @@ fun ConnectionScreen(
                                             .fillMaxWidth()
                                             .height(50.dp)
                                     ) {
-                                        Text("VINCULAR DISPOSITIVO", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text(stringResource(id = R.string.link_device_btn), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
                                 }
                             }
@@ -293,7 +295,7 @@ fun ConnectionScreen(
                         // --- SECCIÓN 3: LISTA DE DISPOSITIVOS VINCULADOS ---
                         item {
                             Text(
-                                text = "EQUIPOS ENLAZADOS (${listaDispositivos.size})",
+                                text = stringResource(id = R.string.linked_devices_count, listaDispositivos.size),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
                                 color = colorTextoSecundario,
@@ -312,7 +314,7 @@ fun ConnectionScreen(
                                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                                 ) {
                                     Text(
-                                        text = "No hay dispositivos vinculados todavía.",
+                                        text = stringResource(id = R.string.no_devices_linked),
                                         fontSize = 14.sp,
                                         color = colorTextoSecundario,
                                         textAlign = TextAlign.Center,
@@ -354,8 +356,20 @@ fun ConnectionScreen(
                                         Spacer(modifier = Modifier.width(14.dp))
 
                                         Column(modifier = Modifier.weight(1f)) {
+                                            val displayModelo = if (dispositivo.modelo == "Dispositivo del Niño") {
+                                                when (java.util.Locale.getDefault().language) {
+                                                    "en" -> "Child's Device"
+                                                    "fr" -> "Appareil de l'enfant"
+                                                    "de" -> "Gerät des Kindes"
+                                                    "pt" -> "Dispositivo da Criança"
+                                                    "ru" -> "Устройство ребенка"
+                                                    else -> "Dispositivo del Niño"
+                                                }
+                                            } else {
+                                                dispositivo.modelo
+                                            }
                                             Text(
-                                                text = dispositivo.modelo,
+                                                text = displayModelo,
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 15.sp,
                                                 color = colorTextoPrincipal
@@ -375,7 +389,7 @@ fun ConnectionScreen(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Delete,
-                                                contentDescription = "Desvincular",
+                                                contentDescription = stringResource(id = R.string.unlink),
                                                 tint = colorRojoSuave
                                             )
                                         }

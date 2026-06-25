@@ -20,6 +20,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import coil.request.ImageRequest
+import androidx.compose.ui.res.stringResource
+import com.example.upad.R
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.utils.BiometricHelper
@@ -124,7 +126,7 @@ fun DeviceManagementScreen(
             containerColor = Color.Transparent,
             topBar = {
                 UpadTopAppBar(
-                    title = "Control de Bloqueo Remoto",
+                    title = stringResource(id = R.string.remote_lock_control_title),
                     imageUri = imageUri,
                     colorFondo = colorFondoSolido,
                     colorIconos = colorTextoPrincipal,
@@ -143,10 +145,10 @@ fun DeviceManagementScreen(
             } else if (listaDispositivos.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No tienes dispositivos vinculados.", color = colorTextoPrincipal, style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(id = R.string.no_linked_devices_for_lock), color = colorTextoPrincipal, style = MaterialTheme.typography.bodyLarge)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Ve al menú lateral de Conexión para enlazar el equipo del niño con el código de 6 dígitos.",
+                            text = stringResource(id = R.string.go_to_connection_menu_desc),
                             style = MaterialTheme.typography.bodySmall,
                             color = colorTextoSecundario,
                             modifier = Modifier.padding(horizontal = 32.dp),
@@ -173,10 +175,22 @@ fun DeviceManagementScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(dispositivo.nombreDispositivo, color = colorTextoPrincipal, style = MaterialTheme.typography.titleMedium)
+                                    val displayName = if (dispositivo.nombreDispositivo == "Tablet/Celular Niño") {
+                                        when (java.util.Locale.getDefault().language) {
+                                            "en" -> "Child's Tablet/Phone"
+                                            "fr" -> "Tablette/Téléphone de l'enfant"
+                                            "de" -> "Tablet/Handy des Kindes"
+                                            "pt" -> "Tablet/Celular da Criança"
+                                            "ru" -> "Планшет/телефон ребенка"
+                                            else -> "Tablet/Celular Niño"
+                                        }
+                                    } else {
+                                        dispositivo.nombreDispositivo
+                                    }
+                                    Text(displayName, color = colorTextoPrincipal, style = MaterialTheme.typography.titleMedium)
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = if (dispositivo.kioscoActivo) "Estado: BLOQUEADO remoto 🔒" else "Estado: LIBRE 🔓",
+                                        text = if (dispositivo.kioscoActivo) stringResource(id = R.string.status_blocked_remote) else stringResource(id = R.string.status_free),
                                         color = if (dispositivo.kioscoActivo) MaterialTheme.colorScheme.error else colorAcabadoPrincipal,
                                         style = MaterialTheme.typography.bodySmall
                                     )
@@ -199,11 +213,11 @@ fun DeviceManagementScreen(
                                     if (dispositivo.kioscoActivo) {
                                         Icon(Icons.Default.LockOpen, contentDescription = null)
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Liberar")
+                                        Text(stringResource(id = R.string.unlock_action))
                                     } else {
                                         Icon(Icons.Default.Lock, contentDescription = null)
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Bloquear")
+                                        Text(stringResource(id = R.string.lock_action))
                                     }
                                 }
                             }
