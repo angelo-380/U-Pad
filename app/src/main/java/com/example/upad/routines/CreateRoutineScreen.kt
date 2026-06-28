@@ -62,6 +62,10 @@ fun CreateRoutineScreen(
     // 🌟 NUEVA LÓGICA DE COLORES ADAPTATIVOS
     val isDarkMode by viewModel.isDarkMode.collectAsState()
 
+    val isAiLoading by viewModel.isAiLoading.collectAsState()
+    val aiSuggestions by viewModel.aiSuggestions.collectAsState()
+    val aiError by viewModel.aiError.collectAsState()
+
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
     val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
@@ -85,6 +89,28 @@ fun CreateRoutineScreen(
     var isLoadingAI by remember { mutableStateOf(false) }
     val sugerenciasIAByMenu = remember { mutableStateListOf<String>() }
     var mostrarPopUpSugerencias by remember { mutableStateOf(false) }
+
+    LaunchedEffect(aiSuggestions) {
+        if (aiSuggestions.isNotEmpty()) {
+            sugerenciasIAByMenu.clear()
+            sugerenciasIAByMenu.addAll(aiSuggestions)
+            mostrarPopUpSugerencias = true
+            viewModel.clearAiSuggestions()
+        }
+    }
+
+    if (aiError != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearAiError() },
+            title = { Text("Error de la IA") },
+            text = { Text(aiError ?: "") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearAiError() }) {
+                    Text("Aceptar")
+                }
+            }
+        )
+    }
 
     val diasDeLaSemana = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
     val diasSeleccionados = remember { mutableStateListOf<String>() }
@@ -479,104 +505,22 @@ fun CreateRoutineScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(stringResource(id = R.string.add_manually_btn), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
-
-                                // ✅ BOTÓN IA CON GROQ
                                 if (isPremiumUser) {
                                     Spacer(modifier = Modifier.height(10.dp))
 
                                     Button(
                                         onClick = {
-                                            scope.launch {
-                                                try {
-                                                    isLoadingAI = true
-                                                    sugerenciasIAByMenu.clear()
-
-                                                    val rawText = withContext(Dispatchers.IO) {
-                                                        val client = okhttp3.OkHttpClient()
-                                                        val body = """
-                            {
-                                "model": "llama-3.3-70b-versatile",
-                                "max_tokens": 200,
-                                "messages": [
-                                    {
-                                        "role": "system",
-                                        "content": "Eres un psicopedagogo experto en autismo (TEA). Sugiere exactamente 3 actividades, una por linea, empezando con numero y punto. Maximo 4 palabras cada una. Sin saludos ni explicaciones."
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": "Dame 3 actividades para la rutina de la $routineTurn de un nino con TEA."
-                                    }
-                                ]
-                            }
-                        """.trimIndent()
-
-                                                        val request = okhttp3.Request.Builder()
-                                                            .url("https://api.groq.com/openai/v1/chat/completions")
-                                                            .post(
-                                                                okhttp3.RequestBody.create(
-                                                                    "application/json".toMediaTypeOrNull(),
-                                                                    body
-                                                                )
-                                                            )
-                                                            .addHeader("Authorization", "Bearer ")
-                                                            .addHeader("Content-Type", "application/json")
-                                                            .build()
-
-                                                        val response = client.newCall(request).execute()
-                                                        val jsonResponse = response.body?.string() ?: ""
-
-                                                        android.util.Log.d("UPAD_IA", "Respuesta Groq: $jsonResponse")
-
-                                                        val jsonObj = org.json.JSONObject(jsonResponse)
-
-                                                        if (jsonObj.has("error")) {
-                                                            val errorMsg = jsonObj.getJSONObject("error").optString("message", "Error desconocido")
-                                                            android.util.Log.e("UPAD_IA", "Groq error: $errorMsg")
-                                                            return@withContext ""
-                                                        }
-
-                                                        jsonObj
-                                                            .getJSONArray("choices")
-                                                            .getJSONObject(0)
-                                                            .getJSONObject("message")
-                                                            .getString("content")
-                                                    }
-
-                                                    if (rawText.isNotEmpty()) {
-                                                        val lineas = rawText.split("\n")
-                                                        for (linea in lineas) {
-                                                            val limpia = linea
-                                                                .replace(Regex("^[0-9]+\\.\\s*"), "")
-                                                                .trim()
-                                                            if (limpia.isNotEmpty()) {
-                                                                sugerenciasIAByMenu.add(limpia)
-                                                            }
-                                                        }
-                                                    }
-
-                                                    if (sugerenciasIAByMenu.isNotEmpty()) {
-                                                        mostrarPopUpSugerencias = true
-                                                    }
-
-                                                } catch (e: Exception) {
-                                                    android.util.Log.e(
-                                                        "UPAD_IA",
-                                                        "Error Groq: ${e.message}"
-                                                    )
-                                                } finally {
-                                                    isLoadingAI = false
-                                                }
-                                            }
+                                            viewModel.obtenerSugerenciasIA(routineTurn)
                                         },
-                                        enabled = !isLoadingAI,
+                                        enabled = !isAiLoading,
                                         modifier = Modifier.fillMaxWidth().height(48.dp),
                                         shape = RoundedCornerShape(14.dp),
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color(0xFFC5A059),
+                                            containerColor = colorAcabadoPrincipal,
                                             contentColor = Color.White
                                         )
                                     ) {
-                                        if (isLoadingAI) {
+                                        if (isAiLoading) {
                                             CircularProgressIndicator(
                                                 modifier = Modifier.size(18.dp),
                                                 color = Color.White,

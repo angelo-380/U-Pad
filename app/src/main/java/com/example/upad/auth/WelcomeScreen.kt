@@ -37,7 +37,7 @@ fun iniciarSesionConGoogle(context: Context, coroutineScope: CoroutineScope, onR
     val credentialManager = CredentialManager.create(context)
     val auth = FirebaseAuth.getInstance()
 
-    val webClientId = "260484998013-vu5f1gv7ol1dr9kbiiqnjqo7l1q7r6pg.apps.googleusercontent.com"
+    val webClientId = com.example.upad.BuildConfig.GOOGLE_CLIENT_ID
 
     val googleIdOption = GetGoogleIdOption.Builder()
         .setFilterByAuthorizedAccounts(false)
@@ -87,7 +87,7 @@ fun WelcomeScreen(
     onNavigateToRegister: () -> Unit,
     onLoginExitoso: () -> Unit // Callback para cuando Google dice "OK"
 ) {
-    val colorAzulTEA = Color(0xFF4FC3F7)
+    val colorAzulTEA = MaterialTheme.colorScheme.primary
     val colorFondoBase = Color(0xFFF0F4F8)
 
     // Herramientas necesarias para lanzar la hoja flotante de Android
