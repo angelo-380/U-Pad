@@ -24,7 +24,7 @@ fun ForgotPasswordScreen(
     var email by remember { mutableStateOf("") }
     var showDialog by remember { mutableStateOf(false) }
 
-    val colorAzulTEA = Color(0xFF4FC3F7)
+    val colorAzulTEA = MaterialTheme.colorScheme.primary
     val colorFondoBase = Color(0xFFF0F4F8)
 
     Column(

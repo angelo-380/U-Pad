@@ -35,7 +35,7 @@ import com.google.firebase.auth.FirebaseAuth
 fun RoleSelectionScreen(
     onRoleSelected: (String) -> Unit
 ) {
-    val colorAzulTEA = Color(0xFF4FC3F7)
+    val colorAzulTEA = MaterialTheme.colorScheme.primary
     val colorFondoBase = Color(0xFFF0F4F8)
     val colorMoradoTutor = Color(0xFF9575CD)
 

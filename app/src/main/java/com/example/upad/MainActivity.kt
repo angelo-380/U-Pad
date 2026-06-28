@@ -28,6 +28,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.upad.ui.theme.UPadTheme
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -375,33 +376,6 @@ private fun obtenerDestinoInicial(context: android.content.Context): String {
     }
 }
 
-// ── TEMA ─────────────────────────────────────────────────────────────────────
-@Composable
-fun UPadTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    isPremium: Boolean = false,
-    content: @Composable () -> Unit
-) {
-    val colorAcabadoPrincipal = if (isPremium) Color(0xFFC5A059) else Color(0xFF4FC3F7)
-    val colorScheme = if (darkTheme) {
-        darkColorScheme(
-            primary = colorAcabadoPrincipal,
-            background = Color(0xFF121212),
-            surface = Color(0xFF1E1E1E),
-            onBackground = Color.White,
-            onSurface = Color(0xFFE0E0E0)
-        )
-    } else {
-        lightColorScheme(
-            primary = colorAcabadoPrincipal,
-            background = Color(0xFFF0F4F8),
-            surface = Color.White,
-            onBackground = Color(0xFF212121),
-            onSurface = Color(0xFF757575)
-        )
-    }
-    MaterialTheme(colorScheme = colorScheme, content = content)
-}
 
 // ── NAVEGACIÓN ───────────────────────────────────────────────────────────────
 @Composable

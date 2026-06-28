@@ -44,7 +44,7 @@ fun RegisterScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
-    val colorAzulTEA = Color(0xFF4FC3F7)
+    val colorAzulTEA = MaterialTheme.colorScheme.primary
     val colorFondoBase = Color(0xFFF0F4F8)
 
     Column(
