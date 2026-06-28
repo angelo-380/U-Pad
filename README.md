@@ -35,16 +35,20 @@ U-Pad integra de forma segura la API de **Groq AI** mediante el uso del modelo d
 
 *[Las siguientes capturas de pantalla serán insertadas en los correspondientes marcadores de posición]*
 
-* `[Captura de pantalla: Pantalla de Bienvenida de U-Pad (WelcomeScreen) y Selector de Roles]`
-* `[Captura de pantalla: Panel de Edición de Rutinas por Bloques Temporales (CreateRoutineScreen)]`
-* `[Captura de pantalla: Mapa de Seguimiento GPS Activo del Niño (HijoTrackingScreen)]`
+* `Pantalla de Bienvenida de U-Pad (WelcomeScreen) y Selector de Roles`
+<img width="723" height="1600" alt="WhatsApp Image 2026-06-28 at 9 01 38 AM (3)" src="https://github.com/user-attachments/assets/65c0da67-eafd-4e48-b7d1-ace815470a0e" />
+<img width="723" height="1600" alt="WhatsApp Image 2026-06-28 at 9 01 38 AM (2)" src="https://github.com/user-attachments/assets/3fa0f043-6db0-46b9-b2bf-2c9b6cc5b1f3" />
+<img width="720" height="1600" alt="WhatsApp Image 2026-06-28 at 9 01 53 AM" src="https://github.com/user-attachments/assets/01a805b9-005a-4c58-aab0-24ef8d4136c4" />
+
+* `Panel de Edición de Rutinas`
+<img width="723" height="1600" alt="WhatsApp Image 2026-06-28 at 9 01 38 AM (1)" src="https://github.com/user-attachments/assets/b71ea66b-c720-4832-9861-230a049573dc" />
+
+* `Mapa de Seguimiento GPS Activo del Niño`
+<img width="723" height="1600" alt="WhatsApp Image 2026-06-28 at 9 01 38 AM" src="https://github.com/user-attachments/assets/a317f8bc-bc8a-42cc-be33-b7cdf2ba1f85" />
 
 ---
 
-## 📂 Entregables del Proyecto
-
-* **Documento de Evidencias**: `[Documento de Evidencias de Curso en formato Word (.docx): UPad_evidencias.docx]`
-* **APK de Depuración**: `[Ejecutable Compilado APK de depuración: UPad_debug.apk]`
+## Video Demostrativo
 * **Demostración Práctica**: `[Video Demostrativo del funcionamiento y flujo de U-Pad: Insertar enlace del video aquí]`
 
 ---
