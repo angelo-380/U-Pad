@@ -43,7 +43,6 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.*
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
 fun HijoTrackingScreen(
@@ -93,9 +92,8 @@ fun HijoTrackingScreen(
     }
 
     val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
-    val firestore = remember { FirebaseFirestore.getInstance() }
 
-    val dispositivosConectados = remember { mutableStateListOf<DispositivoVinculado>() }
+    val dispositivosConectados by trackingViewModel.dispositivosConectados.collectAsState()
     var dispositivoSeleccionado by remember { mutableStateOf<DispositivoVinculado?>(null) }
 
     var miUbicacionReal by remember { mutableStateOf<LatLng?>(null) }
@@ -160,27 +158,13 @@ fun HijoTrackingScreen(
 
     // 📡 Lista de dispositivos vinculados en tiempo real
     LaunchedEffect(idPadre) {
-        if (idPadre.isNotEmpty()) {
-            firestore.collection("dispositivos_niños")
-                .whereEqualTo("padreId", idPadre)
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) return@addSnapshotListener
+        trackingViewModel.escucharDispositivosVinculados(idPadre)
+    }
 
-                    dispositivosConectados.clear()
-                    snapshot?.documents?.forEach { doc ->
-                        dispositivosConectados.add(
-                            DispositivoVinculado(
-                                id = doc.id,
-                                modelo = doc.getString("modelo") ?: "Dispositivo"
-                            )
-                        )
-                    }
-
-                    if (dispositivosConectados.isNotEmpty() && dispositivoSeleccionado == null) {
-                        val preferido = dispositivosConectados.find { it.id == hijoId }
-                        dispositivoSeleccionado = preferido ?: dispositivosConectados.first()
-                    }
-                }
+    LaunchedEffect(dispositivosConectados) {
+        if (dispositivosConectados.isNotEmpty() && dispositivoSeleccionado == null) {
+            val preferido = dispositivosConectados.find { it.id == hijoId }
+            dispositivoSeleccionado = preferido ?: dispositivosConectados.first()
         }
     }
 

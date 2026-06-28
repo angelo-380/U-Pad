@@ -5,11 +5,12 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.upad.data.FirebaseRepository
+import com.example.upad.data.ArasaacRepository
+import com.example.upad.data.AiRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import com.example.upad.data.ArasaacPictogram
-import com.example.upad.data.ArasaacService
 import com.example.upad.data.DataStoreManager
 import com.example.upad.data.LanguageDataStore
 import com.example.upad.widget.ChildSessionMonitorWidgetProvider
@@ -42,7 +43,9 @@ data class TaskItem(
 class RoutineViewModel(
     private val repository: FirebaseRepository,
     private val dataStoreManager: DataStoreManager,
-    private val languageDataStore: LanguageDataStore
+    private val languageDataStore: LanguageDataStore,
+    private val arasaacRepository: ArasaacRepository = ArasaacRepository(),
+    private val aiRepository: AiRepository = AiRepository()
 ) : ViewModel() {
 
     private var listenerManana: ListenerRegistration? = null
@@ -59,6 +62,40 @@ class RoutineViewModel(
     // 🌓 ESTADO DEL TEMA OSCURO PERSISTENTE COLECTADO LOCALMENTE
     private val _isDarkMode = MutableStateFlow(false)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
+
+    // 🤖 ESTADO DE LA IA DE GROQ
+    private val _aiSuggestions = MutableStateFlow<List<String>>(emptyList())
+    val aiSuggestions: StateFlow<List<String>> = _aiSuggestions.asStateFlow()
+
+    private val _isAiLoading = MutableStateFlow(false)
+    val isAiLoading: StateFlow<Boolean> = _isAiLoading.asStateFlow()
+
+    private val _aiError = MutableStateFlow<String?>(null)
+    val aiError: StateFlow<String?> = _aiError.asStateFlow()
+
+    fun clearAiError() {
+        _aiError.value = null
+    }
+
+    fun clearAiSuggestions() {
+        _aiSuggestions.value = emptyList()
+    }
+
+    fun obtenerSugerenciasIA(routineTurn: String) {
+        viewModelScope.launch {
+            _isAiLoading.value = true
+            _aiError.value = null
+            _aiSuggestions.value = emptyList()
+            try {
+                val results = aiRepository.getRoutineSuggestions(routineTurn)
+                _aiSuggestions.value = results
+            } catch (e: Exception) {
+                _aiError.value = e.localizedMessage ?: "Error al obtener sugerencias de la IA"
+            } finally {
+                _isAiLoading.value = false
+            }
+        }
+    }
 
     init {
         // Cargar estado premium
@@ -99,6 +136,154 @@ class RoutineViewModel(
         viewModelScope.launch {
             dataStoreManager.setPremiumStatus(value)
         }
+    }
+
+    // 👦 CHILD VINCULACION & LOCATION STATE & LOGIC
+    private val _codigoNiño = MutableStateFlow("------")
+    val codigoNiño: StateFlow<String> = _codigoNiño.asStateFlow()
+
+    private val _estaVinculado = MutableStateFlow(false)
+    val estaVinculado: StateFlow<Boolean> = _estaVinculado.asStateFlow()
+
+    private val _cargandoChild = MutableStateFlow(true)
+    val cargandoChild: StateFlow<Boolean> = _cargandoChild.asStateFlow()
+
+    private val _padreIdAsociado = MutableStateFlow("")
+    val padreIdAsociado: StateFlow<String> = _padreIdAsociado.asStateFlow()
+
+    private val _esPremiumPorPadre = MutableStateFlow(false)
+    val esPremiumPorPadre: StateFlow<Boolean> = _esPremiumPorPadre.asStateFlow()
+
+    private val _errorDesvinculacion = MutableStateFlow("")
+    val errorDesvinculacion: StateFlow<String> = _errorDesvinculacion.asStateFlow()
+
+    private val _cargandoDesvinculacion = MutableStateFlow(false)
+    val cargandoDesvinculacion: StateFlow<Boolean> = _cargandoDesvinculacion.asStateFlow()
+
+    private var devicesListener: ListenerRegistration? = null
+    private var premiumListener: ListenerRegistration? = null
+    private var pairingCodeListener: ListenerRegistration? = null
+    private var codigoGeneradoEnSesion = false
+
+    fun iniciarEscuchaDispositivoNiño(deviceId: String) {
+        devicesListener?.remove()
+        devicesListener = repository.listenToChildDevice(deviceId) { snapshot, error ->
+            if (error != null) {
+                _cargandoChild.value = false
+                return@listenToChildDevice
+            }
+
+            val padreId = snapshot?.getString("padreId") ?: ""
+
+            if (snapshot == null || !snapshot.exists() || padreId.isEmpty()) {
+                _estaVinculado.value = false
+                _padreIdAsociado.value = ""
+                premiumListener?.remove()
+
+                if (!codigoGeneradoEnSesion) {
+                    codigoGeneradoEnSesion = true
+                    val nuevoCodigo = (100000..999999).random().toString()
+                    _codigoNiño.value = nuevoCodigo
+
+                    repository.createPairingCode(nuevoCodigo, deviceId)
+
+                    pairingCodeListener?.remove()
+                    pairingCodeListener = repository.listenToPairingCode(nuevoCodigo) { codeSnapshot, codeError ->
+                        if (codeError != null) return@listenToPairingCode
+                        if (codeSnapshot != null && codeSnapshot.exists()) {
+                            val estado = codeSnapshot.getString("estado")
+                            val pId = codeSnapshot.getString("padreId")
+                            if (estado == "enlazado" && !pId.isNullOrEmpty()) {
+                                repository.linkDeviceToParent(deviceId, pId)
+                                repository.deletePairingCode(nuevoCodigo)
+                            }
+                        }
+                    }
+                } else if (_codigoNiño.value == "------") {
+                    codigoGeneradoEnSesion = false
+                }
+
+                _cargandoChild.value = false
+                return@listenToChildDevice
+            }
+
+            // Padre vinculado
+            _estaVinculado.value = true
+
+            if (_padreIdAsociado.value != padreId) {
+                _padreIdAsociado.value = padreId
+                cargarRutinasDesdeFirebase(padreId)
+                iniciarEscuchaIdioma(padreId)
+
+                premiumListener?.remove()
+                premiumListener = repository.listenToUserPremium(padreId) { isPremium ->
+                    _esPremiumPorPadre.value = isPremium
+                    _cargandoChild.value = false
+                }
+            }
+
+            pairingCodeListener?.remove()
+            pairingCodeListener = null
+        }
+    }
+
+    fun detenerEscuchaDispositivoNiño() {
+        devicesListener?.remove()
+        premiumListener?.remove()
+        pairingCodeListener?.remove()
+        detenerEscuchaIdioma()
+    }
+
+    fun updateLocation(deviceId: String, latitude: Double, longitude: Double) {
+        viewModelScope.launch {
+            try {
+                repository.updateDeviceLocation(deviceId, latitude, longitude)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun desvincularDispositivo(deviceId: String, email: String, pass: String, onSuccess: () -> Unit) {
+        if (email.isBlank() || pass.isBlank()) {
+            _errorDesvinculacion.value = "Por favor, completa todos los campos."
+            return
+        }
+        _cargandoDesvinculacion.value = true
+        _errorDesvinculacion.value = ""
+        val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+        auth.signInWithEmailAndPassword(email.trim(), pass.trim())
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val padreIdLogueado = task.result?.user?.uid
+                    if (padreIdLogueado == _padreIdAsociado.value) {
+                        viewModelScope.launch {
+                            try {
+                                repository.deleteDeviceDoc(deviceId)
+                                auth.signOut()
+                                _cargandoDesvinculacion.value = false
+                                _errorDesvinculacion.value = ""
+                                onSuccess()
+                            } catch (e: Exception) {
+                                auth.signOut()
+                                _cargandoDesvinculacion.value = false
+                                _errorDesvinculacion.value = e.localizedMessage ?: "Error al desvincular"
+                            }
+                        }
+                    } else {
+                        auth.signOut()
+                        _cargandoDesvinculacion.value = false
+                        _errorDesvinculacion.value = "El correo no coincide con el padre enlazado a este dispositivo."
+                    }
+                } else {
+                    _cargandoDesvinculacion.value = false
+                    _errorDesvinculacion.value = task.exception?.localizedMessage ?: "Credenciales incorrectas"
+                }
+            }
+    }
+
+    fun clearUnlinkError() {
+        _errorDesvinculacion.value = ""
     }
 
     fun setSuscripcionManual(activarPremium: Boolean, userId: String? = null) {
@@ -162,11 +347,7 @@ class RoutineViewModel(
     private val _searchResults = MutableStateFlow<List<ArasaacPictogram>>(emptyList())
     val searchResults: StateFlow<List<ArasaacPictogram>> = _searchResults
 
-    private val arasaacService = retrofit2.Retrofit.Builder()
-        .baseUrl("https://api.arasaac.org/")
-        .addConverterFactory(retrofit2.converter.gson.GsonConverterFactory.create())
-        .build()
-        .create(ArasaacService::class.java)
+
 
     fun updateName(newName: String) { _currentRoutineName.value = newName }
 
@@ -269,7 +450,7 @@ class RoutineViewModel(
         viewModelScope.launch {
             try {
                 if (query.length > 2) {
-                    _searchResults.value = arasaacService.searchPictograms(query)
+                    _searchResults.value = arasaacRepository.searchPictograms(query)
                 } else {
                     _searchResults.value = emptyList()
                 }
@@ -582,7 +763,7 @@ class RoutineViewModel(
                     .filter { it.length > 2 }
 
                 for (palabra in palabras) {
-                    val resultados = arasaacService.searchPictograms(palabra)
+                    val resultados = arasaacRepository.searchPictograms(palabra)
                     if (resultados.isNotEmpty()) {
                         val idImagen = resultados.first()._id
                         urlImagenFinal = "https://static.arasaac.org/pictograms/$idImagen/${idImagen}_300.png"

@@ -43,10 +43,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.upad.R
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.SetOptions
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import java.util.Calendar
 
@@ -62,15 +58,12 @@ fun ChildStartScreen(
 
     val deviceId = remember { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
 
-    var codigoNiño by remember { mutableStateOf("------") }
-    var estaVinculado by remember { mutableStateOf(false) }
-    var cargando by remember { mutableStateOf(true) }
-    var padreIdAsociado by remember { mutableStateOf("") }
-    var esPremiumPorPadre by remember { mutableStateOf(false) }
+    val codigoNiño by routineViewModel.codigoNiño.collectAsState()
+    val estaVinculado by routineViewModel.estaVinculado.collectAsState()
+    val cargando by routineViewModel.cargandoChild.collectAsState()
+    val padreIdAsociado by routineViewModel.padreIdAsociado.collectAsState()
+    val esPremiumPorPadre by routineViewModel.esPremiumPorPadre.collectAsState()
     var verTareasModoBasico by remember { mutableStateOf(false) }
-    var codigoGeneradoEnSesion by remember { mutableStateOf(false) }
-
-    val firestore = remember { FirebaseFirestore.getInstance() }
 
     var tienePermisoUbicacion by remember {
         mutableStateOf(
@@ -105,14 +98,7 @@ fun ChildStartScreen(
                     override fun onLocationResult(locationResult: LocationResult) {
                         val location = locationResult.lastLocation
                         if (location != null) {
-                            val data = mapOf(
-                                "latitud" to location.latitude,
-                                "longitud" to location.longitude,
-                                "ultimaActualizacion" to com.google.firebase.Timestamp.now()
-                            )
-                            firestore.collection("dispositivos_niños")
-                                .document(deviceId)
-                                .set(data, SetOptions.merge())
+                            routineViewModel.updateLocation(deviceId, location.latitude, location.longitude)
                         }
                     }
                 }
@@ -137,99 +123,19 @@ fun ChildStartScreen(
     var mostrarDialogoDesvincular by remember { mutableStateOf(false) }
     var emailPadre by remember { mutableStateOf("") }
     var passwordPadre by remember { mutableStateOf("") }
-    var cargandoDesvinculacion by remember { mutableStateOf(false) }
-    var errorDesvinculacion by remember { mutableStateOf("") }
+    val cargandoDesvinculacion by routineViewModel.cargandoDesvinculacion.collectAsState()
+    val errorDesvinculacion by routineViewModel.errorDesvinculacion.collectAsState()
 
     DisposableEffect(deviceId) {
-        var devicesListener: ListenerRegistration? = null
-        var premiumListener: ListenerRegistration? = null
-        var pairingCodeListener: ListenerRegistration? = null
-
-        devicesListener = firestore.collection("dispositivos_niños").document(deviceId)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    cargando = false
-                    return@addSnapshotListener
-                }
-
-                val padreId = snapshot?.getString("padreId") ?: ""
-
-                if (snapshot == null || !snapshot.exists() || padreId.isEmpty()) {
-                    estaVinculado = false
-                    padreIdAsociado = ""
-                    premiumListener?.remove()
-
-                    if (!codigoGeneradoEnSesion) {
-                        codigoGeneradoEnSesion = true
-                        val nuevoCodigo = (100000..999999).random().toString()
-                        codigoNiño = nuevoCodigo
-
-                        firestore.collection("codigos_vinculacion").document(nuevoCodigo)
-                            .set(mapOf(
-                                "deviceId" to deviceId,
-                                "estado" to "esperando",
-                                "padreId" to ""
-                            ))
-
-                        pairingCodeListener?.remove()
-                        pairingCodeListener = firestore.collection("codigos_vinculacion")
-                            .document(nuevoCodigo)
-                            .addSnapshotListener { codeSnapshot, codeError ->
-                                if (codeError != null) return@addSnapshotListener
-                                if (codeSnapshot != null && codeSnapshot.exists()) {
-                                    val estado = codeSnapshot.getString("estado")
-                                    val pId = codeSnapshot.getString("padreId")
-                                    if (estado == "enlazado" && !pId.isNullOrEmpty()) {
-                                        firestore.collection("dispositivos_niños").document(deviceId)
-                                            .set(mapOf(
-                                                "padreId" to pId,
-                                                "modelo" to android.os.Build.MODEL
-                                            ), SetOptions.merge())
-                                        firestore.collection("codigos_vinculacion")
-                                            .document(nuevoCodigo).delete()
-                                    }
-                                }
-                            }
-                    } else if (codigoNiño == "------") {
-                        codigoGeneradoEnSesion = false
-                    }
-
-                    cargando = false
-                    return@addSnapshotListener
-                }
-
-                // Padre vinculado
-                estaVinculado = true
-
-                if (padreIdAsociado != padreId) {
-                    padreIdAsociado = padreId
-                    onPadreIdObtenido(padreId)  // FIX: propagar el padreId real al NavHost
-                    routineViewModel.cargarRutinasDesdeFirebase(padreId)
-                    routineViewModel.iniciarEscuchaIdioma(padreId)
-
-                    premiumListener?.remove()
-                    premiumListener = firestore.collection("users").document(padreId)
-                        .addSnapshotListener { userSnapshot, userError ->
-                            if (userError != null) {
-                                cargando = false
-                                return@addSnapshotListener
-                            }
-                            if (userSnapshot != null && userSnapshot.exists()) {
-                                esPremiumPorPadre = userSnapshot.getBoolean("isPremium") ?: false
-                            }
-                            cargando = false
-                        }
-                }
-
-                pairingCodeListener?.remove()
-                pairingCodeListener = null
-            }
-
+        routineViewModel.iniciarEscuchaDispositivoNiño(deviceId)
         onDispose {
-            devicesListener?.remove()
-            premiumListener?.remove()
-            pairingCodeListener?.remove()
-            routineViewModel.detenerEscuchaIdioma()
+            routineViewModel.detenerEscuchaDispositivoNiño()
+        }
+    }
+
+    LaunchedEffect(padreIdAsociado) {
+        if (padreIdAsociado.isNotEmpty()) {
+            onPadreIdObtenido(padreIdAsociado)
         }
     }
 
@@ -448,7 +354,7 @@ fun ChildStartScreen(
                     mostrarDialogoDesvincular = false
                     emailPadre = ""
                     passwordPadre = ""
-                    errorDesvinculacion = ""
+                    routineViewModel.clearUnlinkError()
                 }
             },
             title = {
@@ -496,45 +402,16 @@ fun ChildStartScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (emailPadre.isNotBlank() && passwordPadre.isNotBlank()) {
-                            cargandoDesvinculacion = true
-                            errorDesvinculacion = ""
-                            val auth = FirebaseAuth.getInstance()
-                            
-                            auth.signInWithEmailAndPassword(emailPadre.trim(), passwordPadre.trim())
-                                .addOnCompleteListener { task ->
-                                    if (task.isSuccessful) {
-                                        val padreIdLogueado = task.result?.user?.uid
-                                        if (padreIdLogueado == padreIdAsociado) {
-                                            firestore.collection("dispositivos_niños")
-                                                .document(deviceId)
-                                                .delete()
-                                                .addOnSuccessListener {
-                                                    auth.signOut()
-                                                    cargandoDesvinculacion = false
-                                                    mostrarDialogoDesvincular = false
-                                                    emailPadre = ""
-                                                    passwordPadre = ""
-                                                    errorDesvinculacion = ""
-                                                }
-                                                .addOnFailureListener { e ->
-                                                    auth.signOut()
-                                                    cargandoDesvinculacion = false
-                                                    errorDesvinculacion = context.getString(R.string.error_unlink_failed, e.localizedMessage ?: "")
-                                                }
-                                        } else {
-                                            auth.signOut()
-                                            cargandoDesvinculacion = false
-                                            errorDesvinculacion = context.getString(R.string.error_email_mismatch)
-                                        }
-                                    } else {
-                                        cargandoDesvinculacion = false
-                                        errorDesvinculacion = task.exception?.localizedMessage ?: context.getString(R.string.error_incorrect_credentials)
-                                    }
-                                }
-                        } else {
-                            errorDesvinculacion = context.getString(R.string.error_fill_all_fields)
-                        }
+                        routineViewModel.desvincularDispositivo(
+                            deviceId = deviceId,
+                            email = emailPadre,
+                            pass = passwordPadre,
+                            onSuccess = {
+                                mostrarDialogoDesvincular = false
+                                emailPadre = ""
+                                passwordPadre = ""
+                            }
+                        )
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
                     enabled = !cargandoDesvinculacion
@@ -552,7 +429,7 @@ fun ChildStartScreen(
                         mostrarDialogoDesvincular = false
                         emailPadre = ""
                         passwordPadre = ""
-                        errorDesvinculacion = ""
+                        routineViewModel.clearUnlinkError()
                     },
                     enabled = !cargandoDesvinculacion
                 ) {

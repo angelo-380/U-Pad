@@ -293,4 +293,66 @@ class FirebaseRepository {
         }
         return tareas
     }
+
+    fun listenToChildDevice(deviceId: String, onSnapshot: (com.google.firebase.firestore.DocumentSnapshot?, com.google.firebase.firestore.FirebaseFirestoreException?) -> Unit): ListenerRegistration {
+        return firestore.collection("dispositivos_niños")
+            .document(deviceId)
+            .addSnapshotListener(onSnapshot)
+    }
+
+    fun createPairingCode(code: String, deviceId: String) {
+        firestore.collection("codigos_vinculacion").document(code)
+            .set(mapOf(
+                "deviceId" to deviceId,
+                "estado" to "esperando",
+                "padreId" to ""
+            ))
+    }
+
+    fun listenToPairingCode(code: String, onSnapshot: (com.google.firebase.firestore.DocumentSnapshot?, com.google.firebase.firestore.FirebaseFirestoreException?) -> Unit): ListenerRegistration {
+        return firestore.collection("codigos_vinculacion")
+            .document(code)
+            .addSnapshotListener(onSnapshot)
+    }
+
+    fun linkDeviceToParent(deviceId: String, parentId: String) {
+        firestore.collection("dispositivos_niños").document(deviceId)
+            .set(mapOf(
+                "padreId" to parentId,
+                "modelo" to android.os.Build.MODEL
+            ), SetOptions.merge())
+    }
+
+    fun deletePairingCode(code: String) {
+        firestore.collection("codigos_vinculacion")
+            .document(code)
+            .delete()
+    }
+
+    fun listenToUserPremium(parentId: String, onPremiumChanged: (Boolean) -> Unit): ListenerRegistration {
+        return firestore.collection("users").document(parentId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+                val isPremium = snapshot?.getBoolean("isPremium") ?: false
+                onPremiumChanged(isPremium)
+            }
+    }
+
+    suspend fun updateDeviceLocation(deviceId: String, latitude: Double, longitude: Double) {
+        firestore.collection("dispositivos_niños")
+            .document(deviceId)
+            .set(mapOf(
+                "latitud" to latitude,
+                "longitud" to longitude,
+                "ultimaActualizacion" to com.google.firebase.Timestamp.now()
+            ), SetOptions.merge())
+            .await()
+    }
+
+    suspend fun deleteDeviceDoc(deviceId: String) {
+        firestore.collection("dispositivos_niños")
+            .document(deviceId)
+            .delete()
+            .await()
+    }
 }
