@@ -23,6 +23,7 @@ android {
     }
     val groqApiKey = localProperties.getProperty("GROQ_API_KEY") ?: ""
     val googleClientId = localProperties.getProperty("GOOGLE_CLIENT_ID") ?: ""
+    val mapsApiKey = localProperties.getProperty("MAPS_API_KEY") ?: ""
 
     defaultConfig {
         applicationId = "com.example.upad"
@@ -35,6 +36,7 @@ android {
 
         buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
         buildConfigField("String", "GOOGLE_CLIENT_ID", "\"$googleClientId\"")
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {
