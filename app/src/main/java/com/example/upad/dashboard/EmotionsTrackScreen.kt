@@ -3,6 +3,7 @@ package com.example.upad.dashboard
 import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,10 +20,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.request.ImageRequest
+import coil.compose.AsyncImage
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
+import com.example.upad.viewmodel.TaskItem
+import com.example.upad.utils.RoutineProgressCalculator
 import com.google.firebase.auth.FirebaseAuth
 
 @Composable
@@ -35,7 +38,6 @@ fun EmotionsTrackScreen(
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
 
-    // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
     val context = LocalContext.current
     val currentUser = remember { FirebaseAuth.getInstance().currentUser }
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
@@ -67,6 +69,12 @@ fun EmotionsTrackScreen(
         if (isDarkMode) Color(0xFF1E1E1E) else Color.White
     }
 
+    val tasksManana by routineViewModel.tasksManana.collectAsState()
+    val tasksTarde by routineViewModel.tasksTarde.collectAsState()
+    val tasksNoche by routineViewModel.tasksNoche.collectAsState()
+
+    val diaDeHoy = remember { RoutineProgressCalculator.obtenerDiaDeHoy() }
+
     UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
         Scaffold(
             containerColor = Color.Transparent,
@@ -90,48 +98,59 @@ fun EmotionsTrackScreen(
                     .padding(paddingValues)
                     .verticalScroll(rememberScrollState())
                     .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
-                    text = "Observa el estado anímico reportado por tu hijo al completar sus rutinas diarias para entender su progreso.",
+                    text = "Monitorea los sentimientos expresados por tu hijo al finalizar cada actividad del día ($diaDeHoy).",
                     fontSize = 14.sp,
                     color = colorTextoSecundario
                 )
 
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    color = colorSuperficieTarjetas,
-                    border = BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.1f))
-                ) {
-                    Column(
+                if (tasksManana.isEmpty() && tasksTarde.isEmpty() && tasksNoche.isEmpty()) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                            .fillMaxWidth()
+                            .padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.EmojiEmotions,
-                            contentDescription = null,
-                            tint = colorAcabadoPrincipal,
-                            modifier = Modifier.size(52.dp)
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
                         Text(
-                            text = "Gráficas de Estado de Ánimo",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = colorTextoPrincipal
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Aquí aparecerán métricas semanales detalladas sobre las emociones asociadas a cada pictograma.",
+                            text = "No hay actividades registradas para el día de hoy.",
                             color = colorTextoSecundario,
-                            fontSize = 13.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                } else {
+                    if (tasksManana.isNotEmpty()) {
+                        TurnEmotionsBlock(
+                            title = "🌅 Mañana",
+                            tasks = tasksManana,
+                            diaDeHoy = diaDeHoy,
+                            colorSuperficie = colorSuperficieTarjetas,
+                            colorTexto = colorTextoPrincipal,
+                            colorSubtexto = colorTextoSecundario
+                        )
+                    }
+
+                    if (tasksTarde.isNotEmpty()) {
+                        TurnEmotionsBlock(
+                            title = "☀️ Tarde",
+                            tasks = tasksTarde,
+                            diaDeHoy = diaDeHoy,
+                            colorSuperficie = colorSuperficieTarjetas,
+                            colorTexto = colorTextoPrincipal,
+                            colorSubtexto = colorTextoSecundario
+                        )
+                    }
+
+                    if (tasksNoche.isNotEmpty()) {
+                        TurnEmotionsBlock(
+                            title = "🌙 Noche",
+                            tasks = tasksNoche,
+                            diaDeHoy = diaDeHoy,
+                            colorSuperficie = colorSuperficieTarjetas,
+                            colorTexto = colorTextoPrincipal,
+                            colorSubtexto = colorTextoSecundario
                         )
                     }
                 }
@@ -139,3 +158,107 @@ fun EmotionsTrackScreen(
         }
     }
 }
+
+@Composable
+fun TurnEmotionsBlock(
+    title: String,
+    tasks: List<TaskItem>,
+    diaDeHoy: String,
+    colorSuperficie: Color,
+    colorTexto: Color,
+    colorSubtexto: Color
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = title,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = colorTexto
+        )
+        tasks.forEach { task ->
+            val emocion = task.obtenerEmocionHoy(diaDeHoy)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = colorSuperficie),
+                border = BorderStroke(1.dp, colorSubtexto.copy(alpha = 0.1f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .background(Color.White, RoundedCornerShape(12.dp))
+                            .padding(4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (task.imageUrl.isNotEmpty()) {
+                            AsyncImage(
+                                model = task.imageUrl,
+                                contentDescription = task.actividad,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Text(text = "⭐", fontSize = 24.sp)
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = task.actividad,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = colorTexto
+                        )
+                        Text(
+                            text = "${task.duration} minutos",
+                            fontSize = 12.sp,
+                            color = colorSubtexto
+                        )
+                    }
+
+                    EmotionBadge(emocion = emocion)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EmotionBadge(emocion: String) {
+    val config = when (emocion.lowercase().trim()) {
+        "feliz" -> BadgeConfig("😊 Feliz", Color(0xFFE8F5E9), Color(0xFF2E7D32))
+        "neutral" -> BadgeConfig("😐 Neutral", Color(0xFFFFFDE7), Color(0xFFF57F17))
+        "triste" -> BadgeConfig("🙁 Triste", Color(0xFFFFEBEE), Color(0xFFC62828))
+        else -> BadgeConfig("⏳ Sin registrar", Color(0xFFECEFF1), Color(0xFF455A64))
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = config.bgColor,
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = config.text,
+            color = config.textColor,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        )
+    }
+}
+
+data class BadgeConfig(
+    val text: String,
+    val bgColor: Color,
+    val textColor: Color
+)
