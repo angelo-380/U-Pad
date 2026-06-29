@@ -3,12 +3,15 @@ package com.example.upad.dashboard
 import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,10 +22,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.request.ImageRequest
+import coil.compose.AsyncImage
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
+import com.example.upad.viewmodel.TaskItem
+import com.example.upad.utils.RoutineProgressCalculator
 import com.google.firebase.auth.FirebaseAuth
 
 @Composable
@@ -35,7 +40,6 @@ fun TodayCalendarScreen(
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
 
-    // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
     val context = LocalContext.current
     val currentUser = remember { FirebaseAuth.getInstance().currentUser }
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
@@ -67,6 +71,12 @@ fun TodayCalendarScreen(
         if (isDarkMode) Color(0xFF1E1E1E) else Color.White
     }
 
+    val tasksManana by routineViewModel.tasksManana.collectAsState()
+    val tasksTarde by routineViewModel.tasksTarde.collectAsState()
+    val tasksNoche by routineViewModel.tasksNoche.collectAsState()
+
+    val diaDeHoy = remember { RoutineProgressCalculator.obtenerDiaDeHoy() }
+
     UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
         Scaffold(
             containerColor = Color.Transparent,
@@ -90,49 +100,151 @@ fun TodayCalendarScreen(
                     .padding(paddingValues)
                     .verticalScroll(rememberScrollState())
                     .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
-                    text = "Organiza y revisa las actividades programadas para el día de hoy de manera interactiva.",
+                    text = "Revisa el estado de las rutinas de tu hijo correspondientes al día de hoy ($diaDeHoy).",
                     fontSize = 14.sp,
                     color = colorTextoSecundario
                 )
 
-                // Tarjeta de Contenedor Base para Próxima Implementación
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    color = colorSuperficieTarjetas,
-                    border = BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.1f))
-                ) {
-                    Column(
+                if (tasksManana.isEmpty() && tasksTarde.isEmpty() && tasksNoche.isEmpty()) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                            .fillMaxWidth()
+                            .padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CalendarToday,
-                            contentDescription = null,
-                            tint = colorAcabadoPrincipal,
-                            modifier = Modifier.size(52.dp)
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
                         Text(
-                            text = "Área de Planificación Diaria",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = colorTextoPrincipal
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Muy pronto podrás visualizar las rutinas en un formato de línea de tiempo interactiva.",
+                            text = "No hay actividades registradas para el día de hoy.",
                             color = colorTextoSecundario,
-                            fontSize = 13.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                } else {
+                    if (tasksManana.isNotEmpty()) {
+                        TurnCalendarBlock(
+                            title = "🌅 Mañana",
+                            tasks = tasksManana,
+                            diaDeHoy = diaDeHoy,
+                            colorSuperficie = colorSuperficieTarjetas,
+                            colorTexto = colorTextoPrincipal,
+                            colorSubtexto = colorTextoSecundario,
+                            colorPrimary = colorAcabadoPrincipal
+                        )
+                    }
+
+                    if (tasksTarde.isNotEmpty()) {
+                        TurnCalendarBlock(
+                            title = "☀️ Tarde",
+                            tasks = tasksTarde,
+                            diaDeHoy = diaDeHoy,
+                            colorSuperficie = colorSuperficieTarjetas,
+                            colorTexto = colorTextoPrincipal,
+                            colorSubtexto = colorTextoSecundario,
+                            colorPrimary = colorAcabadoPrincipal
+                        )
+                    }
+
+                    if (tasksNoche.isNotEmpty()) {
+                        TurnCalendarBlock(
+                            title = "🌙 Noche",
+                            tasks = tasksNoche,
+                            diaDeHoy = diaDeHoy,
+                            colorSuperficie = colorSuperficieTarjetas,
+                            colorTexto = colorTextoPrincipal,
+                            colorSubtexto = colorTextoSecundario,
+                            colorPrimary = colorAcabadoPrincipal
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TurnCalendarBlock(
+    title: String,
+    tasks: List<TaskItem>,
+    diaDeHoy: String,
+    colorSuperficie: Color,
+    colorTexto: Color,
+    colorSubtexto: Color,
+    colorPrimary: Color
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = title,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = colorTexto
+        )
+        tasks.forEach { task ->
+            val completada = task.estaCompletadaHoy(diaDeHoy)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = colorSuperficie),
+                border = BorderStroke(1.dp, colorSubtexto.copy(alpha = 0.1f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .background(Color.White, RoundedCornerShape(12.dp))
+                            .padding(4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (task.imageUrl.isNotEmpty()) {
+                            AsyncImage(
+                                model = task.imageUrl,
+                                contentDescription = task.actividad,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Text(text = "⭐", fontSize = 24.sp)
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = task.actividad,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = colorTexto
+                        )
+                        Text(
+                            text = "${task.duration} minutos",
+                            fontSize = 12.sp,
+                            color = colorSubtexto
+                        )
+                    }
+
+                    if (completada) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Completado",
+                            tint = Color(0xFF4CAF50), // Verde
+                            modifier = Modifier.size(28.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.Circle,
+                            contentDescription = "Pendiente",
+                            tint = colorSubtexto.copy(alpha = 0.5f), // Círculo vacío
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
