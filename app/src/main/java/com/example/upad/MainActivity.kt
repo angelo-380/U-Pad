@@ -844,6 +844,7 @@ fun UPadNavigation(
                                 emocionSeleccionada = emocion,
                                 context = context
                             )
+                            routineViewModel.cargarMensajesRefuerzo(idPadre, turnoActual)
                             navController.navigate("child_routine_completed") {
                                 popUpTo("child_start") { inclusive = false }
                             }
@@ -852,8 +853,10 @@ fun UPadNavigation(
                 }
 
                 composable("child_routine_completed") {
+                    val reinforcementMessages by routineViewModel.reinforcementMessages.collectAsState()
                     RoutineCompletedScreen(
                         nextActivityPreview = "",
+                        reinforcementMessages = reinforcementMessages,
                         onFinishClick = {
                             navController.navigate("child_start") {
                                 popUpTo("child_start") { inclusive = true }
