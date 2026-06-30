@@ -57,14 +57,17 @@ fun CreateRoutineScreen(
     diaInicial: String = "LUNES"
 ) {
     val isPremiumUser by viewModel.isUserPremium.collectAsState(initial = false)
-    val scope = rememberCoroutineScope()
-
-    // 🌟 NUEVA LÓGICA DE COLORES ADAPTATIVOS
     val isDarkMode by viewModel.isDarkMode.collectAsState()
 
     val isAiLoading by viewModel.isAiLoading.collectAsState()
     val aiSuggestions by viewModel.aiSuggestions.collectAsState()
     val aiError by viewModel.aiError.collectAsState()
+
+    val aiCustomRoutine by viewModel.aiCustomRoutine.collectAsState()
+    val aiRefuerzos by viewModel.aiRefuerzos.collectAsState()
+    val isCustomRoutineLoading by viewModel.isCustomRoutineLoading.collectAsState()
+
+    var customNeedText by remember { mutableStateOf("") }
 
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
@@ -544,6 +547,101 @@ fun CreateRoutineScreen(
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 13.sp
                                             )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    HorizontalDivider(color = colorTextoSecundario.copy(alpha = 0.15f))
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Text(
+                                        text = "Asistente de Rutinas y Refuerzos por IA ✨",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = colorTextoPrincipal
+                                    )
+                                    Text(
+                                        text = "Ingresa una meta o necesidad específica del niño para generar una rutina de tareas paso a paso y mensajes de refuerzo.",
+                                        fontSize = 12.sp,
+                                        color = colorTextoSecundario
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    OutlinedTextField(
+                                        value = customNeedText,
+                                        onValueChange = { customNeedText = it },
+                                        placeholder = { Text("Ej: preparar mochila, ordenar juguetes...", fontSize = 13.sp) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = colorAcabadoPrincipal,
+                                            unfocusedBorderColor = colorTextoSecundario.copy(alpha = 0.3f),
+                                            focusedTextColor = colorTextoPrincipal,
+                                            unfocusedTextColor = colorTextoPrincipal
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Button(
+                                        onClick = {
+                                            viewModel.obtenerRutinaYRefuerzosPersonalizados(customNeedText)
+                                        },
+                                        enabled = customNeedText.isNotEmpty() && !isCustomRoutineLoading,
+                                        modifier = Modifier.fillMaxWidth().height(40.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = colorAcabadoPrincipal)
+                                    ) {
+                                        if (isCustomRoutineLoading) {
+                                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
+                                        } else {
+                                            Text("Diseñar Actividades y Refuerzos", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    if (aiCustomRoutine.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = colorTextoSecundario.copy(alpha = 0.05f),
+                                            border = BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.1f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text("Rutina Propuesta:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = colorTextoPrincipal)
+                                                aiCustomRoutine.forEachIndexed { i, act ->
+                                                    Text("${i + 1}. $act", fontSize = 12.sp, color = colorTextoPrincipal)
+                                                }
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Text("Mensajes de Refuerzo para el niño:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = colorTextoPrincipal)
+                                                aiRefuerzos.forEach { ref ->
+                                                    Text("• \"$ref\"", fontSize = 12.sp, color = colorTextoSecundario)
+                                                }
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                Button(
+                                                    onClick = {
+                                                        aiCustomRoutine.forEach { actividad ->
+                                                            viewModel.agregarActividadAutomatica(
+                                                                userId = currentUserId,
+                                                                turn = routineTurn,
+                                                                textoCompleto = actividad,
+                                                                diasSeleccionados = if (diasSeleccionados.isEmpty()) listOf(diaFiltroSeleccionado) else diasSeleccionados.toList()
+                                                            )
+                                                        }
+                                                        viewModel.guardarMensajesRefuerzoPremium(
+                                                            userId = currentUserId,
+                                                            turn = routineTurn,
+                                                            mensajes = aiRefuerzos
+                                                        )
+                                                        viewModel.clearCustomRoutine()
+                                                        customNeedText = ""
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text("Importar Actividades y Refuerzos", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
                                         }
                                     }
                                 }

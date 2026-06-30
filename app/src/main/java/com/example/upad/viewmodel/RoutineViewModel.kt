@@ -73,12 +73,65 @@ class RoutineViewModel(
     private val _aiError = MutableStateFlow<String?>(null)
     val aiError: StateFlow<String?> = _aiError.asStateFlow()
 
+    // 🤖 ESTADO DE LA IA PREMIUM - ANÁLISIS Y RUTINA PERSONALIZADA
+    private val _aiAnalysis = MutableStateFlow<String?>(null)
+    val aiAnalysis: StateFlow<String?> = _aiAnalysis.asStateFlow()
+
+    private val _isAnalyzing = MutableStateFlow(false)
+    val isAnalyzing: StateFlow<Boolean> = _isAnalyzing.asStateFlow()
+
+    private val _aiCustomRoutine = MutableStateFlow<List<String>>(emptyList())
+    val aiCustomRoutine: StateFlow<List<String>> = _aiCustomRoutine.asStateFlow()
+
+    private val _aiRefuerzos = MutableStateFlow<List<String>>(emptyList())
+    val aiRefuerzos: StateFlow<List<String>> = _aiRefuerzos.asStateFlow()
+
+    private val _isCustomRoutineLoading = MutableStateFlow(false)
+    val isCustomRoutineLoading: StateFlow<Boolean> = _isCustomRoutineLoading.asStateFlow()
+
     fun clearAiError() {
         _aiError.value = null
     }
 
     fun clearAiSuggestions() {
         _aiSuggestions.value = emptyList()
+    }
+
+    fun clearAiAnalysis() {
+        _aiAnalysis.value = null
+    }
+
+    fun clearCustomRoutine() {
+        _aiCustomRoutine.value = emptyList()
+        _aiRefuerzos.value = emptyList()
+    }
+
+    private val _mensajesRefuerzo = MutableStateFlow<List<String>>(emptyList())
+    val reinforcementMessages: StateFlow<List<String>> = _mensajesRefuerzo.asStateFlow()
+
+    fun cargarMensajesRefuerzo(padreId: String, turn: String) {
+        val uidValido = obtenerUidSeguro(padreId)
+        val turnoValido = normalizarTurno(turn)
+        viewModelScope.launch {
+            try {
+                val list = repository.obtenerMensajesRefuerzo(uidValido, turnoValido)
+                _mensajesRefuerzo.value = list
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun guardarMensajesRefuerzoPremium(userId: String, turn: String, mensajes: List<String>) {
+        val uidValido = obtenerUidSeguro(userId)
+        val turnoValido = normalizarTurno(turn)
+        viewModelScope.launch {
+            try {
+                repository.guardarMensajesRefuerzo(uidValido, turnoValido, mensajes)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun obtenerSugerenciasIA(routineTurn: String) {
@@ -93,6 +146,69 @@ class RoutineViewModel(
                 _aiError.value = e.localizedMessage ?: "Error al obtener sugerencias de la IA"
             } finally {
                 _isAiLoading.value = false
+            }
+        }
+    }
+
+    fun obtenerAnalisisPersonalizado(tasksManana: List<TaskItem>, tasksTarde: List<TaskItem>, tasksNoche: List<TaskItem>) {
+        viewModelScope.launch {
+            _isAnalyzing.value = true
+            _aiError.value = null
+            _aiAnalysis.value = null
+            
+            val diaDeHoy = RoutineProgressCalculator.obtenerDiaDeHoy()
+            val report = StringBuilder()
+            report.append("Reporte de hoy ($diaDeHoy):\n")
+            
+            report.append("Mañana:\n")
+            if (tasksManana.isEmpty()) report.append("- Sin tareas\n")
+            else tasksManana.forEach {
+                val completada = if (it.estaCompletadaHoy(diaDeHoy)) "Completada" else "Pendiente"
+                val emocion = it.obtenerEmocionHoy(diaDeHoy).ifEmpty { "no registrada" }
+                report.append("- Tarea: ${it.actividad} | Estado: $completada | Emoción: $emocion\n")
+            }
+            
+            report.append("Tarde:\n")
+            if (tasksTarde.isEmpty()) report.append("- Sin tareas\n")
+            else tasksTarde.forEach {
+                val completada = if (it.estaCompletadaHoy(diaDeHoy)) "Completada" else "Pendiente"
+                val emocion = it.obtenerEmocionHoy(diaDeHoy).ifEmpty { "no registrada" }
+                report.append("- Tarea: ${it.actividad} | Estado: $completada | Emoción: $emocion\n")
+            }
+            
+            report.append("Noche:\n")
+            if (tasksNoche.isEmpty()) report.append("- Sin tareas\n")
+            else tasksNoche.forEach {
+                val completada = if (it.estaCompletadaHoy(diaDeHoy)) "Completada" else "Pendiente"
+                val emocion = it.obtenerEmocionHoy(diaDeHoy).ifEmpty { "no registrada" }
+                report.append("- Tarea: ${it.actividad} | Estado: $completada | Emoción: $emocion\n")
+            }
+
+            try {
+                val result = aiRepository.getPersonalizedAnalysis(report.toString())
+                _aiAnalysis.value = result
+            } catch (e: Exception) {
+                _aiError.value = e.localizedMessage ?: "Error al generar análisis personalizado de la IA"
+            } finally {
+                _isAnalyzing.value = false
+            }
+        }
+    }
+
+    fun obtenerRutinaYRefuerzosPersonalizados(need: String) {
+        viewModelScope.launch {
+            _isCustomRoutineLoading.value = true
+            _aiError.value = null
+            _aiCustomRoutine.value = emptyList()
+            _aiRefuerzos.value = emptyList()
+            try {
+                val result = aiRepository.getCustomRoutineAndReinforcements(need)
+                _aiCustomRoutine.value = result.first
+                _aiRefuerzos.value = result.second
+            } catch (e: Exception) {
+                _aiError.value = e.localizedMessage ?: "Error al generar la rutina personalizada"
+            } finally {
+                _isCustomRoutineLoading.value = false
             }
         }
     }
