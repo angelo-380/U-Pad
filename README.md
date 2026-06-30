@@ -49,7 +49,7 @@ U-Pad integra de forma segura la API de **Groq AI** mediante el uso del modelo d
 ---
 
 ## Video Demostrativo
-* **Demostración Práctica**: `[Video Demostrativo del funcionamiento y flujo de U-Pad: Insertar enlace del video aquí]`
+* **Demostración Práctica**: [Video Demostrativo del funcionamiento y flujo de U-Pad](https://youtu.be/fVQU3RGt8KI)
 
 ---
 
