@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +27,7 @@ import androidx.compose.ui.res.stringResource
 @Composable
 fun RoutineCompletedScreen(
     nextActivityPreview: String = "",
+    reinforcementMessages: List<String> = emptyList(),
     onFinishClick: () -> Unit
 ) {
     val colorAzulTEA = Color(0xFF0288D1)     // Azul más vivo y con mejor contraste
@@ -40,7 +42,18 @@ fun RoutineCompletedScreen(
     )
 
     val esFinDeRutina = nextActivityPreview.isEmpty() || nextActivityPreview == "¡Felicidades! Completaste todo"
-    val textToShow = if (esFinDeRutina) stringResource(R.string.routine_completed_default_preview) else nextActivityPreview
+    val chosenMessage = remember(reinforcementMessages) {
+        if (reinforcementMessages.isNotEmpty()) {
+            reinforcementMessages.random()
+        } else {
+            null
+        }
+    }
+    val textToShow = if (esFinDeRutina) {
+        chosenMessage ?: stringResource(R.string.routine_completed_default_preview)
+    } else {
+        nextActivityPreview
+    }
 
     Column(
         modifier = Modifier
