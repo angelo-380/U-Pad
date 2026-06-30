@@ -50,6 +50,8 @@ fun AnalyticsScreen(
     // 📨 1. ESTADOS LOCALES Y CONFIGURACIÓN EN LA CABECERA
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
+    val aiAnalysis by routineViewModel.aiAnalysis.collectAsState()
+    val isAnalyzing by routineViewModel.isAnalyzing.collectAsState()
 
     // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
     val context = LocalContext.current
@@ -320,13 +322,62 @@ fun AnalyticsScreen(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(stringResource(id = R.string.upad_ai_mind_active), fontWeight = FontWeight.Black, fontSize = 14.sp, color = colorTextoIAActiva)
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = stringResource(id = R.string.ai_analysis_recommendation_desc),
-                                fontSize = 13.sp,
-                                color = colorTextoPrincipal,
-                                lineHeight = 18.sp
-                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            if (isAnalyzing) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    CircularProgressIndicator(color = colorTextoIAActiva, modifier = Modifier.size(30.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = "Analizando el comportamiento y registro emocional de hoy...",
+                                        fontSize = 13.sp,
+                                        color = colorTextoIAActiva,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            } else if (aiAnalysis != null) {
+                                Column {
+                                    Text(
+                                        text = aiAnalysis ?: "",
+                                        fontSize = 13.sp,
+                                        color = colorTextoPrincipal,
+                                        lineHeight = 18.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        onClick = {
+                                            routineViewModel.obtenerAnalisisPersonalizado(tasksManana, tasksTarde, tasksNoche)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = colorTextoIAActiva),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.align(Alignment.End)
+                                    ) {
+                                        Text("Actualizar Análisis", color = Color.White, fontSize = 12.sp)
+                                    }
+                                }
+                            } else {
+                                Column {
+                                    Text(
+                                        text = "U-Pad AI puede analizar el comportamiento y estado emocional registrado por tu hijo el día de hoy para darte recomendaciones psicopedagógicas a medida.",
+                                        fontSize = 13.sp,
+                                        color = colorTextoPrincipal,
+                                        lineHeight = 18.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        onClick = {
+                                            routineViewModel.obtenerAnalisisPersonalizado(tasksManana, tasksTarde, tasksNoche)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = colorTextoIAActiva),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Generar Análisis Inteligente", color = Color.White, fontSize = 12.sp)
+                                    }
+                                }
+                            }
                         }
                     }
                 } else {

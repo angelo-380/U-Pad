@@ -355,4 +355,28 @@ class FirebaseRepository {
             .delete()
             .await()
     }
+
+    suspend fun guardarMensajesRefuerzo(userId: String, turn: String, mensajes: List<String>) {
+        firestore.collection("routines")
+            .document(userId)
+            .collection("turns")
+            .document(turn.uppercase().trim())
+            .set(mapOf("mensajesRefuerzo" to mensajes), SetOptions.merge())
+            .await()
+    }
+
+    suspend fun obtenerMensajesRefuerzo(userId: String, turn: String): List<String> {
+        val doc = firestore.collection("routines")
+            .document(userId)
+            .collection("turns")
+            .document(turn.uppercase().trim())
+            .get()
+            .await()
+        return if (doc.exists()) {
+            val list = doc.get("mensajesRefuerzo") as? List<*>
+            list?.mapNotNull { it?.toString() } ?: emptyList()
+        } else {
+            emptyList()
+        }
+    }
 }
