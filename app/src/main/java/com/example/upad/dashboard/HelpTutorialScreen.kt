@@ -216,7 +216,14 @@ fun HelpTutorialScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(210.dp),
+                            .height(210.dp)
+                            .clickable {
+                                val intent = android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse("https://youtu.be/fVQU3RGt8KI")
+                                )
+                                context.startActivity(intent)
+                            },
                         shape = RoundedCornerShape(22.dp),
                         colors = CardDefaults.cardColors(containerColor = colorSuperficieTarjetas),
                         border = BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.1f))
