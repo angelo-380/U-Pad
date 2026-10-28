@@ -38,7 +38,7 @@ export const EnDesarrolloPage = () => {
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-tea-border shadow-sm">
         <div className="flex items-center gap-2 text-brand-600 text-xs font-bold uppercase tracking-wider mb-2">
           <IconComponent className="w-4 h-4" />
-          <span>Hoja de Ruta del Proyecto · Entrega del 25%</span>
+          <span>En Desarrollo</span>
         </div>
 
         <h1 className="text-2xl font-extrabold text-tea-text tracking-tight">
@@ -71,7 +71,7 @@ export const EnDesarrolloPage = () => {
 
         <div className="mt-6 flex justify-between items-center pt-4 border-t border-slate-100">
           <span className="text-[11px] text-tea-muted font-bold">
-            Estado: Planificado para fase beta
+            Estado: En Desarrollo
           </span>
           <Link
             to="/rutinas"

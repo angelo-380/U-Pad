@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
+import { LanguageProvider } from './context/LanguageContext.jsx';
 import { ProtectedRoute } from './components/common/ProtectedRoute.jsx';
 import { AppLayout } from './components/layout/AppLayout.jsx';
 import { LoginPage } from './pages/auth/LoginPage.jsx';
@@ -14,8 +15,9 @@ import { NotFoundPage } from './pages/errors/NotFoundPage.jsx';
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <ToastProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <ToastProvider>
           <Routes>
             {/* Rutas Públicas de Autenticación */}
             <Route path="/login" element={<LoginPage />} />
@@ -65,6 +67,7 @@ export default function App() {
           </Routes>
         </ToastProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </LanguageProvider>
+  </BrowserRouter>
   );
 }

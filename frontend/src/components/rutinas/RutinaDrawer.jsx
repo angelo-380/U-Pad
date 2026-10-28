@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArasaacPictogram } from '../common/ArasaacPictogram.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 import {
   X,
   Plus,
@@ -23,6 +24,7 @@ export const RutinaDrawer = ({
   onClose,
   onSubmit,
 }) => {
+  const { t } = useLanguage();
   const [titulo, setTitulo] = useState('');
   const [turno, setTurno] = useState('MANANA');
   const [ninoId, setNinoId] = useState('');
@@ -57,84 +59,33 @@ export const RutinaDrawer = ({
         }
       } else {
         setTitulo('');
-        setTurno('MANANA');
+        setTurno(initialData?.turno || 'MANANA');
         setNinoId('');
         setPasos([{ orden: 1, texto: '', palabraClave: '' }]);
       }
       setErrors({});
       setTouched({});
 
-      // Enfocar título accesiblemente
-      const timer = setTimeout(() => {
+      // Foco automático en el título al abrir
+      const timeout = setTimeout(() => {
         titleInputRef.current?.focus();
       }, 100);
-      return () => clearTimeout(timer);
+      return () => clearTimeout(timeout);
     }
   }, [isOpen, mode, initialData]);
 
-  // Manejo de tecla Escape
+  // Manejo de ESC para cerrar drawer de forma accesible
   useEffect(() => {
-    if (!isOpen) return;
-
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && !loading) {
+      if (e.key === 'Escape' && isOpen && !loading) {
         onClose();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, loading, onClose]);
 
-  // Reordenar pasos
-  const movePaso = (index, direction) => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= pasos.length) return;
-
-    const updated = [...pasos];
-    const [moved] = updated.splice(index, 1);
-    updated.splice(targetIndex, 0, moved);
-
-    // Reasignar órdenes
-    const reordered = updated.map((p, idx) => ({
-      ...p,
-      orden: idx + 1,
-    }));
-    setPasos(reordered);
-  };
-
-  const handleAddPaso = () => {
-    setPasos((prev) => [
-      ...prev,
-      { orden: prev.length + 1, texto: '', palabraClave: '' },
-    ]);
-  };
-
-  const handleRemovePaso = (index) => {
-    if (pasos.length <= 1) return;
-    const filtered = pasos.filter((_, i) => i !== index);
-    const reordered = filtered.map((p, idx) => ({
-      ...p,
-      orden: idx + 1,
-    }));
-    setPasos(reordered);
-  };
-
-  const handlePasoChange = (index, field, value) => {
-    const updated = [...pasos];
-    updated[index][field] = value;
-    setPasos(updated);
-
-    // Limpiar error del paso si ya tiene texto
-    if (field === 'texto' && value.trim()) {
-      setErrors((prev) => {
-        const next = { ...prev };
-        delete next[`paso_${index}`];
-        return next;
-      });
-    }
-  };
-
+  // Validación de formulario
   const validate = () => {
     const newErrors = {};
 
@@ -145,18 +96,23 @@ export const RutinaDrawer = ({
     }
 
     if (!['MANANA', 'TARDE', 'NOCHE'].includes(turno)) {
-      newErrors.turno = 'Selecciona un turno válido para la rutina.';
+      newErrors.turno = 'Selecciona un turno válido.';
     }
 
-    const emptySteps = pasos.filter((p) => !p.texto.trim());
-    if (emptySteps.length === pasos.length) {
-      newErrors.pasos = 'Debes incluir al menos un paso con texto.';
-    } else {
-      pasos.forEach((p, idx) => {
-        if (!p.texto.trim()) {
-          newErrors[`paso_${idx}`] = 'Indica la descripción de este paso.';
-        }
-      });
+    // Validar pasos
+    const pasosErrors = [];
+    pasos.forEach((paso, idx) => {
+      const pError = {};
+      if (!paso.texto.trim()) {
+        pError.texto = 'La descripción es obligatoria.';
+      }
+      if (Object.keys(pError).length > 0) {
+        pasosErrors[idx] = pError;
+      }
+    });
+
+    if (pasosErrors.length > 0) {
+      newErrors.pasos = pasosErrors;
     }
 
     setErrors(newErrors);
@@ -165,51 +121,68 @@ export const RutinaDrawer = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setTouched({ titulo: true, pasos: true });
+    setTouched({ titulo: true, turno: true, pasos: true });
 
-    if (!validate()) return;
+    if (!validate()) {
+      return;
+    }
 
-    const pasosValidos = pasos
-      .filter((p) => p.texto.trim())
-      .map((p, idx) => ({
-        orden: idx + 1,
-        texto: p.texto.trim(),
-        palabraClave: p.palabraClave.trim().toLowerCase(),
-      }));
-
-    onSubmit({
+    const payload = {
       titulo: titulo.trim(),
       turno,
-      ninoId: ninoId.trim() || 'nino_default',
-      pasos: pasosValidos,
-    });
+      ninoId: ninoId.trim() || null,
+      pasos: pasos.map((p, idx) => ({
+        orden: idx + 1,
+        texto: p.texto.trim(),
+        palabraClave: (p.palabraClave || p.texto).trim().toLowerCase(),
+      })),
+    };
+
+    onSubmit(payload);
+  };
+
+  // Manejadores de pasos
+  const handlePasoChange = (index, field, value) => {
+    const updated = [...pasos];
+    updated[index] = {
+      ...updated[index],
+      [field]: value,
+      // Si cambia el texto y la palabra clave no ha sido modificada manualmente, sugerimos el texto
+      palabraClave:
+        field === 'texto' && !updated[index].keywordTouched
+          ? value.toLowerCase()
+          : field === 'palabraClave'
+          ? value.toLowerCase()
+          : updated[index].palabraClave,
+      keywordTouched: field === 'palabraClave' ? true : updated[index].keywordTouched,
+    };
+    setPasos(updated);
+  };
+
+  const handleAddPaso = () => {
+    setPasos([...pasos, { orden: pasos.length + 1, texto: '', palabraClave: '' }]);
+  };
+
+  const handleRemovePaso = (index) => {
+    if (pasos.length <= 1) return;
+    const filtered = pasos.filter((_, idx) => idx !== index);
+    const reordered = filtered.map((p, idx) => ({ ...p, orden: idx + 1 }));
+    setPasos(reordered);
+  };
+
+  const handleMovePaso = (index, direction) => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= pasos.length) return;
+
+    const updated = [...pasos];
+    const [moved] = updated.splice(index, 1);
+    updated.splice(newIndex, 0, moved);
+
+    const reordered = updated.map((p, idx) => ({ ...p, orden: idx + 1 }));
+    setPasos(reordered);
   };
 
   if (!isOpen) return null;
-
-  const turnosOptions = [
-    {
-      id: 'MANANA',
-      label: 'Mañana',
-      icon: Sun,
-      color: 'text-amber-800 bg-amber-50 border-amber-200',
-      activeColor: 'bg-amber-500 text-white border-amber-600',
-    },
-    {
-      id: 'TARDE',
-      label: 'Tarde',
-      icon: Sunset,
-      color: 'text-emerald-800 bg-emerald-50 border-emerald-200',
-      activeColor: 'bg-emerald-600 text-white border-emerald-700',
-    },
-    {
-      id: 'NOCHE',
-      label: 'Noche',
-      icon: Moon,
-      color: 'text-indigo-800 bg-indigo-50 border-indigo-200',
-      activeColor: 'bg-indigo-600 text-white border-indigo-700',
-    },
-  ];
 
   return (
     <div
@@ -221,242 +194,199 @@ export const RutinaDrawer = ({
       {/* Backdrop con desenfoque suave */}
       <div
         onClick={!loading ? onClose : undefined}
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-200 animate-fadeIn motion-reduce:animate-none"
-        aria-hidden="true"
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity animate-fadeIn"
       />
 
-      <div className="absolute inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
+      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
         <div
           ref={drawerRef}
-          className="w-screen max-w-lg bg-white shadow-2xl border-l border-slate-200 flex flex-col justify-between overflow-y-auto animate-slideInRight motion-reduce:animate-none"
+          className="w-screen max-w-xl bg-white shadow-2xl flex flex-col border-l border-tea-border animate-slideInRight"
         >
           {/* Cabecera del Drawer */}
-          <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-xs px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <div className="p-6 border-b border-tea-border flex items-center justify-between gap-4 bg-tea-calm">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600 flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-                {mode === 'edit' ? 'Modificar Rutina' : 'Nueva Rutina Visual'}
-              </span>
               <h2
                 id="drawer-title"
-                className="text-xl font-extrabold text-slate-900 tracking-tight"
+                className="text-xl font-extrabold text-tea-text tracking-tight"
               >
-                {mode === 'edit' ? 'Editar Rutina' : 'Crear Secuencia'}
+                {mode === 'create' ? t('drawer_create_title') : t('drawer_edit_title')}
               </h2>
+              <p className="text-xs text-tea-muted mt-1 leading-relaxed">
+                {t('drawer_subtitle')}
+              </p>
             </div>
 
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="p-2 -mr-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+              className="p-2.5 rounded-xl text-tea-muted hover:text-tea-text hover:bg-tea-cardSubtle min-h-[44px] min-w-[44px] flex items-center justify-center transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
               aria-label="Cerrar panel lateral"
             >
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5" aria-hidden="true" />
             </button>
           </div>
 
-          {/* Formulario */}
-          <form onSubmit={handleSubmit} className="flex-1 p-6 space-y-5">
-            {/* Mensaje de error general de pasos si existe */}
-            {errors.pasos && (
-              <div
-                role="alert"
-                className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2"
-              >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{errors.pasos}</span>
-              </div>
-            )}
-
+          {/* Formulario scrollable */}
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Campo: Título */}
-            <div>
+            <div className="space-y-1.5">
               <label
-                htmlFor="drawer-rutina-titulo"
-                className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
+                htmlFor="rutina-titulo"
+                className="block text-sm font-bold text-tea-text"
               >
-                Título de la Rutina <span className="text-rose-500">*</span>
+                {t('drawer_field_title')} <span className="text-rose-600">*</span>
               </label>
               <input
-                id="drawer-rutina-titulo"
+                id="rutina-titulo"
                 ref={titleInputRef}
                 type="text"
-                disabled={loading}
                 value={titulo}
-                onChange={(e) => {
-                  setTitulo(e.target.value);
-                  if (errors.titulo) {
-                    setErrors((prev) => ({ ...prev, titulo: undefined }));
-                  }
-                }}
-                onBlur={() => setTouched((prev) => ({ ...prev, titulo: true }))}
-                placeholder="Ej. Rutina de Mañana y Desayuno"
-                aria-invalid={Boolean(errors.titulo)}
-                aria-describedby={errors.titulo ? 'titulo-error' : undefined}
-                className={`w-full px-4 py-2.5 min-h-[44px] text-sm rounded-xl border ${
-                  errors.titulo
-                    ? 'border-rose-300 bg-rose-50/40 focus:border-rose-500 focus:ring-rose-200'
-                    : 'border-slate-200 bg-slate-50 focus:bg-white focus:border-brand-500 focus:ring-brand-200'
-                } text-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2`}
+                onChange={(e) => setTitulo(e.target.value)}
+                onBlur={() => setTouched({ ...touched, titulo: true })}
+                disabled={loading}
+                placeholder={t('drawer_field_title_placeholder')}
+                className={`w-full px-4 py-3 min-h-[44px] rounded-xl text-sm border font-medium transition-tea bg-white ${
+                  touched.titulo && errors.titulo
+                    ? 'border-rose-400 focus:ring-rose-500'
+                    : 'border-tea-border focus:ring-brand-600'
+                } focus-visible:outline-none focus-visible:ring-2`}
               />
-              {errors.titulo && (
-                <p id="titulo-error" className="text-xs text-rose-600 font-medium mt-1">
-                  {errors.titulo}
+              {touched.titulo && errors.titulo && (
+                <p className="text-xs text-rose-600 font-semibold flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>{errors.titulo}</span>
                 </p>
               )}
             </div>
 
-            {/* Campo: Turno del Día */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                Turno Horario <span className="text-rose-500">*</span>
+            {/* Campo: Selector de Turno */}
+            <div className="space-y-2">
+              <label className="block text-sm font-bold text-tea-text">
+                {t('drawer_field_shift')} <span className="text-rose-600">*</span>
               </label>
-              <div
-                role="radiogroup"
-                aria-label="Selecciona el turno del día"
-                className="grid grid-cols-3 gap-2"
-              >
-                {turnosOptions.map((opt) => {
-                  const Icon = opt.icon;
-                  const isSelected = turno === opt.id;
+              <div className="grid grid-cols-3 gap-2.5">
+                {[
+                  { id: 'MANANA', label: t('tab_morning'), icon: Sun, color: 'text-amber-700 bg-amber-50 border-amber-200' },
+                  { id: 'TARDE', label: t('tab_afternoon'), icon: Sunset, color: 'text-teal-700 bg-teal-50 border-teal-200' },
+                  { id: 'NOCHE', label: t('tab_night'), icon: Moon, color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const isSelected = turno === item.id;
                   return (
                     <button
-                      key={opt.id}
+                      key={item.id}
                       type="button"
-                      role="radio"
-                      aria-checked={isSelected}
-                      disabled={loading}
-                      onClick={() => setTurno(opt.id)}
-                      className={`flex flex-col items-center justify-center gap-1 p-3 rounded-2xl border text-xs font-bold min-h-[56px] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 ${
+                      onClick={() => setTurno(item.id)}
+                      className={`flex flex-col items-center gap-2 p-3 min-h-[64px] rounded-2xl border text-xs font-bold transition-tea cursor-pointer ${
                         isSelected
-                          ? `${opt.activeColor} shadow-xs`
-                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                          ? `border-brand-600 bg-brand-50/70 text-brand-900 ring-2 ring-brand-600/30`
+                          : 'border-tea-border bg-white text-tea-muted hover:bg-tea-calm'
                       }`}
                     >
-                      <Icon className="w-4 h-4" aria-hidden="true" />
-                      <span>{opt.label}</span>
+                      <Icon className="w-5 h-5" aria-hidden="true" />
+                      <span>{item.label}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Campo: Niño / Paciente */}
-            <div>
+            {/* Campo: Niño ID */}
+            <div className="space-y-1.5">
               <label
-                htmlFor="drawer-rutina-nino"
-                className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
+                htmlFor="rutina-ninoid"
+                className="block text-sm font-bold text-tea-text"
               >
-                Identificador de Alumno o Niño (Opcional)
+                {t('drawer_field_child_id')}
               </label>
               <input
-                id="drawer-rutina-nino"
+                id="rutina-ninoid"
                 type="text"
-                disabled={loading}
                 value={ninoId}
                 onChange={(e) => setNinoId(e.target.value)}
-                placeholder="Ej. nino_mateo o sala_azul"
-                className="w-full px-4 py-2.5 min-h-[44px] text-sm rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                disabled={loading}
+                placeholder={t('drawer_field_child_id_placeholder')}
+                className="w-full px-4 py-3 min-h-[44px] rounded-xl text-sm border border-tea-border font-medium bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
               />
             </div>
 
-            {/* Sección de Pasos con Reordenamiento y Vista Previa ARASAAC en Vivo */}
-            <div className="pt-2">
-              <div className="flex items-center justify-between mb-2">
+            {/* Lista de Pasos Interactivos con ARASAAC */}
+            <div className="space-y-3 pt-2 border-t border-tea-border">
+              <div className="flex items-center justify-between">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Pasos Visuales ({pasos.length})
-                  </label>
-                  <p className="text-[11px] text-slate-500">
-                    Escribe la acción y la palabra clave en inglés para la vista previa del pictograma
+                  <h3 className="text-sm font-bold text-tea-text">
+                    {t('drawer_steps_title')}
+                  </h3>
+                  <p className="text-xs text-tea-muted mt-0.5">
+                    Previsualiza y ajusta cada pictograma en tiempo real.
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleAddPaso}
-                  disabled={loading}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold border border-brand-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
-                >
-                  <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>Agregar Paso</span>
-                </button>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">
+                  {pasos.length} {pasos.length === 1 ? t('visual_step_single') : t('visual_step_plural')}
+                </span>
               </div>
 
-              <div className="space-y-3 pr-0.5">
+              <div className="space-y-3">
                 {pasos.map((paso, index) => {
-                  const stepError = errors[`paso_${index}`];
-                  const previewKeyword = paso.palabraClave || paso.texto;
-
+                  const stepError = errors.pasos && errors.pasos[index];
                   return (
                     <div
                       key={index}
-                      className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 shadow-xs space-y-2.5"
+                      className="p-4 rounded-2xl bg-tea-calm border border-tea-border space-y-3"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        {/* Indicador de orden y controles de reordenamiento */}
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            aria-label={`Paso número ${paso.orden}`}
-                            className="w-6 h-6 rounded-lg bg-brand-600 text-white text-xs font-extrabold flex items-center justify-center flex-shrink-0"
-                          >
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-brand-600 text-white text-xs font-extrabold flex items-center justify-center">
                             {paso.orden}
                           </span>
-                          <span className="text-xs font-bold text-slate-700">
-                            Paso {paso.orden}
+                          <span className="text-xs font-bold text-tea-text">
+                            {t('drawer_step_label')} {paso.orden}
                           </span>
                         </div>
 
-                        {/* Botones de subir / bajar / eliminar */}
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => movePaso(index, 'up')}
-                            disabled={index === 0 || loading}
-                            aria-label={`Mover paso ${paso.orden} arriba`}
-                            title="Mover arriba"
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 disabled:opacity-30 disabled:pointer-events-none min-h-[36px] min-w-[36px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                            onClick={() => handleMovePaso(index, 'up')}
+                            disabled={index === 0}
+                            className="p-1.5 rounded-lg text-tea-subtle hover:text-tea-text hover:bg-white disabled:opacity-30 min-h-[32px] min-w-[32px] flex items-center justify-center"
+                            aria-label={`Subir paso ${paso.orden}`}
                           >
-                            <ArrowUp className="w-4 h-4" />
+                            <ArrowUp className="w-3.5 h-3.5" />
                           </button>
-
                           <button
                             type="button"
-                            onClick={() => movePaso(index, 'down')}
-                            disabled={index === pasos.length - 1 || loading}
-                            aria-label={`Mover paso ${paso.orden} abajo`}
-                            title="Mover abajo"
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 disabled:opacity-30 disabled:pointer-events-none min-h-[36px] min-w-[36px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                            onClick={() => handleMovePaso(index, 'down')}
+                            disabled={index === pasos.length - 1}
+                            className="p-1.5 rounded-lg text-tea-subtle hover:text-tea-text hover:bg-white disabled:opacity-30 min-h-[32px] min-w-[32px] flex items-center justify-center"
+                            aria-label={`Bajar paso ${paso.orden}`}
                           >
-                            <ArrowDown className="w-4 h-4" />
+                            <ArrowDown className="w-3.5 h-3.5" />
                           </button>
-
-                          {pasos.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemovePaso(index)}
-                              disabled={loading}
-                              aria-label={`Eliminar paso ${paso.orden}`}
-                              title="Eliminar paso"
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 min-h-[36px] min-w-[36px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 ml-1"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePaso(index)}
+                            disabled={pasos.length <= 1}
+                            className="p-1.5 rounded-lg text-tea-subtle hover:text-rose-600 hover:bg-rose-50 disabled:opacity-30 min-h-[32px] min-w-[32px] flex items-center justify-center"
+                            aria-label={`Eliminar paso ${paso.orden}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 
-                      {/* Inputs y Vista Previa en Vivo */}
                       <div className="flex items-start gap-3">
-                        {/* Vista previa en vivo del pictograma ARASAAC */}
-                        <div className="flex-shrink-0 flex flex-col items-center">
+                        {/* Pictograma ARASAAC en vivo */}
+                        <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-white border border-tea-border shadow-soft-xs flex-shrink-0">
                           <ArasaacPictogram
-                            keyword={previewKeyword}
-                            alt={`Vista previa ARASAAC paso ${paso.orden}`}
+                            keyword={paso.palabraClave || paso.texto}
+                            alt={`Pictograma para: ${paso.texto}`}
                             size="md"
                           />
-                          <span className="text-[9px] text-slate-600 font-semibold mt-1">
-                            Vista previa
+                          <span className="text-[10px] font-mono text-tea-subtle mt-1 max-w-[64px] truncate text-center">
+                            {paso.palabraClave || '...'}
                           </span>
                         </div>
 
@@ -466,40 +396,31 @@ export const RutinaDrawer = ({
                             <input
                               type="text"
                               value={paso.texto}
+                              onChange={(e) => handlePasoChange(index, 'texto', e.target.value)}
                               disabled={loading}
-                              onChange={(e) =>
-                                handlePasoChange(index, 'texto', e.target.value)
-                              }
-                              placeholder="Ej. Lavarse los dientes"
-                              aria-label={`Texto del paso ${paso.orden}`}
-                              className={`w-full px-3 py-2 text-xs rounded-xl border ${
-                                stepError
-                                  ? 'border-rose-300 bg-rose-50/30'
-                                  : 'border-slate-200 bg-white'
-                              } text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600`}
+                              placeholder={t('drawer_step_text_placeholder')}
+                              className={`w-full px-3 py-2 text-xs rounded-xl border bg-white ${
+                                stepError?.texto ? 'border-rose-400' : 'border-tea-border'
+                              } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600`}
                             />
-                            {stepError && (
-                              <p className="text-[10px] text-rose-600 font-medium mt-0.5">
-                                {stepError}
+                            {stepError?.texto && (
+                              <p className="text-[11px] text-rose-600 font-medium mt-0.5">
+                                {stepError.texto}
                               </p>
                             )}
                           </div>
 
-                          <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-semibold text-tea-subtle flex-shrink-0">
+                              {t('drawer_step_keyword_label')}
+                            </span>
                             <input
                               type="text"
                               value={paso.palabraClave}
+                              onChange={(e) => handlePasoChange(index, 'palabraClave', e.target.value)}
                               disabled={loading}
-                              onChange={(e) =>
-                                handlePasoChange(
-                                  index,
-                                  'palabraClave',
-                                  e.target.value
-                                )
-                              }
-                              placeholder="Clave ARASAAC en inglés (ej: brush)"
-                              aria-label={`Palabra clave ARASAAC paso ${paso.orden}`}
-                              className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 font-mono"
+                              placeholder={t('drawer_step_keyword_placeholder')}
+                              className="w-full px-2.5 py-1 text-xs rounded-lg border border-tea-border bg-white font-mono text-tea-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
                             />
                           </div>
                         </div>
@@ -508,35 +429,45 @@ export const RutinaDrawer = ({
                   );
                 })}
               </div>
+
+              <button
+                type="button"
+                onClick={handleAddPaso}
+                disabled={loading}
+                className="w-full py-3 min-h-[44px] rounded-2xl border-2 border-dashed border-tea-border hover:border-brand-500 hover:bg-brand-50/50 text-xs font-bold text-tea-muted hover:text-brand-700 transition-tea flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{t('drawer_add_step')}</span>
+              </button>
             </div>
           </form>
 
-          {/* Pie del Drawer con botones de guardar y cancelar */}
-          <div className="sticky bottom-0 z-10 bg-white/95 backdrop-blur-xs px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+          {/* Footer de Acciones del Drawer */}
+          <div className="p-5 border-t border-tea-border bg-tea-calm flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-4 py-2.5 min-h-[44px] rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+              className="px-5 py-2.5 min-h-[44px] rounded-xl text-sm font-semibold text-tea-text bg-white border border-tea-border hover:bg-tea-cardSubtle transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 cursor-pointer"
             >
-              Cancelar
+              {t('drawer_cancel')}
             </button>
 
             <button
               type="button"
               onClick={handleSubmit}
               disabled={loading}
-              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 min-h-[44px] rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 min-h-[44px] rounded-xl text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 transition-tea shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 cursor-pointer disabled:opacity-60"
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                  <span>Guardando...</span>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>{t('drawer_loading')}</span>
                 </>
               ) : (
                 <>
-                  <Check className="w-4 h-4" aria-hidden="true" />
-                  <span>{mode === 'edit' ? 'Actualizar Rutina' : 'Crear Rutina'}</span>
+                  <Check className="w-4 h-4" />
+                  <span>{mode === 'create' ? t('drawer_save_create') : t('drawer_save_edit')}</span>
                 </>
               )}
             </button>

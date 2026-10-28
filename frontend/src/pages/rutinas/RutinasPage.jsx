@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { rutinasService } from '../../services/rutinasService.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 import { RutinasSummaryStrip } from '../../components/rutinas/RutinasSummaryStrip.jsx';
 import { RutinaShiftSection } from '../../components/rutinas/RutinaShiftSection.jsx';
 import { RutinaDrawer } from '../../components/rutinas/RutinaDrawer.jsx';
@@ -8,16 +9,7 @@ import { DeleteConfirmDialog } from '../../components/rutinas/DeleteConfirmDialo
 import { RutinasSkeleton } from '../../components/rutinas/RutinasSkeleton.jsx';
 import { RutinasEmptyState } from '../../components/rutinas/RutinasEmptyState.jsx';
 import { RutinasErrorState } from '../../components/rutinas/RutinasErrorState.jsx';
-import {
-  CalendarCheck,
-  Plus,
-  Filter,
-  RefreshCw,
-  Sun,
-  Sunset,
-  Moon,
-  Layers,
-} from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 
 export const RutinasPage = () => {
   const [rutinas, setRutinas] = useState([]);
@@ -25,24 +17,22 @@ export const RutinasPage = () => {
   const [error, setError] = useState(null);
   const [filtroTurno, setFiltroTurno] = useState('');
 
-  // Estados del Drawer (Creación y Edición)
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerMode, setDrawerMode] = useState('create'); // 'create' | 'edit'
+  const [drawerMode, setDrawerMode] = useState('create');
   const [selectedRutina, setSelectedRutina] = useState(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
 
-  // Estados del Diálogo de Confirmación de Eliminación
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [rutinaToDelete, setRutinaToDelete] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const toast = useToast();
+  const { t } = useLanguage();
 
   const cargarRutinas = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      // Listamos todas las rutinas para alimentar el resumen y agrupamiento
       const data = await rutinasService.listar();
       setRutinas(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -58,7 +48,6 @@ export const RutinasPage = () => {
     cargarRutinas();
   }, [cargarRutinas]);
 
-  // Manejo de apertura del Drawer
   const handleOpenCreate = (turnoDefault = 'MANANA') => {
     setDrawerMode('create');
     setSelectedRutina({ turno: turnoDefault, pasos: [{ orden: 1, texto: '', palabraClave: '' }] });
@@ -71,11 +60,9 @@ export const RutinasPage = () => {
     setDrawerOpen(true);
   };
 
-  // Guardado desde el Drawer (Crear o Actualizar)
   const handleDrawerSubmit = async (formData) => {
     try {
       setDrawerLoading(true);
-
       if (drawerMode === 'create') {
         await rutinasService.crear(formData);
         toast.success(`Rutina "${formData.titulo}" creada correctamente.`, 'Rutina Creada');
@@ -83,7 +70,6 @@ export const RutinasPage = () => {
         await rutinasService.actualizar(selectedRutina.id, formData);
         toast.success(`Rutina "${formData.titulo}" actualizada con éxito.`, 'Cambios Guardados');
       }
-
       setDrawerOpen(false);
       await cargarRutinas();
     } catch (err) {
@@ -93,7 +79,6 @@ export const RutinasPage = () => {
     }
   };
 
-  // Manejo de Eliminación
   const handleOpenDelete = (rutina) => {
     setRutinaToDelete(rutina);
     setDeleteDialogOpen(true);
@@ -101,7 +86,6 @@ export const RutinasPage = () => {
 
   const handleConfirmDelete = async () => {
     if (!rutinaToDelete) return;
-
     try {
       setDeleteLoading(true);
       await rutinasService.eliminar(rutinaToDelete.id);
@@ -119,48 +103,39 @@ export const RutinasPage = () => {
     }
   };
 
-  // Rutinas divididas por turno
   const rutinasManana = rutinas.filter((r) => r.turno === 'MANANA');
   const rutinasTarde = rutinas.filter((r) => r.turno === 'TARDE');
   const rutinasNoche = rutinas.filter((r) => r.turno === 'NOCHE');
 
-  // Determinar qué secciones mostrar según el filtro
   const showManana = filtroTurno === '' || filtroTurno === 'MANANA';
   const showTarde = filtroTurno === '' || filtroTurno === 'TARDE';
   const showNoche = filtroTurno === '' || filtroTurno === 'NOCHE';
 
-  const filterChips = [
-    { label: 'Todos los turnos', val: '', count: rutinas.length, icon: Layers },
-    { label: 'Mañana', val: 'MANANA', count: rutinasManana.length, icon: Sun },
-    { label: 'Tarde', val: 'TARDE', count: rutinasTarde.length, icon: Sunset },
-    { label: 'Noche', val: 'NOCHE', count: rutinasNoche.length, icon: Moon },
-  ];
+  const rutinasFiltradas = rutinas.filter(
+    (r) => filtroTurno === '' || r.turno === filtroTurno
+  );
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Cabecera Principal de Página */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-tea-border shadow-xs">
+    <div className="space-y-8 pb-16">
+      {/* Cabecera Principal */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
         <div>
-          <div className="flex items-center gap-2 text-brand-600 text-xs font-bold uppercase tracking-wider mb-1">
-            <CalendarCheck className="w-4 h-4" aria-hidden="true" />
-            <span>Módulo de Agendas Visuales</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Gestión de Rutinas
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-tea-text tracking-tight">
+            {t('routines_title')}
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Diseña secuencias de actividades estructuradas con pictogramas ARASAAC para cada turno del día
+          <p className="text-sm sm:text-base text-tea-muted mt-1 leading-relaxed">
+            {t('routines_subtitle')}
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+        <div className="flex items-center gap-3 self-start sm:self-auto flex-shrink-0">
           <button
             type="button"
             onClick={cargarRutinas}
             disabled={loading}
-            className="p-2.5 min-h-[44px] min-w-[44px] rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
-            title="Recargar rutinas del servidor"
-            aria-label="Recargar rutinas del servidor"
+            className="p-3 min-h-[44px] min-w-[44px] rounded-xl text-tea-muted hover:text-tea-text bg-white hover:bg-tea-cardSubtle border border-tea-border transition-tea flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 shadow-soft-xs cursor-pointer"
+            title={t('reload_routines')}
+            aria-label={t('reload_routines')}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
           </button>
@@ -168,133 +143,90 @@ export const RutinasPage = () => {
           <button
             type="button"
             onClick={() => handleOpenCreate('MANANA')}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 min-h-[44px] rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-xs hover:shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 active:scale-98"
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-brand-600 hover:bg-brand-700 active:scale-98 text-white font-bold text-sm shadow-soft transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 cursor-pointer"
           >
             <Plus className="w-4 h-4" aria-hidden="true" />
-            <span>Nueva Rutina</span>
+            <span>{t('new_routine')}</span>
           </button>
         </div>
       </div>
 
-      {/* Tira Resumen con conteo por turno */}
-      <RutinasSummaryStrip
-        rutinas={rutinas}
-        filtroTurno={filtroTurno}
-        onSelectTurno={(val) => setFiltroTurno(val)}
-      />
-
-      {/* Barra de Filtros por Turno (Chips) */}
-      <div
-        role="region"
-        aria-label="Filtrar por turno"
-        className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 scrollbar-none"
-      >
-        <span className="text-xs font-bold text-slate-500 flex items-center gap-1.5 mr-1 flex-shrink-0">
-          <Filter className="w-3.5 h-3.5" aria-hidden="true" />
-          <span>Turno:</span>
-        </span>
-
-        {filterChips.map((chip) => {
-          const Icon = chip.icon;
-          const isSelected = filtroTurno === chip.val;
-
-          return (
-            <button
-              key={chip.val || 'all'}
-              type="button"
-              onClick={() => setFiltroTurno(chip.val)}
-              aria-pressed={isSelected}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 min-h-[44px] rounded-xl text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 flex-shrink-0 ${
-                isSelected
-                  ? 'bg-brand-600 text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>{chip.label}</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
-                  isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                }`}
-              >
-                {chip.count}
-              </span>
-            </button>
-          );
-        })}
+      {/* Pestañas de turno */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <RutinasSummaryStrip
+          rutinas={rutinas}
+          filtroTurno={filtroTurno}
+          onSelectTurno={(val) => setFiltroTurno(val)}
+        />
       </div>
 
-      {/* Estado de Error con Reintento */}
-      {error && !loading && (
+      {loading && <RutinasSkeleton count={3} />}
+
+      {!loading && error && (
         <RutinasErrorState error={error} onRetry={cargarRutinas} />
       )}
 
-      {/* Estado de Carga con Skeletons */}
-      {loading && <RutinasSkeleton count={3} />}
-
-      {/* Estado Vacío General (cuando no hay ninguna rutina en absoluto) */}
-      {!loading && !error && rutinas.length === 0 && (
+      {!loading && !error && (rutinas.length === 0 || rutinasFiltradas.length === 0) && (
         <RutinasEmptyState
           filtroTurno={filtroTurno}
-          onCrearRutina={() => handleOpenCreate('MANANA')}
+          onCrearRutina={() => handleOpenCreate(filtroTurno || 'MANANA')}
         />
       )}
 
-      {/* Secciones agrupadas por turno (Mañana, Tarde, Noche) */}
-      {!loading && !error && rutinas.length > 0 && (
-        <div className="space-y-6">
-          {showManana && (
+      {!loading && !error && rutinas.length > 0 && rutinasFiltradas.length > 0 && (
+        <div className="space-y-10 animate-fadeIn">
+          {showManana && rutinasManana.length > 0 && (
             <RutinaShiftSection
               shiftKey="MANANA"
               rutinas={rutinasManana}
               onEditar={handleOpenEdit}
               onEliminar={handleOpenDelete}
-              onCrearEnTurno={(turno) => handleOpenCreate(turno)}
+              onCrearEnTurno={handleOpenCreate}
             />
           )}
 
-          {showTarde && (
+          {showTarde && rutinasTarde.length > 0 && (
             <RutinaShiftSection
               shiftKey="TARDE"
               rutinas={rutinasTarde}
               onEditar={handleOpenEdit}
               onEliminar={handleOpenDelete}
-              onCrearEnTurno={(turno) => handleOpenCreate(turno)}
+              onCrearEnTurno={handleOpenCreate}
             />
           )}
 
-          {showNoche && (
+          {showNoche && rutinasNoche.length > 0 && (
             <RutinaShiftSection
               shiftKey="NOCHE"
               rutinas={rutinasNoche}
               onEditar={handleOpenEdit}
               onEliminar={handleOpenDelete}
-              onCrearEnTurno={(turno) => handleOpenCreate(turno)}
+              onCrearEnTurno={handleOpenCreate}
             />
           )}
         </div>
       )}
 
-      {/* Side Drawer para Crear y Editar Rutinas */}
       <RutinaDrawer
         isOpen={drawerOpen}
-        mode={drawerMode}
-        initialData={selectedRutina}
-        loading={drawerLoading}
         onClose={() => setDrawerOpen(false)}
         onSubmit={handleDrawerSubmit}
+        initialData={selectedRutina}
+        mode={drawerMode}
+        loading={drawerLoading}
       />
 
-      {/* Diálogo de Confirmación para Eliminar */}
       <DeleteConfirmDialog
         isOpen={deleteDialogOpen}
-        rutina={rutinaToDelete}
-        loading={deleteLoading}
+        onClose={() => setDeleteDialogOpen(false)}
         onConfirm={handleConfirmDelete}
-        onCancel={() => {
-          setDeleteDialogOpen(false);
-          setRutinaToDelete(null);
-        }}
+        title={t('delete_modal_title')}
+        message={
+          rutinaToDelete
+            ? `${t('delete_modal_title')} "${rutinaToDelete.titulo}". ${t('delete_modal_msg')}`
+            : t('delete_modal_msg')
+        }
+        loading={deleteLoading}
       />
     </div>
   );

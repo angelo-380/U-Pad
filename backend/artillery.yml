@@ -1,0 +1,33 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 10
+      arrivalRate: 5
+      rampTo: 10
+      name: "Fase 1: Calentamiento (50 usuarios totales)"
+    - duration: 10
+      arrivalRate: 10
+      name: "Fase 2: Carga sostenida (100 peticiones concurrentes)"
+  plugins:
+    ensure: {}
+  ensure:
+    - p95: 500 # El 95% de las peticiones debe responder en menos de 500ms
+    - maxErrorRate: 1 # Máximo 1% de errores permitidos
+
+scenarios:
+  - name: "Flujo completo de usuario: Health Check, Login y Listado de Rutinas"
+    flow:
+      - get:
+          url: "/health"
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "director@colegiosol.edu.pe"
+            password: "clave123"
+          capture:
+            - json: "$.data.token"
+              as: "userToken"
+      - get:
+          url: "/api/rutinas"
+          headers:
+            Authorization: "Bearer {{ userToken }}"

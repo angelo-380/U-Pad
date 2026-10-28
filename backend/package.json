@@ -1,0 +1,56 @@
+{
+  "name": "upad-backend",
+  "version": "1.0.0",
+  "description": "Backend API para U-Pad (Node.js, Express, Firestore)",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "start:dist": "node dist/server.js",
+    "dev": "node --watch --env-file=.env src/server.js",
+    "test": "cross-env NODE_ENV=test jest --runInBand --detectOpenHandles --forceExit",
+    "test:load": "node tests/loadTestRunner.js",
+    "build:obfuscate": "node scripts/obfuscate.js",
+    "carga": "k6 run --summary-export=reports/reporte-carga.json tests/carga.js",
+    "carga:escritura": "k6 run tests/carga-escritura.js",
+    "carga:ratelimit": "k6 run --summary-export=reports/reporte-rate-limit.json tests/carga.js",
+    "seed:admin": "node scripts/seedAdmin.js",
+    "emulators:start": "firebase emulators:start --only firestore"
+  },
+  "keywords": [
+    "upad",
+    "express",
+    "firestore",
+    "api"
+  ],
+  "author": "Equipo U-Pad",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "firebase-admin": "^12.2.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "jest": {
+    "transform": {
+      "^.+\\.js$": "babel-jest"
+    },
+    "setupFiles": [
+      "./tests/setup.js"
+    ]
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.7",
+    "@babel/preset-env": "^7.24.7",
+    "babel-jest": "^29.7.0",
+    "cross-env": "^7.0.3",
+    "javascript-obfuscator": "^4.1.1",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  }
+}

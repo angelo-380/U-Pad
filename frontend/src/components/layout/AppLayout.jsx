@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 import { RoleBadge } from '../common/RoleBadge.jsx';
-import { Tooltip } from '../common/Tooltip.jsx';
+import { LanguageSelector } from '../common/LanguageSelector.jsx';
 import {
   LogOut,
   CalendarCheck,
@@ -11,12 +12,11 @@ import {
   ShieldAlert,
   Menu,
   X,
-  User,
-  Lock,
 } from 'lucide-react';
 
 export const AppLayout = ({ children }) => {
   const { user, logout, sessionExpiredNotice, clearSessionNotice } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -26,28 +26,16 @@ export const AppLayout = ({ children }) => {
     navigate('/login');
   };
 
-  const navLinks = [
-    {
-      label: 'Rutinas Visuales',
-      path: '/rutinas',
-      icon: CalendarCheck,
-      inDev: false,
-    },
-    {
-      label: 'Seguimiento GPS',
-      path: '/gps',
-      icon: Compass,
-      inDev: true,
-      tooltip: 'Módulo en desarrollo (Fase beta próxima) · Próximamente disponible',
-    },
-    {
-      label: 'Sugerencias IA',
-      path: '/ia',
-      icon: Cpu,
-      inDev: true,
-      tooltip: 'Módulo en desarrollo (Groq / LLaMA 3.3) · Próximamente disponible',
-    },
+  const mainLinks = [
+    { label: t('nav_routines'), path: '/rutinas', icon: CalendarCheck },
   ];
+
+  const upcomingLinks = [
+    { label: t('nav_gps'), path: '/gps', icon: Compass },
+    { label: t('nav_ai'), path: '/ia', icon: Cpu },
+  ];
+
+  const displayName = user?.nombre || (user?.email ? user.email.split('@')[0] : 'Usuario');
 
   return (
     <div className="min-h-screen flex flex-col bg-tea-calm font-sans text-tea-text">
@@ -55,16 +43,16 @@ export const AppLayout = ({ children }) => {
       {sessionExpiredNotice && (
         <div
           role="alert"
-          className="bg-amber-100 border-b border-amber-300 text-amber-950 px-4 py-3 flex items-center justify-between text-sm font-semibold"
+          className="bg-accent-100 border-b border-accent-200 text-accent-700 px-4 py-3 flex items-center justify-between text-sm font-semibold"
         >
-          <div className="flex items-center gap-2.5 max-w-4xl mx-auto w-full">
-            <ShieldAlert className="w-5 h-5 flex-shrink-0 text-amber-700" aria-hidden="true" />
-            <span>Tu sesión ha expirado por seguridad. Por favor inicia sesión nuevamente.</span>
+          <div className="flex items-center gap-2.5 max-w-7xl mx-auto w-full">
+            <ShieldAlert className="w-5 h-5 flex-shrink-0 text-accent-600" aria-hidden="true" />
+            <span>{t('session_expired')}</span>
           </div>
           <button
             type="button"
             onClick={clearSessionNotice}
-            className="p-1.5 hover:bg-amber-200 rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+            className="p-1.5 hover:bg-accent-200 rounded-xl transition-tea min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
             aria-label="Cerrar aviso de sesión expirada"
           >
             <X className="w-4 h-4" />
@@ -73,93 +61,86 @@ export const AppLayout = ({ children }) => {
       )}
 
       {/* Barra superior de navegación */}
-      <header className="bg-white border-b border-tea-border sticky top-0 z-40 shadow-xs">
+      <header className="bg-white sticky top-0 z-40 shadow-soft">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo y Nombre */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6">
               <Link
                 to="/rutinas"
-                className="flex items-center gap-2.5 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 rounded-xl p-1"
-                aria-label="Ir a Inicio U-Pad"
+                className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 rounded-xl p-1"
+                aria-label="U-Pad Inicio"
               >
-                <div className="w-10 h-10 rounded-2xl bg-brand-600 flex items-center justify-center text-white font-extrabold text-xl shadow-xs group-hover:bg-brand-700 transition-colors">
+                <div className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center font-black text-lg tracking-wider shadow-soft-xs">
                   U
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-extrabold text-xl tracking-tight text-slate-900 leading-tight">
+                  <span className="font-extrabold text-base tracking-tight text-tea-text leading-none">
                     U-Pad
                   </span>
-                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                    Panel Web Accesible
+                  <span className="text-[11px] font-medium text-tea-subtle tracking-wide">
+                    {t('panel_title')}
                   </span>
                 </div>
               </Link>
+
+              <nav aria-label="Navegación principal" className="hidden md:flex items-center gap-1">
+                {mainLinks.map((link) => {
+                  const Icon = link.icon;
+                  const isActive = location.pathname === link.path;
+
+                  return (
+                    <Link
+                      key={link.path}
+                      to={link.path}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={`inline-flex items-center gap-2 px-3.5 py-2 min-h-[40px] rounded-xl text-sm font-semibold transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 ${
+                        isActive
+                          ? 'bg-brand-50 text-brand-700 font-bold'
+                          : 'text-tea-muted hover:text-tea-text hover:bg-tea-cardSubtle'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" aria-hidden="true" />
+                      <span>{link.label}</span>
+                    </Link>
+                  );
+                })}
+
+                {upcomingLinks.map((link) => {
+                  const Icon = link.icon;
+                  const isActive = location.pathname === link.path;
+
+                  return (
+                    <Link
+                      key={link.path}
+                      to={link.path}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] rounded-xl text-sm font-medium transition-tea text-tea-subtle hover:text-tea-muted hover:bg-tea-cardSubtle ${
+                        isActive ? 'bg-tea-cardSubtle text-tea-text font-semibold' : ''
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" aria-hidden="true" />
+                      <span>{link.label}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-accent-700 bg-accent-50 px-1.5 py-0.5 rounded-md border border-accent-100">
+                        {t('upcoming_badge')}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </nav>
             </div>
 
-            {/* Enlaces de escritorio */}
-            <nav
-              aria-label="Navegación principal"
-              className="hidden md:flex items-center gap-1.5"
-            >
-              {navLinks.map((link) => {
-                const Icon = link.icon;
-                const isActive = location.pathname === link.path;
-
-                // Estilo para módulos en desarrollo (claramente deshabilitados con tooltip)
-                if (link.inDev) {
-                  return (
-                    <Tooltip
-                      key={link.path}
-                      content={link.tooltip}
-                      position="bottom"
-                    >
-                      <div
-                        tabIndex={0}
-                        role="link"
-                        aria-disabled="true"
-                        className="flex items-center gap-2 px-3.5 py-2 min-h-[44px] rounded-xl text-xs font-bold text-slate-400 bg-slate-50/70 border border-dashed border-slate-200 cursor-not-allowed select-none opacity-70 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-                        title={link.tooltip}
-                      >
-                        <Icon className="w-4 h-4 text-slate-400" aria-hidden="true" />
-                        <span>{link.label}</span>
-                        <span className="inline-flex items-center gap-1 text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
-                          <Lock className="w-2.5 h-2.5" /> Próx
-                        </span>
-                      </div>
-                    </Tooltip>
-                  );
-                }
-
-                return (
-                  <Link
-                    key={link.path}
-                    to={link.path}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={`flex items-center gap-2 px-3.5 py-2 min-h-[44px] rounded-xl text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 ${
-                      isActive
-                        ? 'bg-brand-50 text-brand-800 border border-brand-200 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 text-brand-600" aria-hidden="true" />
-                    <span>{link.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
-
-            {/* Información del usuario y botón Salir */}
             <div className="hidden md:flex items-center gap-3">
-              <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200">
-                <div className="w-9 h-9 rounded-full bg-brand-50 border border-brand-200 flex items-center justify-center text-brand-700">
-                  <User className="w-4 h-4" aria-hidden="true" />
+              {/* Selector de Idioma */}
+              <LanguageSelector />
+
+              <div className="flex items-center gap-2.5 pl-3 border-l border-tea-border">
+                <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-xs">
+                  {displayName.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex flex-col text-left">
-                  <span className="text-xs font-bold text-slate-800 leading-tight">
-                    {user?.nombre || user?.email || 'Usuario'}
+                  <span className="text-sm font-bold text-tea-text leading-tight">
+                    {displayName}
                   </span>
-                  <span className="text-[11px] text-slate-500 truncate max-w-[150px]">
+                  <span className="text-xs text-tea-subtle truncate max-w-[150px]">
                     {user?.email}
                   </span>
                 </div>
@@ -169,136 +150,120 @@ export const AppLayout = ({ children }) => {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] rounded-xl text-xs font-bold text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600"
+                className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-sm font-semibold text-tea-muted hover:text-rose-700 hover:bg-rose-50 transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 cursor-pointer"
                 aria-label="Cerrar sesión de usuario"
-                title="Cerrar sesión"
+                title={t('logout_confirm')}
               >
-                <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Salir</span>
+                <LogOut className="w-4 h-4" aria-hidden="true" />
+                <span>{t('logout')}</span>
               </button>
             </div>
 
-            {/* Botón menú móvil */}
-            <div className="md:hidden flex items-center">
+            <div className="md:hidden flex items-center gap-2">
+              <LanguageSelector />
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="p-2.5 rounded-xl text-slate-700 hover:bg-slate-100 min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                className="p-2.5 rounded-xl text-tea-muted hover:text-tea-text hover:bg-tea-cardSubtle min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 cursor-pointer"
                 aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú de navegación'}
                 aria-expanded={mobileMenuOpen}
               >
-                {mobileMenuOpen ? (
-                  <X className="w-6 h-6" aria-hidden="true" />
-                ) : (
-                  <Menu className="w-6 h-6" aria-hidden="true" />
-                )}
+                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Menú móvil desplegable */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-4 pb-5 space-y-3 animate-fadeIn motion-reduce:animate-none">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex flex-col">
-                <span className="font-bold text-sm text-slate-900">
-                  {user?.nombre || user?.email}
-                </span>
-                <span className="text-xs text-slate-500">{user?.email}</span>
+          <div className="md:hidden border-t border-tea-border bg-white px-4 pt-4 pb-5 space-y-4 animate-fadeIn">
+            <div className="flex items-center justify-between pb-3 border-b border-tea-border">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-sm">
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-bold text-sm text-tea-text">{displayName}</span>
+                  <span className="text-xs text-tea-subtle">{user?.email}</span>
+                </div>
               </div>
               <RoleBadge role={user?.rol} />
             </div>
 
-            <div className="space-y-1.5">
-              {navLinks.map((link) => {
+            <div className="space-y-1">
+              {mainLinks.map((link) => {
                 const Icon = link.icon;
                 const isActive = location.pathname === link.path;
-
-                if (link.inDev) {
-                  return (
-                    <div
-                      key={link.path}
-                      className="flex items-center justify-between px-3 py-2.5 min-h-[44px] rounded-xl text-xs font-semibold text-slate-400 bg-slate-50 border border-dashed border-slate-200"
-                      aria-disabled="true"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Icon className="w-4 h-4 text-slate-400" />
-                        <span>{link.label}</span>
-                      </div>
-                      <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                        En desarrollo
-                      </span>
-                    </div>
-                  );
-                }
-
                 return (
                   <Link
                     key={link.path}
                     to={link.path}
                     onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center justify-between px-3 py-2.5 min-h-[44px] rounded-xl text-xs font-bold transition-colors ${
+                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-tea ${
                       isActive
-                        ? 'bg-brand-50 text-brand-800 border border-brand-200'
-                        : 'text-slate-700 hover:bg-slate-100'
+                        ? 'bg-brand-50 text-brand-700 font-bold'
+                        : 'text-tea-muted hover:text-tea-text hover:bg-tea-cardSubtle'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
-                      <Icon className="w-4 h-4 text-brand-600" />
-                      <span>{link.label}</span>
-                    </div>
+                    <Icon className="w-4 h-4" aria-hidden="true" />
+                    <span>{link.label}</span>
                   </Link>
                 );
               })}
+
+              <div className="pt-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-tea-subtle px-3 block mb-1">
+                  {t('nav_additional')}
+                </span>
+                {upcomingLinks.map((link) => {
+                  const Icon = link.icon;
+                  const isActive = location.pathname === link.path;
+                  return (
+                    <Link
+                      key={link.path}
+                      to={link.path}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-tea ${
+                        isActive ? 'bg-tea-cardSubtle text-tea-text' : 'text-tea-subtle hover:text-tea-muted'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon className="w-4 h-4" aria-hidden="true" />
+                        <span>{link.label}</span>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase text-accent-700 bg-accent-50 px-1.5 py-0.5 rounded border border-accent-100">
+                        {t('upcoming_badge')}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] mt-2 rounded-xl text-xs font-bold text-rose-800 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Cerrar Sesión</span>
-            </button>
+            <div className="pt-2 border-t border-tea-border">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 transition-tea min-h-[44px]"
+              >
+                <LogOut className="w-4 h-4" aria-hidden="true" />
+                <span>{t('logout_confirm')}</span>
+              </button>
+            </div>
           </div>
         )}
       </header>
 
-      {/* Contenido principal */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main id="main-content" className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
         {children}
       </main>
 
-      {/* Pie de página con atribución formal a ARASAAC */}
-      <footer className="bg-white border-t border-tea-border py-6 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600 text-center sm:text-left">
-          <div className="space-y-1">
-            <p className="font-semibold text-slate-800">
-              © 2026 U-Pad · Plataforma de apoyo para personas con Trastorno del Espectro Autista (TEA).
-            </p>
-            <p className="text-[11px] text-slate-500 max-w-2xl leading-relaxed">
-              Los símbolos pictográficos utilizados son propiedad del Gobierno de Aragón y han sido creados por Sergio Palao para{' '}
-              <a
-                href="https://arasaac.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-bold underline text-brand-700 hover:text-brand-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-600 rounded"
-              >
-                ARASAAC
-              </a>
-              , que los distribuye bajo Licencia Creative Commons (BY-NC-SA).
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-500 flex-shrink-0">
-            <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
-              WCAG AA
-            </span>
-            <span className="px-2 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
-              Baja Carga Sensorial
-            </span>
-          </div>
+      <footer className="bg-white border-t border-tea-border py-6 text-center text-xs text-tea-subtle">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p>© {new Date().getFullYear()} {t('footer_copy')}</p>
+          <p className="flex items-center gap-1.5">
+            <span>{t('footer_arasaac')}</span>
+            <span className="font-semibold text-tea-muted">ARASAAC (Gobierno de Aragón)</span>
+          </p>
         </div>
       </footer>
     </div>
