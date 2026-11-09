@@ -1,5 +1,5 @@
 import { rutinasService } from '../services/rutinasService.js';
-import { sendCreated, sendSuccess } from '../utils/responseHandler.js';
+import { sendCreated, sendSuccess, sendPaginated } from '../utils/responseHandler.js';
 import { AppError } from '../utils/AppError.js';
 
 export const rutinasController = {
@@ -28,13 +28,29 @@ export const rutinasController = {
   },
 
   /**
-   * GET /api/rutinas - Listar rutinas
+   * GET /api/rutinas - Listar rutinas con soporte de paginación
+   * Query params: page, limit, turno, organizacionId, search
    */
   async listar(req, res, next) {
     try {
-      const { turno, organizacionId } = req.query;
-      const rutinas = await rutinasService.listar({ turno, organizacionId }, req.user);
-      return sendSuccess(res, 200, 'Listado de rutinas obtenido exitosamente', rutinas);
+      const { turno, organizacionId, search, page, limit } = req.query;
+
+      const resultado = await rutinasService.listar(
+        { turno, organizacionId, search, page, limit },
+        req.user
+      );
+
+      // Si se solicitó paginación o el servicio devolvió estructura paginada
+      if (resultado.pagination) {
+        return sendPaginated(
+          res,
+          'Listado de rutinas obtenido exitosamente',
+          resultado.data,
+          resultado.pagination
+        );
+      }
+
+      return sendSuccess(res, 200, 'Listado de rutinas obtenido exitosamente', resultado);
     } catch (error) {
       next(error);
     }

@@ -9,6 +9,7 @@ import { DeleteConfirmDialog } from '../../components/rutinas/DeleteConfirmDialo
 import { RutinasSkeleton } from '../../components/rutinas/RutinasSkeleton.jsx';
 import { RutinasEmptyState } from '../../components/rutinas/RutinasEmptyState.jsx';
 import { RutinasErrorState } from '../../components/rutinas/RutinasErrorState.jsx';
+import { Pagination } from '../../components/common/Pagination.jsx';
 import { Plus, RefreshCw } from 'lucide-react';
 
 export const RutinasPage = () => {
@@ -16,6 +17,18 @@ export const RutinasPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filtroTurno, setFiltroTurno] = useState('');
+
+  // Estados de Paginación (Entrega 80%)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [paginationInfo, setPaginationInfo] = useState({
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 1,
+    hasNext: false,
+    hasPrev: false,
+  });
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState('create');
@@ -33,8 +46,29 @@ export const RutinasPage = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await rutinasService.listar();
-      setRutinas(Array.isArray(data) ? data : []);
+
+      const res = await rutinasService.listar({
+        turno: filtroTurno || undefined,
+        page: currentPage,
+        limit: pageSize,
+      });
+
+      if (res && res.pagination) {
+        setRutinas(res.data || []);
+        setPaginationInfo(res.pagination);
+      } else if (Array.isArray(res)) {
+        setRutinas(res);
+        setPaginationInfo({
+          page: 1,
+          limit: res.length,
+          total: res.length,
+          totalPages: 1,
+          hasNext: false,
+          hasPrev: false,
+        });
+      } else {
+        setRutinas([]);
+      }
     } catch (err) {
       const msg = err.message || 'Error al conectar con el servidor de rutinas.';
       setError(msg);
@@ -42,11 +76,27 @@ export const RutinasPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [filtroTurno, currentPage, pageSize, toast]);
 
   useEffect(() => {
     cargarRutinas();
   }, [cargarRutinas]);
+
+  // Al cambiar el filtro de turno, reiniciamos a la página 1
+  const handleSelectTurno = (turno) => {
+    setFiltroTurno(turno);
+    setCurrentPage(1);
+  };
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleLimitChange = (newLimit) => {
+    setPageSize(newLimit);
+    setCurrentPage(1);
+  };
 
   const handleOpenCreate = (turnoDefault = 'MANANA') => {
     setDrawerMode('create');
@@ -111,10 +161,6 @@ export const RutinasPage = () => {
   const showTarde = filtroTurno === '' || filtroTurno === 'TARDE';
   const showNoche = filtroTurno === '' || filtroTurno === 'NOCHE';
 
-  const rutinasFiltradas = rutinas.filter(
-    (r) => filtroTurno === '' || r.turno === filtroTurno
-  );
-
   return (
     <div className="space-y-8 pb-16">
       {/* Cabecera Principal */}
@@ -156,7 +202,7 @@ export const RutinasPage = () => {
         <RutinasSummaryStrip
           rutinas={rutinas}
           filtroTurno={filtroTurno}
-          onSelectTurno={(val) => setFiltroTurno(val)}
+          onSelectTurno={handleSelectTurno}
         />
       </div>
 
@@ -166,14 +212,14 @@ export const RutinasPage = () => {
         <RutinasErrorState error={error} onRetry={cargarRutinas} />
       )}
 
-      {!loading && !error && (rutinas.length === 0 || rutinasFiltradas.length === 0) && (
+      {!loading && !error && rutinas.length === 0 && (
         <RutinasEmptyState
           filtroTurno={filtroTurno}
           onCrearRutina={() => handleOpenCreate(filtroTurno || 'MANANA')}
         />
       )}
 
-      {!loading && !error && rutinas.length > 0 && rutinasFiltradas.length > 0 && (
+      {!loading && !error && rutinas.length > 0 && (
         <div className="space-y-10 animate-fadeIn">
           {showManana && rutinasManana.length > 0 && (
             <RutinaShiftSection
@@ -204,6 +250,18 @@ export const RutinasPage = () => {
               onCrearEnTurno={handleOpenCreate}
             />
           )}
+
+          {/* Barra de Paginación Integrada (Entrega 80%) */}
+          <Pagination
+            page={paginationInfo.page}
+            limit={paginationInfo.limit}
+            total={paginationInfo.total}
+            totalPages={paginationInfo.totalPages}
+            hasNext={paginationInfo.hasNext}
+            hasPrev={paginationInfo.hasPrev}
+            onPageChange={handlePageChange}
+            onLimitChange={handleLimitChange}
+          />
         </div>
       )}
 

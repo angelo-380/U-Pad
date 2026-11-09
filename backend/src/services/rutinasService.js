@@ -40,7 +40,7 @@ export const rutinasService = {
   },
 
   /**
-   * Lista rutinas aplicando aislamiento por rol y filtros de consulta.
+   * Lista rutinas aplicando aislamiento por rol, filtros de consulta y paginación controlada.
    */
   async listar(filtros = {}, usuarioActual) {
     let query = db.collection(RUTINAS_COLLECTION);
@@ -70,7 +70,7 @@ export const rutinasService = {
 
     const snapshot = await query.get();
 
-    const rutinas = [];
+    let rutinas = [];
     snapshot.forEach((doc) => {
       rutinas.push({
         id: doc.id,
@@ -78,7 +78,41 @@ export const rutinasService = {
       });
     });
 
-    return rutinas;
+    // Filtro opcional por texto en título (búsqueda en memoria)
+    if (filtros.search && typeof filtros.search === 'string') {
+      const term = filtros.search.toLowerCase().trim();
+      rutinas = rutinas.filter((r) => r.titulo && r.titulo.toLowerCase().includes(term));
+    }
+
+    // Ordenamiento por fecha de creación descendente (más recientes primero)
+    rutinas.sort((a, b) => new Date(b.creadoEn || 0) - new Date(a.creadoEn || 0));
+
+    // Si no se solicitó paginación (parámetros ausentes), retornamos array plano para retrocompatibilidad
+    const shouldPaginate = filtros.page !== undefined || filtros.limit !== undefined;
+
+    if (!shouldPaginate) {
+      return rutinas;
+    }
+
+    // Lógica de Paginación Controlada (Entrega 80%)
+    const page = Math.max(1, parseInt(filtros.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(filtros.limit, 10) || 10));
+    const total = rutinas.length;
+    const totalPages = Math.ceil(total / limit) || 1;
+    const startIndex = (page - 1) * limit;
+    const paginatedItems = rutinas.slice(startIndex, startIndex + limit);
+
+    return {
+      data: paginatedItems,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+    };
   },
 
   /**
@@ -95,40 +129,42 @@ export const rutinasService = {
     const rutina = { id: doc.id, ...doc.data() };
 
     // Verificación de acceso y permisos:
-    // 1. El rol 'admin' puede consultar, actualizar y eliminar cualquier rutina de cualquier organización
+    // 1. El rol 'admin' puede consultar cualquier rutina
     if (usuarioActual.rol === 'admin') {
       return rutina;
     }
 
-    // 2. El rol 'empresario' solo puede operar sobre rutinas de su propia organización (o creadas por él si no tiene org)
+    // 2. El rol 'empresario' solo puede operar sobre rutinas de su propia organización (o creadas por él)
     if (usuarioActual.rol === 'empresario') {
       if (usuarioActual.organizacionId) {
         if (rutina.organizacionId !== usuarioActual.organizacionId) {
-          throw new AppError('No tienes permisos para acceder o modificar esta rutina.', 403, { code: 'FORBIDDEN_RESOURCE' });
+          throw new AppError('No tienes permisos para acceder o modificar esta rutina.', 403, {
+            code: 'FORBIDDEN_RESOURCE',
+          });
         }
       } else if (rutina.creadoPor !== usuarioActual.id) {
-        throw new AppError('No tienes permisos para acceder o modificar esta rutina.', 403, { code: 'FORBIDDEN_RESOURCE' });
+        throw new AppError('No tienes permisos para acceder o modificar esta rutina.', 403, {
+          code: 'FORBIDDEN_RESOURCE',
+        });
       }
     }
 
     // 3. El rol 'tutor' solo puede operar sobre rutinas creadas por él mismo
-    if (
-      usuarioActual.rol === 'tutor' &&
-      rutina.creadoPor !== usuarioActual.id
-    ) {
-      throw new AppError('No tienes permisos para acceder o modificar esta rutina.', 403, { code: 'FORBIDDEN_RESOURCE' });
+    if (usuarioActual.rol === 'tutor' && rutina.creadoPor !== usuarioActual.id) {
+      throw new AppError('No tienes permisos para acceder o modificar esta rutina.', 403, {
+        code: 'FORBIDDEN_RESOURCE',
+      });
     }
 
     return rutina;
   },
 
   /**
-   * Actualiza una rutina existente.
+   * Actualiza una rutina existente (CRUD completo).
    */
   async actualizar(id, datosActualizados, usuarioActual) {
     const rutinaExistente = await this.obtenerPorId(id, usuarioActual);
 
-    const camposPermitidos = ['titulo', 'turno', 'ninoId', 'pasos', 'activa'];
     const actualizacion = {
       actualizadoEn: new Date().toISOString(),
     };

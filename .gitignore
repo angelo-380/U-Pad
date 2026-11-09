@@ -13,3 +13,6 @@ app/google-services.json
 .env.local
 node_modules/
 dist/
+
+backups/
+backend/backups/
