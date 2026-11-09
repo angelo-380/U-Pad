@@ -85,7 +85,7 @@ fun ConnectionScreen(
     val colorVerdePremium = Color(0xFF2E7D32)
     val colorRojoSuave = Color(0xFFEF5350)
 
-    val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+    val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId() }
     var codigoIngresado by remember { mutableStateOf("") }
     var cargandoVerificacion by remember { mutableStateOf(true) }
     var mensajeError by remember { mutableStateOf("") }
@@ -95,22 +95,13 @@ fun ConnectionScreen(
 
     // --- ESCUCHAR MULTIDISPOSITIVOS EN TIEMPO REAL ---
     DisposableEffect(idPadre) {
-        val listener = firestore.collection("dispositivos_niños")
-            .whereEqualTo("padreId", idPadre)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    cargandoVerificacion = false
-                    return@addSnapshotListener
-                }
-                listaDispositivos.clear()
-                if (snapshot != null) {
-                    for (dispositivo in snapshot.documents) {
-                        val model = dispositivo.getString("modelo") ?: "Dispositivo del Niño"
-                        listaDispositivos.add(DispositivoVinculado(id = dispositivo.id, modelo = model))
-                    }
-                }
-                cargandoVerificacion = false
+        val listener = com.example.upad.data.LocalDataManager.listenParentDevices(idPadre) { devs ->
+            listaDispositivos.clear()
+            for (d in devs) {
+                listaDispositivos.add(DispositivoVinculado(id = d.deviceId, modelo = d.modelo))
             }
+            cargandoVerificacion = false
+        }
 
         onDispose {
             listener.remove()
@@ -252,30 +243,9 @@ fun ConnectionScreen(
                                         onClick = {
                                             if (codigoIngresado.length == 6) {
                                                 mensajeError = ""
-                                                firestore.collection("codigos_vinculacion").document(codigoIngresado)
-                                                    .get()
-                                                    .addOnSuccessListener { snapshot ->
-                                                        if (snapshot.exists()) {
-                                                            val actualizaciones = mapOf(
-                                                                "estado" to "enlazado",
-                                                                "padreId" to idPadre
-                                                            )
-                                                            firestore.collection("codigos_vinculacion").document(codigoIngresado)
-                                                                .update(actualizaciones)
-                                                                .addOnSuccessListener {
-                                                                    codigoIngresado = ""
-                                                                    onLinkSuccess()
-                                                                }
-                                                                .addOnFailureListener {
-                                                                    mensajeError = context.getString(R.string.network_error_linking)
-                                                                }
-                                                        } else {
-                                                            mensajeError = context.getString(R.string.code_invalid_expired)
-                                                        }
-                                                    }
-                                                    .addOnFailureListener {
-                                                        mensajeError = context.getString(R.string.network_error_linking)
-                                                    }
+                                                com.example.upad.data.LocalDataManager.linkDeviceToParent(codigoIngresado, idPadre)
+                                                codigoIngresado = ""
+                                                onLinkSuccess()
                                             } else {
                                                 mensajeError = context.getString(R.string.enter_6_numbers)
                                             }

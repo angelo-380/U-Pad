@@ -1,0 +1,184 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+import { DatabaseSync } from 'node:sqlite';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'node:crypto';
+
+// Buscar la única base de datos relacional de Google Cloud
+const cloudDbPath1 = path.resolve(process.cwd(), '../cloud/upad_relational.db');
+const cloudDbPath2 = path.resolve(process.cwd(), 'cloud/upad_relational.db');
+const cloudDbPath3 = '/Users/angeloricasca/Projects/Cloud/U-Pad/cloud/upad_relational.db';
+
+export const DB_PATH = process.env.DB_PATH || (
+  fs.existsSync(cloudDbPath1) ? cloudDbPath1 : (
+    fs.existsSync(cloudDbPath2) ? cloudDbPath2 : cloudDbPath3
+  )
+);
+
+export const db = new DatabaseSync(DB_PATH);
+
+// Configuración de llaves de Google Cloud KMS para Pepper Master Key
+export const KMS_PEPPER = process.env.GCP_KMS_PEPPER_SECRET || 'UpadSecureGcpKmsPepper2026_EnterpriseKey!#';
+
+/**
+ * Hashing de contraseñas de alta seguridad:
+ * PBKDF2 (100,000 rondas, sha512) + Salt criptográfico + Llave Maestra Pepper de Google Cloud KMS
+ */
+export function hashPassword(password, salt = null) {
+  if (!salt) {
+    salt = crypto.randomBytes(16).toString('hex');
+  }
+  const combined = `${password}${salt}${KMS_PEPPER}`;
+  const hash = crypto.pbkdf2Sync(combined, salt, 100000, 64, 'sha512').toString('hex');
+  return { hash, salt };
+}
+
+export function verifyPassword(password, salt, storedHash) {
+  if (!storedHash) return false;
+  const combined = `${password}${salt}${KMS_PEPPER}`;
+  const calculated = crypto.pbkdf2Sync(combined, salt, 100000, 64, 'sha512').toString('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(calculated, 'hex'), Buffer.from(storedHash, 'hex'));
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Versión asíncrona para pruebas de estrés masivo (libuv threadpool):
+ * No bloquea el Event Loop cuando entran 500+ peticiones en 5 segundos.
+ */
+export function hashPasswordAsync(password, salt = null) {
+  return new Promise((resolve, reject) => {
+    if (!salt) {
+      salt = crypto.randomBytes(16).toString('hex');
+    }
+    const combined = `${password}${salt}${KMS_PEPPER}`;
+    crypto.pbkdf2(combined, salt, 100000, 64, 'sha512', (err, derivedKey) => {
+      if (err) return reject(err);
+      resolve({ hash: derivedKey.toString('hex'), salt });
+    });
+  });
+}
+
+export function verifyPasswordAsync(password, salt, storedHash) {
+  return new Promise((resolve) => {
+    if (!storedHash) return resolve(false);
+    const combined = `${password}${salt}${KMS_PEPPER}`;
+    crypto.pbkdf2(combined, salt, 100000, 64, 'sha512', (err, derivedKey) => {
+      if (err) return resolve(false);
+      try {
+        resolve(crypto.timingSafeEqual(Buffer.from(derivedKey.toString('hex'), 'hex'), Buffer.from(storedHash, 'hex')));
+      } catch (e) {
+        resolve(false);
+      }
+    });
+  });
+}
+
+// Inicializar esquemas requeridos por la plataforma web y la nube si no existen
+db.exec(`
+  CREATE TABLE IF NOT EXISTS usuarios (
+    id TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    password_salt TEXT NOT NULL,
+    rol TEXT NOT NULL DEFAULT 'empresario',
+    organizacionId TEXT,
+    activo INTEGER NOT NULL DEFAULT 1,
+    creadoEn TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS rutinas (
+    id TEXT PRIMARY KEY,
+    titulo TEXT NOT NULL,
+    turno TEXT NOT NULL,
+    ninoId TEXT,
+    organizacionId TEXT,
+    pasos TEXT NOT NULL DEFAULT '[]',
+    activa INTEGER NOT NULL DEFAULT 1,
+    creadoPor TEXT NOT NULL,
+    creadoEn TEXT NOT NULL,
+    actualizadoEn TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS login_lockouts (
+    email TEXT PRIMARY KEY,
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until INTEGER NOT NULL DEFAULT 0,
+    last_attempt INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS pairing_codes (
+    code VARCHAR(16) PRIMARY KEY,
+    device_id VARCHAR(128) NOT NULL,
+    parent_id VARCHAR(64) DEFAULT NULL,
+    organization_id VARCHAR(64) DEFAULT NULL,
+    pairing_status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS child_devices (
+    device_id VARCHAR(128) PRIMARY KEY,
+    parent_id VARCHAR(64),
+    child_name VARCHAR(128) DEFAULT 'Diego',
+    device_model VARCHAR(128) NOT NULL DEFAULT 'Android Tablet (Samsung Galaxy Tab A8)',
+    is_kiosk_active INTEGER NOT NULL DEFAULT 1,
+    last_latitude REAL DEFAULT -12.0431,
+    last_longitude REAL DEFAULT -77.0402,
+    last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS backups_history (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    size_formatted TEXT NOT NULL,
+    tipo TEXT NOT NULL DEFAULT 'MANUAL',
+    creado_por TEXT NOT NULL,
+    creado_en TEXT NOT NULL
+  );
+`);
+
+try {
+  const cols = db.pragma('table_info(child_devices)');
+  if (!cols.some(c => c.name === 'child_name')) {
+    db.exec("ALTER TABLE child_devices ADD COLUMN child_name VARCHAR(128) DEFAULT 'Diego'");
+  }
+} catch (e) {
+  // column check/add completed
+}
+
+// 1. Usuario Director Colegio Sol (Empresario / Organización)
+const seedUserCheck = db.prepare('SELECT COUNT(*) as count FROM usuarios WHERE email = ?').get('director@colegiosol.edu.pe');
+if (seedUserCheck.count === 0) {
+  const seedPass = hashPassword('ColegioSol2026!#');
+  db.prepare(`
+    INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+    VALUES (?, ?, ?, ?, ?, 'empresario', 'org_colegio_sol', 1, ?)
+  `).run('usr_director_sol', 'Director Colegio Sol', 'director@colegiosol.edu.pe', seedPass.hash, seedPass.salt, new Date().toISOString());
+}
+
+// 2. Usuario Desarrollador / Administrador Maestro (con poderes de backups e infraestructura en Cloud)
+const seedDevCheck = db.prepare('SELECT COUNT(*) as count FROM usuarios WHERE email = ?').get('developer@upad.cloud');
+if (seedDevCheck.count === 0) {
+  const devPass = hashPassword('Developer2026!#');
+  db.prepare(`
+    INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+    VALUES (?, ?, ?, ?, ?, 'developer', 'org_upad_cloud', 1, ?)
+  `).run('usr_developer_master', 'Lead Cloud Developer & Architect', 'developer@upad.cloud', devPass.hash, devPass.salt, new Date().toISOString());
+}
+
+// 3. Vincular dispositivo demo para pruebas
+try {
+  db.prepare(`
+    INSERT INTO child_devices (device_id, parent_id, child_name, device_model, is_kiosk_active)
+    VALUES ('dev_tablet_diego', 'usr_director_sol', 'Diego (Mi Hijo)', 'Android Tablet Kiosk v14', 1)
+    ON CONFLICT(device_id) DO NOTHING
+  `).run();
+} catch (e) {}

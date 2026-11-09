@@ -299,7 +299,8 @@ fun ProfileScreen(
                         colorTexto = Color(0xFFC62828),
                         colorTextoSec = Color(0xFFEF5350),
                         onClick = {
-                            firebaseAuth.signOut()
+                            com.example.upad.data.LocalDataManager.logout()
+                            try { firebaseAuth.signOut() } catch(e: Exception){}
                             onLogoutSuccess()
                         }
                     )

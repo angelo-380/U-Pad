@@ -24,7 +24,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upad.data.FirebaseRepository
-import com.google.firebase.auth.FirebaseAuth
+import com.example.upad.data.LocalDataManager
+import com.example.upad.utils.PasswordValidator
+import com.example.upad.utils.rememberDebouncedClick
 import kotlinx.coroutines.launch
 
 @Composable
@@ -38,7 +40,6 @@ fun RegisterScreen(
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val auth = FirebaseAuth.getInstance()
     val scope = rememberCoroutineScope()
     val repository = remember { FirebaseRepository() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -123,7 +124,7 @@ fun RegisterScreen(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("Contraseña") },
+                label = { Text("Contraseña / Password") },
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = colorAzulTEA) },
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = PasswordVisualTransformation(),
@@ -137,49 +138,57 @@ fun RegisterScreen(
                 singleLine = true
             )
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Text(
+                text = "Requiere mín. 8 caracteres, 1 mayúscula, 1 número y 1 símbolo especial",
+                fontSize = 11.sp,
+                color = Color.Gray,
+                modifier = Modifier.padding(start = 12.dp, top = 4.dp)
+            )
+
+            Spacer(modifier = Modifier.height(30.dp))
+
+            val debouncedRegister = rememberDebouncedClick(debounceIntervalMs = 1200L) {
+                keyboardController?.hide()
+                focusManager.clearFocus()
+
+                if (isLoading) return@rememberDebouncedClick
+
+                if (name.isBlank() || email.isBlank() || password.isBlank()) {
+                    Toast.makeText(context, "Por favor, completa todos los campos", Toast.LENGTH_SHORT).show()
+                    return@rememberDebouncedClick
+                }
+
+                // Validación estricta de política de seguridad de contraseña
+                val validation = PasswordValidator.validate(password)
+                if (!validation.isValid) {
+                    Toast.makeText(context, validation.errorMessage, Toast.LENGTH_LONG).show()
+                    return@rememberDebouncedClick
+                }
+
+                isLoading = true
+                Log.d("UPAD_DEBUG", "SUBMIT REGISTER - Email: $email")
+
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val localUserRes = LocalDataManager.register(name.trim(), email.trim(), password.trim())
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        isLoading = false
+                        if (localUserRes.isSuccess) {
+                            val userId = localUserRes.getOrNull()?.uid ?: "local_user_1"
+                            scope.launch {
+                                try { repository.saveUserData(userId, name) } catch (e: Exception) {}
+                            }
+                            Toast.makeText(context, "¡Cuenta creada exitosamente!", Toast.LENGTH_SHORT).show()
+                            onRegisterComplete(email, password)
+                        } else {
+                            val errorMsg = localUserRes.exceptionOrNull()?.message ?: "Error al registrar la cuenta"
+                            Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
 
             Button(
-                onClick = {
-                    keyboardController?.hide()
-                    focusManager.clearFocus()
-
-                    if (isLoading) return@Button
-
-                    Log.d("UPAD_DEBUG", "BOTÓN PRESIONADO - Email: $email")
-
-                    if (email.isNotBlank() && password.isNotBlank() && name.isNotBlank()) {
-                        isLoading = true
-
-                        auth.createUserWithEmailAndPassword(email.trim(), password.trim())
-                            .addOnCompleteListener { task ->
-                                if (task.isSuccessful) {
-                                    val userId = auth.currentUser?.uid
-                                    Log.d("UPAD_DEBUG", "AUTH EXITOSO: $userId")
-
-                                    if (userId != null) {
-                                        scope.launch {
-                                            try {
-                                                repository.saveUserData(userId, name)
-                                                Log.d("UPAD_DEBUG", "DATOS GUARDADOS EN FIREBASE")
-                                                onRegisterComplete(email, password)
-                                            } catch (e: Exception) {
-                                                Log.e("UPAD_DEBUG", "ERROR AL GUARDAR EN DB: ${e.message}")
-                                                isLoading = false
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    isLoading = false
-                                    val errorMsg = task.exception?.message ?: "Error desconocido"
-                                    Log.e("UPAD_DEBUG", "ERROR DE AUTH: $errorMsg")
-                                    Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
-                                }
-                            }
-                    } else {
-                        Toast.makeText(context, "Por favor, completa todos los campos", Toast.LENGTH_SHORT).show()
-                    }
-                },
+                onClick = debouncedRegister,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(65.dp),

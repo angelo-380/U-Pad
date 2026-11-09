@@ -1,0 +1,12 @@
+title: "UPadOrganizationAdmin"
+description: "Restricted B2B administrator role for school and clinic directors. Grants operational monitoring and logging access, strictly denies cloud infrastructure mutation, key deletion, and developer elevation."
+stage: "GA"
+includedPermissions:
+- monitoring.dashboards.get
+- monitoring.dashboards.list
+- monitoring.metricDescriptors.get
+- monitoring.metricDescriptors.list
+- monitoring.timeSeries.list
+- logging.logEntries.list
+- logging.views.list
+- resourcemanager.projects.get

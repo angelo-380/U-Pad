@@ -245,19 +245,12 @@ fun RoutineDashboardScreen(
                 },
                 floatingActionButton = {
                     FloatingActionButton(
-                        onClick = {
-                            if (esPremium) onUbicarHijoAccionUnificada()
-                            else showTurnSelectionDialog = true
-                        },
+                        onClick = { showTurnSelectionDialog = true },
                         containerColor = if (isDarkMode) Color.White else Color.Black,
                         contentColor = if (isDarkMode) Color.Black else Color.White,
                         shape = CircleShape
                     ) {
-                        if (esPremium) {
-                            Icon(Icons.Default.Map, contentDescription = "Ver mapa", modifier = Modifier.size(28.dp))
-                        } else {
-                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create_new_routine), modifier = Modifier.size(30.dp))
-                        }
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create_new_routine), modifier = Modifier.size(30.dp))
                     }
                 }
             ) { paddingValues ->

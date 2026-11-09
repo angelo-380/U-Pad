@@ -228,6 +228,92 @@ fun SettingsScreen(
                 }
 
                 Text(
+                    text = "CONEXIÓN CON LA NUBE",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colorTextoSecundario
+                )
+
+                // IP del Servidor Cloud
+                var showIpDialog by remember { mutableStateOf(false) }
+                var tempIp by remember { mutableStateOf(com.example.upad.data.LocalDataManager.getServerIp()) }
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            tempIp = com.example.upad.data.LocalDataManager.getServerIp()
+                            showIpDialog = true
+                        },
+                    shape = RoundedCornerShape(20.dp),
+                    color = colorSuperficieTarjetas,
+                    border = if (isPremiumUser) BorderStroke(1.dp, colorAcabadoPrincipal.copy(alpha = 0.25f)) else null,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Language, contentDescription = null, tint = colorAcabadoPrincipal)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = "IP del Servidor Cloud",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colorTextoPrincipal
+                                )
+                                Text(
+                                    text = "${com.example.upad.data.LocalDataManager.getServerIp()}:3000",
+                                    fontSize = 12.sp,
+                                    color = colorTextoSecundario
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (showIpDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showIpDialog = false },
+                        title = { Text("Configurar IP del Servidor") },
+                        text = {
+                            Column {
+                                Text("Introduce la IP local de tu laptop/servidor (ej: 192.168.15.12):", fontSize = 14.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = tempIp,
+                                    onValueChange = { tempIp = it },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(onClick = {
+                                if (tempIp.isNotBlank()) {
+                                    com.example.upad.data.LocalDataManager.setServerIp(tempIp.trim())
+                                    android.widget.Toast.makeText(context, "IP actualizada: ${tempIp.trim()}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                showIpDialog = false
+                            }) {
+                                Text("Guardar")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showIpDialog = false }) {
+                                Text("Cancelar")
+                            }
+                        }
+                    )
+                }
+
+                Text(
                     text = stringResource(R.string.settings_app),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,

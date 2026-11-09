@@ -12,7 +12,7 @@ class LanguageDataStore(private val context: Context) {
     }
 
     val languageFlow: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[LANGUAGE_KEY] ?: "es" // Español por defecto
+        preferences[LANGUAGE_KEY] ?: "en" // Default language is English
     }
 
     suspend fun saveLanguage(languageCode: String) {

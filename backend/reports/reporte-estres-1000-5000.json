@@ -1,0 +1,20 @@
+{
+  "total": 5000,
+  "exitosas": 5000,
+  "fallidas": 0,
+  "tasaExito": "100.00%",
+  "duracionSegundos": "0.36",
+  "rps": "13888.89",
+  "latencias": {
+    "min": 0,
+    "promedio": "8.72",
+    "p50": 8,
+    "p90": 11,
+    "p95": 12,
+    "max": 36
+  },
+  "codigosHttp": {
+    "200": 5000
+  },
+  "timestamp": "2026-11-09T21:18:18.826Z"
+}

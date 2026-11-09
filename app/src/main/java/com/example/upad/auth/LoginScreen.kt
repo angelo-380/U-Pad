@@ -20,7 +20,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.upad.data.LocalDataManager
+import com.example.upad.utils.PasswordValidator
+import com.example.upad.utils.rememberDebouncedClick
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
@@ -33,7 +37,7 @@ fun LoginScreen(
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val auth = FirebaseAuth.getInstance()
+    val scope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
@@ -132,34 +136,46 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(30.dp))
 
-            Button(
-                onClick = {
-                    keyboardController?.hide()
-                    focusManager.clearFocus()
+            val debouncedLogin = rememberDebouncedClick(debounceIntervalMs = 1200L) {
+                keyboardController?.hide()
+                focusManager.clearFocus()
 
-                    if (isLoading) return@Button
+                if (isLoading) return@rememberDebouncedClick
 
-                    if (email.isNotBlank() && password.isNotBlank()) {
-                        isLoading = true
-                        auth.signInWithEmailAndPassword(email.trim(), password.trim())
-                            .addOnCompleteListener { task ->
-                                if (task.isSuccessful) {
-                                    // 🔥 CORREGIDO: Guardamos el nombre en SharedPreferences antes de disparar la navegación
-                                    val prefs = context.getSharedPreferences("UPAD_PREFS", android.content.Context.MODE_PRIVATE)
-                                    val emailName = email.substringBefore("@").uppercase()
-                                    prefs.edit().putString("PARENT_NAME", emailName).apply()
+                if (email.isBlank() || password.isBlank()) {
+                    Toast.makeText(context, "Completa todos los campos", Toast.LENGTH_SHORT).show()
+                    return@rememberDebouncedClick
+                }
 
-                                    onLoginClick(email, password)
-                                } else {
-                                    isLoading = false
-                                    val errorMsg = task.exception?.message ?: "Error desconocido"
-                                    Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
-                                }
-                            }
-                    } else {
-                        Toast.makeText(context, "Completa todos los campos", Toast.LENGTH_SHORT).show()
+                // Validación de contraseña para evitar secuencias triviales o débiles
+                val validation = PasswordValidator.validate(password)
+                if (!validation.isValid) {
+                    Toast.makeText(context, validation.errorMessage, Toast.LENGTH_LONG).show()
+                    return@rememberDebouncedClick
+                }
+
+                isLoading = true
+
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val loginRes = LocalDataManager.login(email.trim(), password.trim())
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        isLoading = false
+                        if (loginRes.isSuccess) {
+                            val prefs = context.getSharedPreferences("UPAD_PREFS", android.content.Context.MODE_PRIVATE)
+                            val loggedUser = loginRes.getOrNull()
+                            val displayName = loggedUser?.name ?: email.substringBefore("@").uppercase()
+                            prefs.edit().putString("PARENT_NAME", displayName).apply()
+                            onLoginClick(email, password)
+                        } else {
+                            val errorMsg = loginRes.exceptionOrNull()?.message ?: "Error al iniciar sesión"
+                            Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                        }
                     }
-                },
+                }
+            }
+
+            Button(
+                onClick = debouncedLogin,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(65.dp),

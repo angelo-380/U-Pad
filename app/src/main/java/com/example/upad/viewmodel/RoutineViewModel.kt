@@ -56,7 +56,7 @@ class RoutineViewModel(
     private val _isPremiumManual = MutableStateFlow(false)
     val isUserPremium: StateFlow<Boolean> = _isPremiumManual
 
-    private val _appLanguage = MutableStateFlow("es")
+    private val _appLanguage = MutableStateFlow("en")
     val appLanguage: StateFlow<String> = _appLanguage.asStateFlow()
 
     // 🌓 ESTADO DEL TEMA OSCURO PERSISTENTE COLECTADO LOCALMENTE
@@ -283,15 +283,10 @@ class RoutineViewModel(
 
     fun iniciarEscuchaDispositivoNiño(deviceId: String) {
         devicesListener?.remove()
-        devicesListener = repository.listenToChildDevice(deviceId) { snapshot, error ->
-            if (error != null) {
-                _cargandoChild.value = false
-                return@listenToChildDevice
-            }
+        devicesListener = repository.listenToChildDevice(deviceId) { device ->
+            val padreId = device?.padreId ?: ""
 
-            val padreId = snapshot?.getString("padreId") ?: ""
-
-            if (snapshot == null || !snapshot.exists() || padreId.isEmpty()) {
+            if (device == null || padreId.isEmpty()) {
                 _estaVinculado.value = false
                 _padreIdAsociado.value = ""
                 premiumListener?.remove()
@@ -304,12 +299,11 @@ class RoutineViewModel(
                     repository.createPairingCode(nuevoCodigo, deviceId)
 
                     pairingCodeListener?.remove()
-                    pairingCodeListener = repository.listenToPairingCode(nuevoCodigo) { codeSnapshot, codeError ->
-                        if (codeError != null) return@listenToPairingCode
-                        if (codeSnapshot != null && codeSnapshot.exists()) {
-                            val estado = codeSnapshot.getString("estado")
-                            val pId = codeSnapshot.getString("padreId")
-                            if (estado == "enlazado" && !pId.isNullOrEmpty()) {
+                    pairingCodeListener = repository.listenToPairingCode(nuevoCodigo) { codeEntry ->
+                        if (codeEntry != null) {
+                            val estado = codeEntry.estado
+                            val pId = codeEntry.padreId
+                            if (estado == "enlazado" && pId.isNotEmpty()) {
                                 repository.linkDeviceToParent(deviceId, pId)
                                 repository.deletePairingCode(nuevoCodigo)
                             }
@@ -336,6 +330,8 @@ class RoutineViewModel(
                     _esPremiumPorPadre.value = isPremium
                     _cargandoChild.value = false
                 }
+            } else {
+                _cargandoChild.value = false
             }
 
             pairingCodeListener?.remove()
@@ -588,7 +584,7 @@ class RoutineViewModel(
 
     private fun obtenerUidSeguro(userId: String): String {
         return if (userId == "PADRE_TEST" || userId.isBlank()) {
-            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
         } else {
             userId
         }
@@ -670,7 +666,7 @@ class RoutineViewModel(
             }
 
             if (index in listLocal.indices) {
-                listLocal.removeAt(index)
+                val removedTask = listLocal.removeAt(index)
 
                 when (turnoValido) {
                     "MAÑANA" -> _tasksManana.value = listLocal
@@ -679,6 +675,7 @@ class RoutineViewModel(
                 }
 
                 try {
+                    com.example.upad.data.LocalDataManager.deleteRoutineTask(uidValido, turnoValido, removedTask.actividad)
                     repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listLocal)
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -717,10 +714,14 @@ class RoutineViewModel(
                         .document(deviceId)
                         .get()
                         .await()
-                    finalUid = doc.getString("padreId") ?: ""
+                    finalUid = doc.getString("padreId") ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
+            }
+
+                        if (finalUid.isEmpty() || finalUid == "PADRE_TEST") {
+                finalUid = com.example.upad.data.LocalDataManager.getCurrentUserId()
             }
 
             val listaActual = try {
@@ -844,7 +845,15 @@ class RoutineViewModel(
         }
     }
 
+    private var lastSaveAllTimestamp = 0L
+
     fun saveAll(userId: String, turn: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastSaveAllTimestamp < 1500L) {
+            android.util.Log.w("RoutineViewModel", "Debounced: Ignoring rapid duplicate saveAll invocation.")
+            return
+        }
+        lastSaveAllTimestamp = now
         val turnoValido = normalizarTurno(turn)
         val uidValido = obtenerUidSeguro(userId)
         val diaFull = ultimoDiaCargado
@@ -957,8 +966,13 @@ class RoutineViewModel(
         }
 
         viewModelScope.launch {
+            var targetUid = uidValido
+            if (targetUid.isEmpty() || targetUid == "PADRE_TEST") {
+                targetUid = com.example.upad.data.LocalDataManager.getCurrentUserId()
+            }
+
             val listaActual = try {
-                repository.obtenerRutinasDelPadreDirectoPorDia(uidValido, turnoValido, diaFull).toMutableList()
+                repository.obtenerRutinasDelPadreDirectoPorDia(targetUid, turnoValido, diaFull).toMutableList()
             } catch (e: Exception) {
                 when (turnoValido) {
                     "MAÑANA" -> _tasksManana.value.toMutableList()

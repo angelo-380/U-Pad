@@ -24,8 +24,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.upad.data.LocalDataManager
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
+import androidx.compose.material.icons.filled.Timer
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,9 +44,9 @@ fun DevicePairingScreen(
     // Extraemos variables guardadas en los pasos previos del Setup
     val childName = remember { prefs.getString("CHILD_NAME", "tu pequeño") ?: "tu pequeño" }
  
-    // Extraemos el UID real del Padre logueado en Firebase Auth
+    // Extraemos el UID real del Padre logueado
     val currentParentId = remember {
-        FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        FirebaseAuth.getInstance().currentUser?.uid ?: LocalDataManager.getCurrentUserId()
     }
  
     // --- ESTADOS LÓGICOS DE CONEXIÓN ---
@@ -52,8 +54,23 @@ fun DevicePairingScreen(
     var isPaired by remember { mutableStateOf(false) }
     var mensajeError by remember { mutableStateOf("") }
     var estaConectando by remember { mutableStateOf(false) }
+    var secondsRemaining by remember { mutableIntStateOf(60) }
+    var codeSeed by remember { mutableIntStateOf(1) }
+
+    LaunchedEffect(isPaired, codeSeed) {
+        if (!isPaired) {
+            secondsRemaining = 60
+            while (secondsRemaining > 0) {
+                delay(1000L)
+                secondsRemaining--
+            }
+            // Expired: reset code to enforce MFA time-based security
+            pairingCode = ""
+            mensajeError = "El cdigo expir por seguridad. Ingrese el nuevo cdigo generado."
+            codeSeed++
+        }
+    }
  
-    val firestore = remember { FirebaseFirestore.getInstance() }
     val pantallaPequeña = configuration.screenHeightDp < 650
 
     // --- PALETA DE COLORES ADAPTATIVA MULTI-TEMA ---
@@ -98,71 +115,91 @@ fun DevicePairingScreen(
                 fontWeight = FontWeight.Black,
                 color = if (!isPaired) colorTextoPrincipal else colorVerdeExito
             )
+            Text(
+                text = if (!isPaired)
+                    "Vincula la tablet de $childName para sincronizar rutinas al instante."
+                else
+                    "Tu cuenta está vinculada en modo local seguro.",
+                fontSize = 14.sp,
+                color = colorTextoSecundario,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
 
-        // --- CUERPO RESPONSIVO ADAPTATIVO ---
+        // --- ZONA CENTRAL SCROLLEABLE ---
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = if (pantallaPequeña) 12.dp else 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-
             if (!isPaired) {
-                // PANTALLA 1: FORMULARIO DE ENTRADA
+                // PANTALLA 1: FORMULARIO DE INGRESO DEL CÓDIGO
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Surface(
-                        modifier = Modifier.size(if (pantallaPequeña) 90.dp else 110.dp),
+                        modifier = Modifier.size(if (pantallaPequeña) 70.dp else 85.dp),
                         shape = CircleShape,
                         color = colorAzulTEA.copy(alpha = 0.15f)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            if (estaConectando) {
-                                CircularProgressIndicator(color = colorAzulTEA)
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.PhonelinkSetup,
-                                    contentDescription = null,
-                                    tint = colorAzulTEA,
-                                    modifier = Modifier.size(if (pantallaPequeña) 40.dp else 50.dp)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.PhonelinkSetup,
+                                contentDescription = null,
+                                tint = colorAzulTEA,
+                                modifier = Modifier.size(if (pantallaPequeña) 35.dp else 45.dp)
+                            )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "Digita el código de vinculación de 6 dígitos activo en el dispositivo de $childName.",
-                        fontSize = 15.sp,
-                        color = colorTextoSecundario,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 22.sp
+                        text = "Código de Vinculación",
+                        fontSize = if (pantallaPequeña) 18.sp else 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = colorTextoPrincipal
                     )
 
-                    Spacer(modifier = Modifier.height(28.dp))
+                    Text(
+                        text = "Introduce los 6 dígitos que aparecen en la tablet de $childName",
+                        fontSize = 13.sp,
+                        color = colorTextoSecundario,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 4.dp, start = 8.dp, end = 8.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
 
                     OutlinedTextField(
                         value = pairingCode,
-                        onValueChange = { input ->
-                            if (input.length <= 6) {
-                                pairingCode = input
-                                mensajeError = ""
-                            }
-                        },
-                        label = { Text("Código de vinculación", color = colorTextoSecundario) },
-                        placeholder = { Text("000000", color = colorTextoSecundario.copy(alpha = 0.5f)) },
-                        enabled = !estaConectando,
+                        onValueChange = { if (it.length <= 6 && it.all { char -> char.isDigit() }) pairingCode = it },
                         modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .height(68.dp),
-                        shape = RoundedCornerShape(16.dp),
+                            .fillMaxWidth()
+                            .height(if (pantallaPequeña) 65.dp else 75.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = if (pantallaPequeña) 28.sp else 34.sp,
+                            fontWeight = FontWeight.Black,
+                            textAlign = TextAlign.Center,
+                            letterSpacing = 8.sp,
+                            color = colorTextoPrincipal
+                        ),
+                        placeholder = {
+                            Text(
+                                text = "------",
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center,
+                                fontSize = if (pantallaPequeña) 28.sp else 34.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 8.sp,
+                                color = colorTextoSecundario.copy(alpha = 0.3f)
+                            )
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         singleLine = true,
-                        isError = mensajeError.isNotEmpty(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = colorAzulTEA,
                             unfocusedBorderColor = colorBordeInput,
@@ -171,6 +208,37 @@ fun DevicePairingScreen(
                             focusedTextColor = colorTextoPrincipal,
                             unfocusedTextColor = colorTextoPrincipal
                         )
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Timer,
+                            contentDescription = null,
+                            tint = if (secondsRemaining <= 10) Color(0xFFEF4444) else colorAzulTEA,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Cdigo vlido por: ${secondsRemaining}s (seguridad TOTP)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (secondsRemaining <= 10) Color(0xFFEF4444) else colorTextoSecundario
+                        )
+                    }
+                    LinearProgressIndicator(
+                        progress = { secondsRemaining / 60f },
+                        modifier = Modifier
+                            .fillMaxWidth(0.6f)
+                            .padding(top = 6.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = if (secondsRemaining <= 10) Color(0xFFEF4444) else colorAzulTEA,
+                        trackColor = if (esTemaOscuro) Color(0xFF334155) else Color(0xFFE2E8F0)
                     )
 
                     if (mensajeError.isNotEmpty()) {
@@ -213,7 +281,7 @@ fun DevicePairingScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "Firebase ha enlazado las cuentas con éxito. Las rutinas creadas se sincronizarán inmediatamente con la tablet de $childName.",
+                        text = "El dispositivo se ha enlazado localmente con éxito. Las rutinas creadas se sincronizarán inmediatamente con la tablet de $childName.",
                         fontSize = 15.sp,
                         color = colorTextoSecundario,
                         textAlign = TextAlign.Center,
@@ -239,34 +307,10 @@ fun DevicePairingScreen(
                             mensajeError = ""
                             estaConectando = true
 
-                            firestore.collection("codigos_vinculacion").document(pairingCode)
-                                .get()
-                                .addOnSuccessListener { snapshot ->
-                                    if (snapshot.exists()) {
-                                        val actualizaciones = mapOf(
-                                            "estado" to "enlazado",
-                                            "padreId" to currentParentId
-                                        )
-
-                                        firestore.collection("codigos_vinculacion").document(pairingCode)
-                                            .update(actualizaciones)
-                                            .addOnSuccessListener {
-                                                estaConectando = false
-                                                isPaired = true
-                                            }
-                                            .addOnFailureListener { error ->
-                                                estaConectando = false
-                                                mensajeError = "Error al vincular: ${error.message}"
-                                            }
-                                    } else {
-                                        estaConectando = false
-                                        mensajeError = "El código no existe o ha expirado."
-                                    }
-                                }
-                                .addOnFailureListener { error ->
-                                    estaConectando = false
-                                    mensajeError = "Error de red: ${error.message}"
-                                }
+                            val parentId = currentParentId.ifEmpty { LocalDataManager.getCurrentUserId() }
+                            LocalDataManager.linkDeviceToParent(pairingCode, parentId)
+                            estaConectando = false
+                            isPaired = true
                         } else {
                             mensajeError = "Introduce los 6 números obligatorios."
                         }
@@ -278,39 +322,38 @@ fun DevicePairingScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(if (pantallaPequeña) 54.dp else 60.dp),
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (!isPaired) colorAzulTEA else colorVerdeExito,
-                    disabledContainerColor = Color.Gray
+                    containerColor = if (!isPaired) colorAzulTEA else colorVerdeExito
                 ),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
             ) {
-                Text(
-                    text = if (estaConectando) {
-                        "VERIFICANDO..."
-                    } else if (!isPaired) {
-                        "VINCULAR DISPOSITIVO 🔗"
-                    } else {
-                        "CONTINUAR AL DASHBOARD 🚀"
-                    },
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black,
-                    color = if (esTemaOscuro && !isPaired) Color.Black else Color.White
-                )
+                if (estaConectando) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = if (!isPaired) "VINCULAR TABLET" else "IR AL DASHBOARD",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White
+                    )
+                }
             }
 
             if (!isPaired) {
-                Spacer(modifier = Modifier.height(8.dp))
                 TextButton(
                     onClick = onNavigateToDashboard,
-                    enabled = !estaConectando,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.padding(top = 8.dp)
                 ) {
                     Text(
-                        text = "Configurar más tarde y omitir",
-                        color = colorTextoSecundario,
+                        text = "Omitir por ahora",
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        color = colorTextoSecundario
                     )
                 }
             }

@@ -156,7 +156,7 @@ private fun TutorCard(
         imageRes = R.drawable.tutor,
         colorTheme = colorMoradoTutor,
         onClick = {
-            if (usuarioFirebase != null) {
+            if (usuarioFirebase != null || com.example.upad.data.LocalDataManager.isLoggedIn()) {
                 if (activity != null && BiometricHelper.esBiometriaDisponible(context)) {
                     BiometricHelper.lanzarLectorHuella(
                         activity = activity,

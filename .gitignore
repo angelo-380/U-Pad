@@ -1,11 +1,43 @@
 *.iml
 .gradle
 /local.properties
+local.properties
 /.idea/
 .DS_Store
 /build
 /captures
 .externalNativeBuild
 .cxx
-local.properties
 app/google-services.json
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+
+# SQLite database and live snapshots
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+cloud/*.db
+cloud/backups/
+cloud/upad_relational.db
+upad_relational.db
+
+# Dependencies & build outputs
+node_modules/
+frontend/dist/
+backend/coverage/
+*.apk
+*.zip
+*.docx
+*.pdf
+*.exe
+tools/k6.exe
+
+# Temp and stray files
+h -u origin main

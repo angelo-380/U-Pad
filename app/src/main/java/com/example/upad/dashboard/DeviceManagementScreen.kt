@@ -86,34 +86,14 @@ fun DeviceManagementScreen(
     var cargando by remember { mutableStateOf(true) }
 
     val firestore = remember { FirebaseFirestore.getInstance() }
-    val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+    val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId() }
 
     // 📡 ESCUCHA EN ESPEJO
     DisposableEffect(idPadre) {
-        val listener = firestore.collection("dispositivos_niños")
-            .whereEqualTo("padreId", idPadre)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    cargando = false
-                    return@addSnapshotListener
-                }
-
-                val listaTemporal = mutableListOf<DispositivoNiño>()
-                if (snapshot != null) {
-                    for (dispositivo in snapshot.documents) {
-                        val id = dispositivo.id
-                        val nombre = dispositivo.getString("nombreDispositivo")
-                            ?: dispositivo.getString("modelo")
-                            ?: "Tablet/Celular Niño"
-                        val activo = dispositivo.getBoolean("kioscoActivo") ?: false
-
-                        listaTemporal.add(DispositivoNiño(id, nombre, activo))
-                    }
-                }
-
-                listaDispositivos = listaTemporal
-                cargando = false
-            }
+        val listener = com.example.upad.data.LocalDataManager.listenParentDevices(idPadre) { devs ->
+            listaDispositivos = devs.map { DispositivoNiño(it.deviceId, it.modelo, it.kioscoActivo) }
+            cargando = false
+        }
 
         onDispose {
             listener.remove()

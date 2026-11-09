@@ -1,15 +1,12 @@
 package com.example.upad.viewmodel
 
 import androidx.lifecycle.ViewModel
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.IgnoreExtraProperties
+import com.example.upad.data.LocalDataManager
+import com.example.upad.dashboard.DispositivoVinculado
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import com.example.upad.dashboard.DispositivoVinculado
 
-// ✅ Anotación para ignorar campos como 'ultimaActualizacion' si Firebase los maneja como Timestamp
-@IgnoreExtraProperties
 data class UbicacionHijo(
     val latitud: Double = 0.0,
     val longitud: Double = 0.0
@@ -17,7 +14,6 @@ data class UbicacionHijo(
 
 class TrackingViewModel : ViewModel() {
 
-    private val firestore = FirebaseFirestore.getInstance()
     private var ubicacionListener: ListenerRegistration? = null
     private var dispositivosListener: ListenerRegistration? = null
 
@@ -27,58 +23,35 @@ class TrackingViewModel : ViewModel() {
     private val _dispositivosConectados = MutableStateFlow<List<DispositivoVinculado>>(emptyList())
     val dispositivosConectados: StateFlow<List<DispositivoVinculado>> = _dispositivosConectados
 
-    // Escucha en tiempo real la ubicación del niño desde la colección correcta
+    // Escucha en tiempo real la ubicación del niño desde el gestor de datos local
     fun iniciarRastreoHijo(hijoId: String) {
-        // Cancelamos un listener previo si existía para evitar duplicados o fugas de memoria
         ubicacionListener?.remove()
 
-        // ✅ Apuntando perfectamente a "dispositivos_niños"
-        ubicacionListener = firestore.collection("dispositivos_niños")
-            .document(hijoId)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    error.printStackTrace()
-                    return@addSnapshotListener
-                }
-
-                if (snapshot != null && snapshot.exists()) {
-                    // Mapea automáticamente el documento al objeto Kotlin seguro
-                    val data = snapshot.toObject(UbicacionHijo::class.java)
-                    _ubicacion.value = data
-                }
+        ubicacionListener = LocalDataManager.listenChildDevice(hijoId) { dev ->
+            if (dev != null) {
+                _ubicacion.value = UbicacionHijo(latitud = dev.latitud, longitud = dev.longitud)
+            } else {
+                // Coordenadas representativas por defecto si aún no ha emitido GPS
+                _ubicacion.value = UbicacionHijo(latitud = -12.046374, longitud = -77.042793)
             }
+        }
     }
 
     // Escucha en tiempo real la lista de dispositivos vinculados al padre
     fun escucharDispositivosVinculados(padreId: String) {
         dispositivosListener?.remove()
-        if (padreId.isEmpty()) {
-            _dispositivosConectados.value = emptyList()
-            return
-        }
+        val targetPadreId = if (padreId.isEmpty()) LocalDataManager.getCurrentUserId() else padreId
 
-        dispositivosListener = firestore.collection("dispositivos_niños")
-            .whereEqualTo("padreId", padreId)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    error.printStackTrace()
-                    return@addSnapshotListener
-                }
-
-                val lista = mutableListOf<DispositivoVinculado>()
-                snapshot?.documents?.forEach { doc ->
-                    lista.add(
-                        DispositivoVinculado(
-                            id = doc.id,
-                            modelo = doc.getString("modelo") ?: "Dispositivo"
-                        )
-                    )
-                }
-                _dispositivosConectados.value = lista
+        dispositivosListener = LocalDataManager.listenParentDevices(targetPadreId) { dispositivos ->
+            val lista = if (dispositivos.isEmpty()) {
+                listOf(DispositivoVinculado(id = "dispositivo_local_1", modelo = "Tablet U-Pad (Modo Local)"))
+            } else {
+                dispositivos.map { DispositivoVinculado(id = it.deviceId, modelo = it.modelo) }
             }
+            _dispositivosConectados.value = lista
+        }
     }
 
-    // Limpieza al destruir el ciclo de vida de la pantalla
     override fun onCleared() {
         super.onCleared()
         ubicacionListener?.remove()

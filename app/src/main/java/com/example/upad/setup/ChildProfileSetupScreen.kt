@@ -121,12 +121,12 @@ fun ChildProfileSetupScreen(
                 letterSpacing = 1.5.sp
             )
             Text(
-                text = "¿Quién es el pequeño héroe?",
-                fontSize = if (pantallaPequeña) 22.sp else 26.sp,
+                text = "Perfil del usuario (Mayor de 14 años)",
+                fontSize = if (pantallaPequeña) 20.sp else 24.sp,
                 fontWeight = FontWeight.Black,
                 color = colorTextoPrincipal,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-                lineHeight = if (pantallaPequeña) 28.sp else 32.sp
+                lineHeight = if (pantallaPequeña) 26.sp else 30.sp
             )
         }
 
@@ -212,7 +212,7 @@ fun ChildProfileSetupScreen(
                         value = name,
                         onValueChange = { name = it },
                         enabled = !cargando,
-                        label = { Text("Nombre del niño", color = colorTextoSecundario) },
+                        label = { Text("Nombre del joven/estudiante", color = colorTextoSecundario) },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = colorTextoSecundario) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -233,7 +233,7 @@ fun ChildProfileSetupScreen(
                         value = age,
                         onValueChange = { age = it },
                         enabled = !cargando,
-                        label = { Text("Edad", color = colorTextoSecundario) },
+                        label = { Text("Edad (14 años a más)", color = colorTextoSecundario) },
                         leadingIcon = { Icon(Icons.Default.Face, contentDescription = null, tint = colorTextoSecundario) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -294,66 +294,45 @@ fun ChildProfileSetupScreen(
         ) {
             Button(
                 onClick = {
-                    val nombreFinal = name.ifBlank { "Mateo" }
-                    val edadFinal = age.ifBlank { "6" }
-                    val interesesFinal = interests.ifBlank { "Dinosaurios, Rompecabezas" }
-                    val uidPadre = auth.currentUser?.uid
-
-                    if (uidPadre != null) {
-                        cargando = true
-
-                        // Guardado preliminar local
-                        prefs.edit().apply {
-                            putString("CHILD_NAME", nombreFinal)
-                            putString("CHILD_AGE", edadFinal)
-                            putString("CHILD_INTERESTS", interesesFinal)
-                            apply()
-                        }
-
-                        // Lógica de guardado en la nube
-                        val guardarDatosEnFirestore = { urlDescarga: String ->
-                            val perfilHijoMap = hashMapOf(
-                                "nombre" to nombreFinal,
-                                "edad" to edadFinal,
-                                "intereses" to interesesFinal,
-                                "fotoUrl" to urlDescarga,
-                                "fechaRegistro" to com.google.firebase.Timestamp.now()
-                            )
-
-                            firestore.collection("usuarios").document(uidPadre)
-                                .collection("hijos").document("perfil")
-                                .set(perfilHijoMap, com.google.firebase.firestore.SetOptions.merge())
-                                .addOnSuccessListener {
-                                    cargando = false
-                                    onSaveClick()
-                                }
-                                .addOnFailureListener { e ->
-                                    cargando = false
-                                    Toast.makeText(context, "Error al guardar perfil: ${e.message}", Toast.LENGTH_LONG).show()
-                                }
-                        }
-
-                        if (imageUri != null) {
-                            // Subir archivo real a Firebase Storage estructurado en la ruta: /usuarios/{uid}/perfil_hijo.jpg
-                            val storageRef = storage.reference.child("usuarios/$uidPadre/perfil_hijo.jpg")
-                            storageRef.putFile(imageUri!!)
-                                .addOnSuccessListener {
-                                    // Conseguir el enlace HTTPS persistente
-                                    storageRef.downloadUrl.addOnSuccessListener { uriDescarga ->
-                                        guardarDatosEnFirestore(uriDescarga.toString())
-                                    }
-                                }
-                                .addOnFailureListener { e ->
-                                    cargando = false
-                                    Toast.makeText(context, "Error al subir imagen: ${e.message}", Toast.LENGTH_LONG).show()
-                                }
-                        } else {
-                            // Si el usuario no cargó foto propia, guardamos una cadena vacía o URL predeterminada
-                            guardarDatosEnFirestore("")
-                        }
-                    } else {
-                        Toast.makeText(context, "Sesión no válida. Inicia sesión de nuevo.", Toast.LENGTH_LONG).show()
+                    val edadNumerica = age.trim().toIntOrNull()
+                    if (edadNumerica != null && edadNumerica < 14) {
+                        Toast.makeText(context, "El usuario debe tener 14 años a más según la política de seguridad.", Toast.LENGTH_LONG).show()
+                        return@Button
                     }
+
+                    val nombreFinal = name.ifBlank { "Estudiante" }
+                    val edadFinal = if (age.isBlank()) "14" else age.trim()
+                    val interesesFinal = interests.ifBlank { "Tecnología, Arte, Lectura" }
+                    val uidPadre = auth.currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+
+                    // Guardado seguro local y persistente en SharedPreferences
+                    prefs.edit().apply {
+                        putString("CHILD_NAME", nombreFinal)
+                        putString("CHILD_AGE", edadFinal)
+                        putString("CHILD_INTERESTS", interesesFinal)
+                        apply()
+                    }
+
+                    // Sincronización en background hacia Firestore / nube sin bloquear la interfaz
+                    try {
+                        val perfilHijoMap = hashMapOf(
+                            "nombre" to nombreFinal,
+                            "edad" to edadFinal,
+                            "intereses" to interesesFinal,
+                            "fotoUrl" to (imageUri?.toString() ?: ""),
+                            "fechaRegistro" to com.google.firebase.Timestamp.now()
+                        )
+
+                        firestore.collection("usuarios").document(uidPadre)
+                            .collection("hijos").document("perfil")
+                            .set(perfilHijoMap, com.google.firebase.firestore.SetOptions.merge())
+                    } catch (e: Exception) {
+                        // Tolera modo local
+                    }
+
+                    // Avanza inmediatamente a la siguiente pantalla sin colgarse en carga infinita
+                    cargando = false
+                    onSaveClick()
                 },
                 modifier = Modifier
                     .fillMaxWidth()

@@ -238,7 +238,8 @@ fun CreateRoutineScreen(
                         }
 
                         Button(
-                            onClick = { showSendingDialog = true },
+                            onClick = { if (!showSendingDialog) showSendingDialog = true },
+                            enabled = !showSendingDialog,
                             modifier = Modifier.weight(1f).height(50.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(

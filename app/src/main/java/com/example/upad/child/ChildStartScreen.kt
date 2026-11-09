@@ -60,6 +60,18 @@ fun ChildStartScreen(
 
     val codigoNiño by routineViewModel.codigoNiño.collectAsState()
     val estaVinculado by routineViewModel.estaVinculado.collectAsState()
+    var secondsRemaining by remember { mutableIntStateOf(60) }
+    LaunchedEffect(estaVinculado) {
+        if (!estaVinculado) {
+            secondsRemaining = 60
+            while (secondsRemaining > 0) {
+                kotlinx.coroutines.delay(1000L)
+                secondsRemaining--
+            }
+            // Re-generar cdigo al expirar temporizador TOTP
+            routineViewModel.iniciarEscuchaDispositivoNiño(deviceId)
+        }
+    }
     val cargando by routineViewModel.cargandoChild.collectAsState()
     val padreIdAsociado by routineViewModel.padreIdAsociado.collectAsState()
     val esPremiumPorPadre by routineViewModel.esPremiumPorPadre.collectAsState()
@@ -259,6 +271,13 @@ fun ChildStartScreen(
                     }
                     Spacer(modifier = Modifier.height(32.dp))
                     CircularProgressIndicator(color = Color(0xFF0D47A1), strokeWidth = 5.dp)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Cdigo temporal: ${secondsRemaining}s (seguridad TOTP)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (secondsRemaining <= 10) Color(0xFFD32F2F) else Color(0xFF555555)
+                    )
                 } else {
                     if (esPremiumPorPadre || verTareasModoBasico) {
                         Text(

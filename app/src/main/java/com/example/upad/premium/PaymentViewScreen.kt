@@ -66,7 +66,41 @@ fun PaymentViewScreen(
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Indicador visual de Módulo en Desarrollo / Sandbox
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2312)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🛠️",
+                        fontSize = 20.sp,
+                        modifier = Modifier.padding(end = 10.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "MÓDULO EN DESARROLLO (SANDBOX)",
+                            color = Color(0xFFFFD54F),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "La pasarela bancaria está en fase de integración. No se realizarán cargos a tarjetas de crédito reales.",
+                            color = Color(0xFFE0E0E0),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -80,23 +114,26 @@ fun PaymentViewScreen(
                     Icon(Icons.Default.CreditCard, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
-                        Text("Tarjeta de Crédito / Débito", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Tarjeta de Pruebas (Sandbox)", color = Color.White, fontWeight = FontWeight.Bold)
                         Text("•••• •••• •••• 4321", color = Color.Gray, fontSize = 12.sp)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(30.dp))
 
             Button(
                 onClick = {
                     scope.launch {
                         procesandoPago = true
-                        delay(2500) // Simulación elegante de verificación bancaria
+                        delay(2000) // Simulación de verificación bancaria
 
-                        // 1. 🌟 Actualizamos la base de datos de Firebase con la suscripción Premium Activa
-                        val uid = auth.currentUser?.uid
-                        if (uid != null) {
+                        val uid = auth.currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+                        // Actualizar estado en LocalDataManager y backend
+                        com.example.upad.data.LocalDataManager.setPremiumStatus(uid, true)
+
+                        // Intentar Firebase solo si está disponible sin bloquear
+                        try {
                             val datosPremium = hashMapOf(
                                 "planSuscripcion" to "premium",
                                 "estadoSuscripcion" to "Activo",
@@ -104,12 +141,12 @@ fun PaymentViewScreen(
                             )
                             firestore.collection("usuarios").document(uid)
                                 .set(datosPremium, com.google.firebase.firestore.SetOptions.merge())
-                        }
+                        } catch (e: Exception) {}
 
-                        // 2. 🔥 Cambiamos el estado reactivo global en el ViewModel a Premium
+                        // Cambiar estado reactivo global en ViewModel
                         routineViewModel.setPremiumUser(true)
 
-                        // 3. 👶 Saltamos a la pantalla de Perfil del niño
+                        // Continuar al setup
                         onPaymentConfirmed()
                     }
                 },
@@ -119,7 +156,7 @@ fun PaymentViewScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4AF37)),
                 shape = RoundedCornerShape(28.dp)
             ) {
-                Text("Confirmar Pago Simulado", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Activar Suscripción Demo (Pruebas)", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         } else {
             CircularProgressIndicator(color = Color(0xFFD4AF37))
