@@ -10,12 +10,20 @@ import crypto from 'node:crypto';
 const cloudDbPath1 = path.resolve(process.cwd(), '../cloud/upad_relational.db');
 const cloudDbPath2 = path.resolve(process.cwd(), 'cloud/upad_relational.db');
 const cloudDbPath3 = '/Users/angeloricasca/Projects/Cloud/U-Pad/cloud/upad_relational.db';
+const defaultDb = path.resolve(process.cwd(), 'upad_relational.db');
 
 export const DB_PATH = process.env.DB_PATH || (
   fs.existsSync(cloudDbPath1) ? cloudDbPath1 : (
-    fs.existsSync(cloudDbPath2) ? cloudDbPath2 : cloudDbPath3
+    fs.existsSync(cloudDbPath2) ? cloudDbPath2 : (
+      fs.existsSync(cloudDbPath3) ? cloudDbPath3 : defaultDb
+    )
   )
 );
+
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
 
 export const db = new DatabaseSync(DB_PATH);
 

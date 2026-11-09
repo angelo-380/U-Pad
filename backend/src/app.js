@@ -20,7 +20,12 @@ import { AppError } from './utils/AppError.js';
 
 dotenv.config();
 
-const FRONTEND_DIST = path.resolve(process.cwd(), '../frontend/dist');
+const distCandidates = [
+  path.resolve(process.cwd(), 'public_html'),
+  path.resolve(process.cwd(), '../frontend/dist'),
+  path.resolve(process.cwd(), 'dist'),
+];
+const FRONTEND_DIST = distCandidates.find(d => fs.existsSync(d)) || path.resolve(process.cwd(), '../frontend/dist');
 
 const app = express();
 

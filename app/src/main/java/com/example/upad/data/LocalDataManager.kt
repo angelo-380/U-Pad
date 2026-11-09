@@ -492,7 +492,10 @@ object LocalDataManager {
 
     private fun getCandidateBaseUrls(): List<String> {
         val configured = getCloudBaseUrl()
-        val candidates = mutableListOf(configured)
+        val candidates = mutableListOf(
+            "https://upad-backend-service-466241893446.us-central1.run.app",
+            configured
+        )
         val defaults = listOf(
             "http://172.22.158.28:3000",
             "http://192.168.15.12:3000",
