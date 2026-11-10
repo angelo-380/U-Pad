@@ -25,4 +25,17 @@ export const backupController = {
       next(error);
     }
   },
+
+  /**
+   * GET /api/admin/backups/:filename - Descargar archivo SQLite de backup para abrir en DB Browser
+   */
+  async descargar(req, res, next) {
+    try {
+      const { filename } = req.params;
+      const filePath = await backupService.obtenerRutaBackup(filename, req.user);
+      return res.download(filePath, filename);
+    } catch (error) {
+      next(error);
+    }
+  },
 };

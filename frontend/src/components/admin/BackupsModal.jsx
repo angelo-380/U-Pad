@@ -196,15 +196,34 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                <a
-                  href={`/api/admin/backups/${b.filename}`}
-                  download={b.filename}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors"
-                  title="Descargar copia de seguridad"
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem('upad_token');
+                      const response = await fetch(`/api/admin/backups/${b.filename}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                      });
+                      if (!response.ok) throw new Error('Error al descargar');
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = b.filename;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                    } catch (e) {
+                      toast.error('No se pudo descargar el backup: ' + e.message, 'Descarga fallida');
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer"
+                  title="Descargar copia de seguridad SQLite (.db) para abrir en DB Browser"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Descargar</span>
-                </a>
+                  <span>Descargar .db</span>
+                </button>
               </div>
             ))}
         </div>

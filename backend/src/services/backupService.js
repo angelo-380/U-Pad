@@ -101,4 +101,19 @@ export const backupService = {
     // Ordenar de más reciente a más antiguo
     return backups.sort((a, b) => new Date(b.fechaModificacion) - new Date(a.fechaModificacion));
   },
+
+  /**
+   * Obtiene la ruta física segura de un archivo de backup para descarga.
+   */
+  async obtenerRutaBackup(filename, usuarioActual) {
+    if (usuarioActual.rol !== 'developer' && usuarioActual.rol !== 'admin') {
+      throw new AppError('Acceso denegado a backups', 403);
+    }
+    const cleanFilename = path.basename(filename);
+    const fullPath = path.join(BACKUPS_DIR, cleanFilename);
+    if (!fs.existsSync(fullPath)) {
+      throw new AppError('Archivo de backup no encontrado', 404);
+    }
+    return fullPath;
+  },
 };

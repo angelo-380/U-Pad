@@ -10,5 +10,7 @@ router.use(authorizeRoles('developer', 'admin'));
 
 router.get('/', backupController.listar);
 router.post('/', backupController.crear);
+router.get('/descargar/:filename', backupController.descargar);
+router.get('/:filename', backupController.descargar);
 
 export default router;
