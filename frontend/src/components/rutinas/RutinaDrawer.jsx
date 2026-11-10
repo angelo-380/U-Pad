@@ -142,8 +142,12 @@ export const RutinaDrawer = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading || submitting) return;
+
     setTouched({ titulo: true, turno: true, pasos: true });
 
     if (!validate()) {
@@ -161,7 +165,12 @@ export const RutinaDrawer = ({
       })),
     };
 
-    onSubmit(payload);
+    try {
+      setSubmitting(true);
+      await onSubmit(payload);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Manejadores de pasos
@@ -516,10 +525,10 @@ export const RutinaDrawer = ({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={loading || submitting}
               className="inline-flex items-center justify-center gap-2 px-6 py-2.5 min-h-[44px] rounded-xl text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 transition-tea shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 cursor-pointer disabled:opacity-60"
             >
-              {loading ? (
+              {loading || submitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>{t('drawer_loading')}</span>

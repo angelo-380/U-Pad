@@ -15,16 +15,34 @@ router.post('/mobile/sync-routines', (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Falta actividad' });
     }
 
-    const id = `rut_app_${Date.now().toString(16)}`;
-    const titulo = actividad;
+    const titulo = actividad.trim();
     const turnoNormalizado = (turno || 'MANANA').toUpperCase() === 'MAÑANA' ? 'MANANA' : (turno || 'MANANA').toUpperCase();
+    const creadorId = userId && userId.startsWith('usr_') ? userId : 'usr_director_sol';
+
+    // Desduplicación atómica: si ya existe la misma rutina en el mismo turno para el mismo usuario
+    const existente = db.prepare(`
+      SELECT id, titulo, turno, pasos, activa, creadoPor, creadoEn, actualizadoEn 
+      FROM rutinas 
+      WHERE creadoPor = ? AND UPPER(titulo) = UPPER(?) AND turno = ? AND activa = 1
+      LIMIT 1
+    `).get(creadorId, titulo, turnoNormalizado);
+
+    if (existente) {
+      return res.status(200).json({
+        status: 'success',
+        message: 'Rutina ya sincronizada previamente',
+        id: existente.id,
+        duplicada: true
+      });
+    }
+
+    const id = `rut_app_${Date.now().toString(16)}`;
     const pasos = JSON.stringify([{
       orden: 1,
       texto: actividad,
       palabraClave: palabraClave || actividad.toLowerCase()
     }]);
     const creadoEn = new Date().toISOString();
-    const creadorId = userId && userId.startsWith('usr_') ? userId : 'usr_director_sol';
 
     // Guardar en la base de datos relacional de la nube asociada al usuario actual
     db.prepare(`

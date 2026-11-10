@@ -15,14 +15,18 @@ export const deviceController = {
   },
 
   /**
-   * POST /api/devices/pairing/link - Vincula una tablet con el código de 6 dígitos
+   * POST /api/devices/pairing/link - Vincula una tablet o dispositivo con el código de 6 dígitos
    */
   async vincular(req, res, next) {
     try {
-      const { code, childName, deviceModel } = req.body;
+      const code = req.body.code || req.body.pairing_code || req.body.codigo;
+      const childName = req.body.childName || req.body.child_name || req.body.nombre;
+      const deviceModel = req.body.deviceModel || req.body.device_model || req.body.modelo;
+      const parentId = req.user?.id || req.body.parentId || req.body.parent_id;
+
       const resultado = await deviceService.vincularConCodigo(
         { code, childName, deviceModel },
-        req.user.id
+        parentId
       );
       return sendCreated(res, 'Dispositivo vinculado exitosamente a tu cuenta', resultado);
     } catch (error) {

@@ -87,6 +87,7 @@ object LocalDataManager {
     private val deviceListeners = ConcurrentHashMap<String, CopyOnWriteArrayList<(LocalChildDevice?) -> Unit>>()
     private val pairingListeners = ConcurrentHashMap<String, CopyOnWriteArrayList<(LocalPairingCode?) -> Unit>>()
     private val parentDeviceListListeners = ConcurrentHashMap<String, CopyOnWriteArrayList<(List<LocalChildDevice>) -> Unit>>()
+    private val lastSyncSignatureMap = ConcurrentHashMap<String, Long>()
 
     init {
         // Inicializar usuario demo por defecto si la base de datos está vacía
@@ -344,7 +345,7 @@ object LocalDataManager {
         }
         Log.d(TAG, "Rutina guardada localmente [$key]: ${tasks.size} tareas")
 
-        // Sincronizar en caliente hacia el backend / base de datos de la nube con el ID del usuario
+        // Sincronizar en caliente hacia el backend / base de datos de la nube con el ID del usuario (evitando peticiones duplicadas)
         kotlin.concurrent.thread {
             try {
                 tasks.lastOrNull()?.let { ultima ->
@@ -352,8 +353,14 @@ object LocalDataManager {
                         "MAÑANA" -> "MANANA"
                         else -> turn.uppercase().trim()
                     }
-                    val body = "{\"actividad\":\"${ultima.actividad}\",\"palabraClave\":\"${ultima.palabraClave}\",\"turno\":\"$turnEnvio\",\"userId\":\"$u\"}"
-                    httpPost("/api/v1/mobile/sync-routines", body)
+                    val syncSignature = "${u}_${turnEnvio}_${ultima.actividad.trim().uppercase()}"
+                    val now = System.currentTimeMillis()
+                    val lastSync = lastSyncSignatureMap[syncSignature] ?: 0L
+                    if (now - lastSync > 2000L) {
+                        lastSyncSignatureMap[syncSignature] = now
+                        val body = "{\"actividad\":\"${ultima.actividad}\",\"palabraClave\":\"${ultima.palabraClave}\",\"turno\":\"$turnEnvio\",\"userId\":\"$u\"}"
+                        httpPost("/api/v1/mobile/sync-routines", body)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error enviando rutina a la nube: ${e.message}")

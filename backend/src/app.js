@@ -156,26 +156,49 @@ app.post('/api/v1/devices/pairing/create', (req, res) => {
 });
 
 app.post('/api/v1/devices/pairing/link', (req, res) => {
-  const { code, parentId } = req.body;
+  const code = (req.body.code || req.body.pairing_code || '').trim().toUpperCase();
+  const parentId = req.body.parentId || req.body.parent_id;
+  const childName = req.body.childName || req.body.child_name || 'Diego';
+  const deviceModel = req.body.deviceModel || req.body.device_model || 'Android Tablet (Samsung Galaxy Tab A8)';
+
   let deviceId = null;
   try {
-    const row = db.prepare('SELECT device_id FROM pairing_codes WHERE code = ?').get(code);
-    if (row) deviceId = row.device_id;
-    db.prepare('UPDATE pairing_codes SET parent_id = ?, pairing_status = ? WHERE code = ?')
-      .run(parentId, 'LINKED', code);
-  } catch (e) {}
+    const row = db.prepare('SELECT device_id FROM pairing_codes WHERE UPPER(code) = ?').get(code);
+    deviceId = row?.device_id || `dev_child_${code.toLowerCase()}`;
+
+    db.prepare(`
+      INSERT INTO pairing_codes (code, device_id, parent_id, pairing_status)
+      VALUES (?, ?, ?, 'LINKED')
+      ON CONFLICT(code) DO UPDATE SET 
+        parent_id = excluded.parent_id,
+        pairing_status = 'LINKED'
+    `).run(code, deviceId, parentId);
+
+    db.prepare(`
+      INSERT INTO child_devices (device_id, parent_id, child_name, device_model, is_kiosk_active, last_seen_at)
+      VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      ON CONFLICT(device_id) DO UPDATE SET
+        parent_id = excluded.parent_id,
+        child_name = excluded.child_name,
+        device_model = excluded.device_model,
+        last_seen_at = CURRENT_TIMESTAMP
+    `).run(deviceId, parentId, childName, deviceModel);
+  } catch (e) {
+    console.error('Error linking pairing code:', e);
+  }
+
   res.status(200).json({
     status: 'success',
     message: 'Device linked successfully.',
-    data: { code, parentId, deviceId, linked: true }
+    data: { code, parentId, deviceId, childName, linked: true }
   });
 });
 
 app.get('/api/v1/devices/pairing/:code', (req, res) => {
-  const code = req.params.code;
+  const code = (req.params.code || '').trim().toUpperCase();
   let pairingInfo = null;
   try {
-    pairingInfo = db.prepare('SELECT code, device_id, parent_id, pairing_status FROM pairing_codes WHERE code = ?').get(code);
+    pairingInfo = db.prepare('SELECT code, device_id, parent_id, pairing_status FROM pairing_codes WHERE UPPER(code) = ?').get(code);
   } catch (e) {}
   if (!pairingInfo) {
     return res.status(404).json({
@@ -190,7 +213,7 @@ app.get('/api/v1/devices/pairing/:code', (req, res) => {
       code: pairingInfo.code,
       deviceId: pairingInfo.device_id,
       parentId: pairingInfo.parent_id || '',
-      estado: pairingInfo.pairing_status === 'LINKED' ? 'enlazado' : 'esperando'
+      estado: (pairingInfo.pairing_status === 'LINKED' || pairingInfo.parent_id) ? 'enlazado' : 'esperando'
     }
   });
 });

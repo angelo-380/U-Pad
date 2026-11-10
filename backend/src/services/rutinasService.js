@@ -19,6 +19,31 @@ export const rutinasService = {
       );
     }
 
+    const cleanTitulo = titulo.trim();
+
+    // Desduplicación atómica: si el usuario hace doble clic rápido o concurrente
+    const existente = db.prepare(`
+      SELECT id, titulo, turno, ninoId, organizacionId, pasos, activa, creadoPor, creadoEn, actualizadoEn
+      FROM rutinas
+      WHERE creadoPor = ? AND UPPER(titulo) = UPPER(?) AND turno = ? AND activa = 1
+      LIMIT 1
+    `).get(usuarioActual.id, cleanTitulo, turnoNormalizado);
+
+    if (existente) {
+      let pasosParsed = [];
+      try {
+        pasosParsed = JSON.parse(existente.pasos || '[]');
+      } catch (e) {
+        pasosParsed = [];
+      }
+      return {
+        ...existente,
+        activa: Boolean(existente.activa),
+        pasos: pasosParsed,
+        duplicada: true
+      };
+    }
+
     const rutinaId = `rut_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
     const orgId = organizacionId || usuarioActual.organizacionId || null;
     const ahora = new Date().toISOString();
@@ -36,7 +61,7 @@ export const rutinasService = {
       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
     `).run(
       rutinaId,
-      titulo.trim(),
+      cleanTitulo,
       turnoNormalizado,
       finalNinoId,
       orgId,
@@ -48,7 +73,7 @@ export const rutinasService = {
 
     return {
       id: rutinaId,
-      titulo: titulo.trim(),
+      titulo: cleanTitulo,
       turno: turnoNormalizado,
       ninoId: finalNinoId,
       organizacionId: orgId,
