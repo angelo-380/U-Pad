@@ -24,27 +24,30 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 export const DeveloperUsersPage = () => {
   const { t } = useLanguage();
   const [users, setUsers] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, totalPages: 1 });
+  const [pageSize, setPageSize] = useState(25);
+  const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
+  const [jumpPageInput, setJumpPageInput] = useState('');
 
   // Modal para ver rutinas del usuario seleccionado
   const [selectedUserForRoutines, setSelectedUserForRoutines] = useState(null);
   const [userRoutines, setUserRoutines] = useState([]);
   const [loadingRoutines, setLoadingRoutines] = useState(false);
 
-  const fetchUsers = async (page = 1) => {
+  const fetchUsers = async (page = 1, currentLimit = pageSize) => {
     setLoading(true);
     try {
       const res = await adminService.listarUsuarios({
         page,
-        limit: 15,
+        limit: currentLimit,
         search,
         role: selectedRole,
       });
       setUsers(res.users);
       setPagination(res.pagination);
+      setJumpPageInput(String(page));
     } catch (e) {
       console.error('Error fetching users:', e);
     } finally {
@@ -53,8 +56,8 @@ export const DeveloperUsersPage = () => {
   };
 
   useEffect(() => {
-    fetchUsers(1);
-  }, [selectedRole]);
+    fetchUsers(1, pageSize);
+  }, [selectedRole, pageSize]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -293,19 +296,79 @@ export const DeveloperUsersPage = () => {
           </table>
         </div>
 
-        {/* Paginación */}
-        <div className="p-4 border-t border-tea-border flex items-center justify-between text-xs text-tea-muted">
-          <span>
-            Mostrando página <strong className="text-tea-text">{pagination.page}</strong> de{' '}
-            <strong className="text-tea-text">{pagination.totalPages}</strong> ({pagination.total} usuarios)
-          </span>
+        {/* Paginación Profesional Avanzada */}
+        <div className="p-4 border-t border-tea-border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-tea-muted">
+          <div className="flex items-center gap-3">
+            <span>
+              Página <strong className="text-tea-text">{pagination.page}</strong> de{' '}
+              <strong className="text-tea-text">{pagination.totalPages}</strong> (
+              <strong className="text-purple-700">{pagination.total.toLocaleString()}</strong> usuarios totales)
+            </span>
+
+            {/* Selector de tamaño de página */}
+            <div className="flex items-center gap-1.5 pl-3 border-l border-tea-border">
+              <span className="text-[11px]">Por página:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  const newSize = Number(e.target.value);
+                  setPageSize(newSize);
+                  fetchUsers(1, newSize);
+                }}
+                className="text-xs font-bold bg-slate-50 border border-tea-border rounded-lg px-2 py-1 text-tea-text"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
 
           <div className="flex items-center gap-2">
+            {/* Salto directo a página */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const target = parseInt(jumpPageInput, 10);
+                if (target >= 1 && target <= pagination.totalPages) {
+                  fetchUsers(target);
+                }
+              }}
+              className="flex items-center gap-1.5 pr-2"
+            >
+              <span className="text-[11px]">Ir a:</span>
+              <input
+                type="number"
+                min={1}
+                max={pagination.totalPages}
+                value={jumpPageInput}
+                onChange={(e) => setJumpPageInput(e.target.value)}
+                className="w-14 text-xs font-bold text-center bg-slate-50 border border-tea-border rounded-lg py-1 px-1 text-tea-text"
+              />
+              <button
+                type="submit"
+                className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-tea-text text-[11px] font-bold transition-colors cursor-pointer"
+              >
+                Ir
+              </button>
+            </form>
+
+            <button
+              type="button"
+              onClick={() => fetchUsers(1)}
+              disabled={pagination.page === 1 || loading}
+              className="px-2.5 py-1 rounded-lg border border-tea-border hover:bg-slate-50 transition-colors disabled:opacity-30 cursor-pointer font-bold text-[11px]"
+              title="Primera Página"
+            >
+              « Primera
+            </button>
             <button
               type="button"
               onClick={() => fetchUsers(pagination.page - 1)}
               disabled={!pagination.hasPrev || loading}
-              className="p-1.5 rounded-lg border border-tea-border hover:bg-slate-50 transition-colors disabled:opacity-40 cursor-pointer"
+              className="p-1 rounded-lg border border-tea-border hover:bg-slate-50 transition-colors disabled:opacity-30 cursor-pointer"
+              title="Página Anterior"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -313,9 +376,19 @@ export const DeveloperUsersPage = () => {
               type="button"
               onClick={() => fetchUsers(pagination.page + 1)}
               disabled={!pagination.hasNext || loading}
-              className="p-1.5 rounded-lg border border-tea-border hover:bg-slate-50 transition-colors disabled:opacity-40 cursor-pointer"
+              className="p-1 rounded-lg border border-tea-border hover:bg-slate-50 transition-colors disabled:opacity-30 cursor-pointer"
+              title="Página Siguiente"
             >
               <ChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => fetchUsers(pagination.totalPages)}
+              disabled={pagination.page === pagination.totalPages || loading}
+              className="px-2.5 py-1 rounded-lg border border-tea-border hover:bg-slate-50 transition-colors disabled:opacity-30 cursor-pointer font-bold text-[11px]"
+              title="Última Página"
+            >
+              Última »
             </button>
           </div>
         </div>

@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter } from 'k6/metrics';
 
-const BASE = __ENV.BASE_URL || 'http://localhost:3000';
+const BASE = __ENV.BASE_URL || 'https://upad-backend-service-466241893446.us-central1.run.app';
 const EMAIL = __ENV.EMAIL || 'director@colegiosol.edu.pe';
 const PASSWORD = __ENV.PASSWORD || 'ColegioSol2026!#';
 
