@@ -89,7 +89,7 @@ export const RutinaDrawer = ({
         .then((devs) => {
           setDevices(devs || []);
           if (devs && devs.length > 0 && !ninoId) {
-            setNinoId(devs[0].child_name || devs[0].device_id);
+            setNinoId(devs[0].childName || devs[0].child_name || devs[0].deviceId || devs[0].device_id);
           }
         })
         .catch(() => setDevices([]))
@@ -345,11 +345,16 @@ export const RutinaDrawer = ({
                   disabled={loading}
                   className="w-full px-3 py-2 rounded-xl text-xs font-semibold border border-tea-border bg-white text-tea-text focus:ring-2 focus:ring-brand-600 focus:outline-none"
                 >
-                  {devices.map((d) => (
-                    <option key={d.device_id} value={d.child_name || d.device_id}>
-                      🧒 {d.child_name || 'Hijo'} · {d.device_model}
-                    </option>
-                  ))}
+                  {devices.map((d) => {
+                    const dName = d.childName || d.child_name || 'Hijo';
+                    const dId = d.deviceId || d.device_id;
+                    const dModel = d.deviceModel || d.device_model || 'Tablet';
+                    return (
+                      <option key={dId} value={dName || dId}>
+                        🧒 {dName} · {dModel}
+                      </option>
+                    );
+                  })}
                 </select>
               ) : devices.length === 1 ? (
                 <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-tea-border text-xs">
@@ -357,15 +362,15 @@ export const RutinaDrawer = ({
                     <Tablet className="w-4 h-4 text-brand-600" />
                     <div>
                       <p className="font-bold text-tea-text">
-                        {devices[0].child_name || 'Diego'}
+                        🧒 {devices[0].childName || devices[0].child_name || 'Mi Hijo'}
                       </p>
                       <p className="text-[11px] text-tea-muted">
-                        {devices[0].device_model}
+                        {devices[0].deviceModel || devices[0].device_model || 'Android Tablet'}
                       </p>
                     </div>
                   </div>
                   <span className="text-[10px] font-mono text-tea-muted">
-                    ID: {devices[0].device_id.substring(0, 10)}...
+                    ID: {(devices[0].deviceId || devices[0].device_id || '').substring(0, 10)}...
                   </span>
                 </div>
               ) : (

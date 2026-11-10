@@ -89,17 +89,6 @@ export const authService = {
       );
     } catch (e) {}
 
-    // Si es tutor, vincular automáticamente una tablet de hijo por defecto para que no tenga que configurarla desde cero
-    if (rolNormalizado === 'tutor') {
-      try {
-        db.prepare(`
-          INSERT INTO child_devices (device_id, parent_id, child_name, device_model, is_kiosk_active)
-          VALUES (?, ?, 'Hijo (U-Pad Tablet)', 'Android Tablet Kiosk v14', 1)
-          ON CONFLICT(device_id) DO NOTHING
-        `).run(`dev_${userId}`, userId);
-      } catch (e) {}
-    }
-
     // 4. Generar token JWT
     const tokenPayload = {
       id: userId,

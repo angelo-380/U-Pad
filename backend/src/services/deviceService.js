@@ -9,13 +9,19 @@ export const deviceService = {
     const devices = db.prepare(`
       SELECT 
         device_id as deviceId,
+        device_id as device_id,
         parent_id as parentId,
+        parent_id as parent_id,
         COALESCE(child_name, 'Hijo Vinculado') as childName,
+        COALESCE(child_name, 'Hijo Vinculado') as child_name,
         device_model as deviceModel,
+        device_model as device_model,
         is_kiosk_active as isKioskActive,
+        is_kiosk_active as is_kiosk_active,
         last_latitude as lastLatitude,
         last_longitude as lastLongitude,
-        last_seen_at as lastSeenAt
+        last_seen_at as lastSeenAt,
+        last_seen_at as last_seen_at
       FROM child_devices 
       WHERE parent_id = ?
       ORDER BY last_seen_at DESC
@@ -24,6 +30,7 @@ export const deviceService = {
     return devices.map(d => ({
       ...d,
       isKioskActive: Boolean(d.isKioskActive),
+      is_kiosk_active: Boolean(d.is_kiosk_active),
     }));
   },
 
@@ -44,6 +51,9 @@ export const deviceService = {
 
     let deviceId = pairing?.device_id || `dev_child_${cleanCode.toLowerCase()}`;
 
+    // Desvincular cualquier tablet previa vinculada a este padre que no sea la actual (un hijo/tablet activo a la vez por cuenta estándar)
+    db.prepare('DELETE FROM child_devices WHERE parent_id = ? AND device_id != ?').run(parentId, deviceId);
+
     // Actualizar o registrar el pairing code como LINKED
     db.prepare(`
       INSERT INTO pairing_codes (code, device_id, parent_id, pairing_status)
@@ -53,7 +63,7 @@ export const deviceService = {
         pairing_status = 'LINKED'
     `).run(cleanCode, deviceId, parentId);
 
-    // Registrar o actualizar el dispositivo asociado en child_devices
+    // Registrar o actualizar el dispositivo asociado en child_devices con el nombre elegido por el padre
     db.prepare(`
       INSERT INTO child_devices (device_id, parent_id, child_name, device_model, is_kiosk_active, last_seen_at)
       VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
@@ -66,9 +76,13 @@ export const deviceService = {
 
     return {
       deviceId,
+      device_id: deviceId,
       parentId,
+      parent_id: parentId,
       childName: cleanChildName,
+      child_name: cleanChildName,
       deviceModel: cleanModel,
+      device_model: cleanModel,
       pairingCode: cleanCode,
       status: 'LINKED',
       linkedAt: new Date().toISOString(),

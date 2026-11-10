@@ -183,7 +183,7 @@ export const RutinasPage = () => {
                 title="Tablet infantil sincronizada con la app"
               >
                 <Tablet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>🧒 Tablet {devices[0].child_name || 'Diego'}</span>
+                <span>🧒 Tablet {devices[0].childName || devices[0].child_name || 'Mi Hijo'}</span>
               </button>
             ) : (
               <button

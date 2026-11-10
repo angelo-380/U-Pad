@@ -48,6 +48,20 @@ router.post('/pairing/link', (req, res, next) => {
 router.use(authenticate);
 
 router.get('/', deviceController.listar);
+router.delete('/cleanup-duplicates', (req, res, next) => {
+  try {
+    const parentId = req.user.id;
+    // Conservar únicamente el dispositivo más reciente vinculado por el padre
+    const latest = db.prepare('SELECT device_id FROM child_devices WHERE parent_id = ? ORDER BY last_seen_at DESC LIMIT 1').get(parentId);
+    if (latest) {
+      db.prepare('DELETE FROM child_devices WHERE parent_id = ? AND device_id != ?').run(parentId, latest.device_id);
+    }
+    const remaining = db.prepare('SELECT * FROM child_devices WHERE parent_id = ?').all(parentId);
+    return res.status(200).json({ status: 'success', message: 'Duplicados limpiados', data: remaining });
+  } catch (e) {
+    next(e);
+  }
+});
 router.delete('/:id', deviceController.desvincular);
 
 export default router;
