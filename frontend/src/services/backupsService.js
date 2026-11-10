@@ -24,4 +24,12 @@ export const backupsService = {
     const res = await api.get(`/api/admin/backups/${filename}`);
     return res;
   },
+
+  /**
+   * Ejecutar consulta SQL en vivo sobre la BD de Google Cloud
+   */
+  async ejecutarQuery(query) {
+    const res = await api.post('/api/admin/backups/sql-query', { query });
+    return res?.data || res;
+  },
 };

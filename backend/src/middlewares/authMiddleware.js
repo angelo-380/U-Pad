@@ -9,24 +9,23 @@ import { AppError } from '../utils/AppError.js';
 export const authenticate = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization || req.headers.Authorization;
+    let token = null;
 
-    if (!authHeader) {
+    if (authHeader) {
+      const parts = authHeader.trim().split(/\s+/);
+      if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') {
+        token = parts[1].trim().replace(/^["']|["']$/g, '');
+      }
+    }
+
+    // Permitir token vía query param exclusivamente para descargas directas de archivos en navegador
+    if (!token && req.query && req.query.token) {
+      token = String(req.query.token).trim().replace(/^["']|["']$/g, '');
+    }
+
+    if (!token) {
       throw new AppError('Acceso no autorizado: token no proporcionado o formato inválido.', 401, {
         code: 'TOKEN_MISSING',
-      });
-    }
-
-    const parts = authHeader.trim().split(/\s+/);
-    if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
-      throw new AppError('Acceso no autorizado: formato de token inválido. Debe ser Bearer <token>.', 401, {
-        code: 'TOKEN_INVALID_FORMAT',
-      });
-    }
-
-    const token = parts[1].trim().replace(/^["']|["']$/g, '');
-    if (!token) {
-      throw new AppError('Acceso no autorizado: token vacío.', 401, {
-        code: 'TOKEN_EMPTY',
       });
     }
 
