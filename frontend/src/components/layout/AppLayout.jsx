@@ -33,11 +33,8 @@ export const AppLayout = ({ children }) => {
 
   const mainLinks = [
     { label: t('nav_routines'), path: '/rutinas', icon: CalendarCheck },
-  ];
-
-  const upcomingLinks = [
-    { label: t('nav_gps'), path: '/gps', icon: Compass },
-    { label: t('nav_ai'), path: '/ia', icon: Cpu },
+    { label: t('nav_gps') || 'GPS & Ubicación', path: '/gps', icon: Compass },
+    { label: t('nav_ai') || 'Asistente IA', path: '/ia', icon: Cpu },
   ];
 
   const displayName = user?.nombre || (user?.email ? user.email.split('@')[0] : 'Usuario');
@@ -75,8 +72,16 @@ export const AppLayout = ({ children }) => {
                 className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 rounded-xl p-1"
                 aria-label="U-Pad Inicio"
               >
-                <div className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center font-black text-lg tracking-wider shadow-soft-xs">
-                  U
+                <div className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center font-black text-lg tracking-wider shadow-soft-xs overflow-hidden">
+                  <img
+                    src="/images/logo_upad.png"
+                    alt="U-Pad"
+                    className="w-full h-full object-contain p-0.5"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <span className="text-white font-black text-lg">U</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="font-extrabold text-base tracking-tight text-tea-text leading-none">
@@ -106,27 +111,6 @@ export const AppLayout = ({ children }) => {
                     >
                       <Icon className="w-4 h-4" aria-hidden="true" />
                       <span>{link.label}</span>
-                    </Link>
-                  );
-                })}
-
-                {upcomingLinks.map((link) => {
-                  const Icon = link.icon;
-                  const isActive = location.pathname === link.path;
-
-                  return (
-                    <Link
-                      key={link.path}
-                      to={link.path}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] rounded-xl text-sm font-medium transition-tea text-tea-subtle hover:text-tea-muted hover:bg-tea-cardSubtle ${
-                        isActive ? 'bg-tea-cardSubtle text-tea-text font-semibold' : ''
-                      }`}
-                    >
-                      <Icon className="w-4 h-4" aria-hidden="true" />
-                      <span>{link.label}</span>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-accent-700 bg-accent-50 px-1.5 py-0.5 rounded-md border border-accent-100">
-                        {t('upcoming_badge')}
-                      </span>
                     </Link>
                   );
                 })}
@@ -231,34 +215,7 @@ export const AppLayout = ({ children }) => {
                 );
               })}
 
-              <div className="pt-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-tea-subtle px-3 block mb-1">
-                  {t('nav_additional')}
-                </span>
-                {upcomingLinks.map((link) => {
-                  const Icon = link.icon;
-                  const isActive = location.pathname === link.path;
-                  return (
-                    <Link
-                      key={link.path}
-                      to={link.path}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-tea ${
-                        isActive ? 'bg-tea-cardSubtle text-tea-text' : 'text-tea-subtle hover:text-tea-muted'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Icon className="w-4 h-4" aria-hidden="true" />
-                        <span>{link.label}</span>
-                      </div>
-                      <span className="text-[10px] font-bold uppercase text-accent-700 bg-accent-50 px-1.5 py-0.5 rounded border border-accent-100">
-                        {t('upcoming_badge')}
-                      </span>
-                    </Link>
-                  );
-                })}
-
-                {/* Backups en menú móvil */}
+              {/* Backups en menú móvil */}
                 {isDeveloperOrAdmin && (
                   <button
                     type="button"
@@ -278,7 +235,6 @@ export const AppLayout = ({ children }) => {
                   </button>
                 )}
               </div>
-            </div>
 
             <div className="pt-2 border-t border-tea-border">
               <button

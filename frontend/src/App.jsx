@@ -8,7 +8,8 @@ import { AppLayout } from './components/layout/AppLayout.jsx';
 import { LoginPage } from './pages/auth/LoginPage.jsx';
 import { RegisterPage } from './pages/auth/RegisterPage.jsx';
 import { RutinasPage } from './pages/rutinas/RutinasPage.jsx';
-import { EnDesarrolloPage } from './pages/public/EnDesarrolloPage.jsx';
+import { GpsPage } from './pages/monitoring/GpsPage.jsx';
+import { AiAssistantPage } from './pages/ai/AiAssistantPage.jsx';
 import { ForbiddenPage } from './pages/errors/ForbiddenPage.jsx';
 import { NotFoundPage } from './pages/errors/NotFoundPage.jsx';
 import { ServerErrorPage } from './pages/errors/ServerErrorPage.jsx';
@@ -36,13 +37,13 @@ export default function App() {
               }
             />
 
-            {/* Secciones en Desarrollo (GPS e IA) protegidas dentro del layout */}
+            {/* Secciones funcionales de GPS e IA protegidas dentro del layout */}
             <Route
               path="/gps"
               element={
                 <ProtectedRoute>
                   <AppLayout>
-                    <EnDesarrolloPage />
+                    <GpsPage />
                   </AppLayout>
                 </ProtectedRoute>
               }
@@ -52,7 +53,7 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <AppLayout>
-                    <EnDesarrolloPage />
+                    <AiAssistantPage />
                   </AppLayout>
                 </ProtectedRoute>
               }

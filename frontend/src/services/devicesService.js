@@ -33,4 +33,16 @@ export const devicesService = {
     });
     return res?.data || res;
   },
+
+  /**
+   * Obtener telemetría de ubicación y estado del dispositivo infantil
+   */
+  async obtenerTelemetria(deviceId) {
+    try {
+      const res = await api.get(`/api/v1/devices/${deviceId}/telemetry`);
+      return res?.data || res;
+    } catch (e) {
+      return null;
+    }
+  },
 };

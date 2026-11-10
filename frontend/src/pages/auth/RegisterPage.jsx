@@ -71,7 +71,8 @@ export const RegisterPage = () => {
 
           <div className="my-6">
             <ImagePlaceholder
-              name="register-lateral.jpg"
+              name="register-lateral.png"
+              fallbackNames={['tutor.png', 'libros.png']}
               alt="Registration and educational collaboration illustration"
               aspect="aspect-[4/3]"
             />

@@ -108,7 +108,7 @@ export const rutinasService = {
         whereClause += ' AND creadoPor = ?';
         params.push(usuarioActual.id);
       }
-    } else if (usuarioActual.rol === 'developer' || usuarioActual.rol === 'admin') {
+    } else if (usuarioActual.rol === 'developer') {
       if (filtros.all === 'true' || filtros.scope === 'all') {
         // Modo auditoría global: ve todas o filtra por organizacionId si se especifica
         if (filtros.organizacionId) {
@@ -116,9 +116,15 @@ export const rutinasService = {
           params.push(filtros.organizacionId);
         }
       } else {
-        // En su vista de panel normal, solo ve las rutinas propias de su cuenta
+        // En su vista de panel normal, developer solo ve las rutinas propias de su cuenta
         whereClause += ' AND creadoPor = ?';
         params.push(usuarioActual.id);
+      }
+    } else if (usuarioActual.rol === 'admin') {
+      // Admin tiene permisos globales de supervisión y auditoría en todas las organizaciones
+      if (filtros.organizacionId) {
+        whereClause += ' AND organizacionId = ?';
+        params.push(filtros.organizacionId);
       }
     }
 

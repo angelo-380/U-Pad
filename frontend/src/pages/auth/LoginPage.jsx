@@ -69,7 +69,8 @@ export const LoginPage = () => {
 
           <div className="my-6">
             <ImagePlaceholder
-              name="login-lateral.jpg"
+              name="login-lateral.png"
+              fallbackNames={['ic_menu_login.png', 'libros.png']}
               alt="ASD Educational Support Illustration"
               aspect="aspect-[4/3]"
             />

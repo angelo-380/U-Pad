@@ -250,6 +250,11 @@ app.get('/api/test-status/:code', (req, res, next) => {
   }
 });
 
+// Alias directo para demostración sin caída del servidor del error 500 controlado
+app.get(['/api/test-error-500', '/api/v1/test-error-500'], (req, res, next) => {
+  return next(new AppError('Error interno 500 simulado y capturado exitosamente por el manejador global sin caída del servidor', 500));
+});
+
 // Servir la aplicación Frontend compilada (dist) para acceso unificado desde red o navegador
 if (fs.existsSync(FRONTEND_DIST)) {
   app.use(express.static(FRONTEND_DIST));
