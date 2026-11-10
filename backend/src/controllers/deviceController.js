@@ -48,12 +48,13 @@ export const deviceController = {
   },
 
   /**
-   * DELETE /api/devices/:id - Desvincula un dispositivo
+   * DELETE /api/devices/:id - Desvincula y elimina un dispositivo
    */
   async desvincular(req, res, next) {
     try {
       const { id } = req.params;
-      const resultado = await deviceService.desvincular(id, req.user.id);
+      const parentId = req.user?.id || req.query.parentId || req.body?.parentId;
+      const resultado = await deviceService.desvincular(id, parentId);
       return sendSuccess(res, 200, 'Dispositivo desvinculado exitosamente', resultado);
     } catch (error) {
       next(error);

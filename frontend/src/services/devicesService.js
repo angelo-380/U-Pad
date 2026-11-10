@@ -35,6 +35,14 @@ export const devicesService = {
   },
 
   /**
+   * Desvincular / eliminar dispositivo infantil
+   */
+  async desvincular(deviceId) {
+    const res = await api.delete(`/api/devices/${deviceId}`);
+    return res?.data || res;
+  },
+
+  /**
    * Obtener telemetría de ubicación y estado del dispositivo infantil
    */
   async obtenerTelemetria(deviceId) {

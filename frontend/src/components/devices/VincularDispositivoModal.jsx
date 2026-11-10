@@ -1,14 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { devicesService } from '../../services/devicesService.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { X, Tablet, KeyRound, CheckCircle2, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Tablet, KeyRound, CheckCircle2, Loader2, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
   const [code, setCode] = useState('');
   const [childName, setChildName] = useState('Diego');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [existingDevices, setExistingDevices] = useState([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [unlinkingId, setUnlinkingId] = useState(null);
   const toast = useToast();
+
+  const cargarDispositivos = async () => {
+    try {
+      setLoadingDevices(true);
+      const devs = await devicesService.listar();
+      setExistingDevices(Array.isArray(devs) ? devs : []);
+    } catch (e) {
+      console.warn('Error al cargar dispositivos existentes:', e);
+    } finally {
+      setLoadingDevices(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      cargarDispositivos();
+      setCode('');
+      setError(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -29,11 +52,30 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
         'Tablet Sincronizada'
       );
       if (onLinked) onLinked(res.device);
+      await cargarDispositivos();
+      setCode('');
       onClose();
     } catch (err) {
       setError(err.message || 'Código inválido o expirado. Genera uno nuevo en la tablet del niño.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDesvincular = async (deviceId, dName) => {
+    if (!window.confirm(`¿Estás seguro de eliminar y desvincular el dispositivo de ${dName || 'este niño'}?`)) {
+      return;
+    }
+    try {
+      setUnlinkingId(deviceId);
+      await devicesService.desvincular(deviceId);
+      toast.success('Dispositivo eliminado y desvinculado exitosamente.', 'Dispositivo Eliminado');
+      await cargarDispositivos();
+      if (onLinked) onLinked(null);
+    } catch (err) {
+      toast.error(err.message || 'Error al desvincular dispositivo');
+    } finally {
+      setUnlinkingId(null);
     }
   };
 
@@ -43,12 +85,12 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
       role="dialog"
       aria-modal="true"
     >
-      <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-tea-border relative animate-scaleIn">
+      <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-tea-border relative animate-scaleIn max-h-[90vh] overflow-y-auto">
         {/* Botón cerrar */}
         <button
           type="button"
           onClick={onClose}
-          disabled={loading}
+          disabled={loading || !!unlinkingId}
           className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
         >
           <X className="w-5 h-5" />
@@ -60,16 +102,78 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
           </div>
           <div>
             <h3 className="text-lg font-extrabold text-tea-text">
-              Vincular Tablet del Niño
+              Conectar con el Niño (Código)
             </h3>
             <p className="text-xs text-tea-muted">
-              Sincroniza la app móvil con tu panel web
+              Vincula o elimina tablets y dispositivos infantiles
             </p>
           </div>
         </div>
 
+        {/* Sección de Dispositivos ya Vinculados con opción de Eliminar */}
+        {existingDevices.length > 0 && (
+          <div className="mb-5 p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                Dispositivo(s) Vinculado(s) Actualmente
+              </span>
+              <button
+                type="button"
+                onClick={cargarDispositivos}
+                className="text-xs text-emerald-700 hover:underline flex items-center gap-1"
+              >
+                <RefreshCw className={`w-3 h-3 ${loadingDevices ? 'animate-spin' : ''}`} />
+                Actualizar
+              </button>
+            </div>
+            <div className="space-y-2 mt-2">
+              {existingDevices.map((dev) => {
+                const devId = dev.device_id || dev.id || 'dev_unknown';
+                const dName = dev.child_name || dev.childName || 'Diego';
+                const dModel = dev.device_model || dev.model || 'Android Tablet';
+                const isDeleting = unlinkingId === devId;
+
+                return (
+                  <div
+                    key={devId}
+                    className="flex items-center justify-between p-3 rounded-xl bg-white border border-emerald-100 shadow-xs"
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <span>{dName}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-mono">
+                          {dModel}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                        ID: {devId.substring(0, 16)}...
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => handleDesvincular(devId, dName)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold transition-colors disabled:opacity-50"
+                      title="Eliminar este dispositivo"
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                      <span>Eliminar</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <p className="text-xs text-slate-600 leading-relaxed bg-brand-50/50 p-3.5 rounded-2xl border border-brand-100 mb-5">
-          Abre la aplicación móvil <strong>U-Pad</strong> en la tablet de tu hijo y obtén el código de emparejamiento de <strong>6 dígitos</strong> para asociar las rutinas y pictogramas automáticamente.
+          Abre la aplicación móvil <strong>U-Pad</strong> en la tablet o teléfono de tu hijo e introduce el código de emparejamiento de <strong>6 dígitos</strong> para asociar las rutinas y sincronizar en tiempo real.
         </p>
 
         {error && (
@@ -96,7 +200,7 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Código de 6 dígitos de la Tablet
+              Código de 6 dígitos de la Tablet / Móvil
             </label>
             <div className="relative">
               <input
@@ -111,7 +215,7 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
               <KeyRound className="w-5 h-5 text-slate-400 absolute left-3.5 top-3.5" />
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              Código temporal visible en la pantalla inicial de la tablet
+              Código temporal de 6 caracteres visible en la pantalla del dispositivo
             </p>
           </div>
 
@@ -122,7 +226,7 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
               disabled={loading}
               className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors"
             >
-              Cancelar
+              Cerrar
             </button>
             <button
               type="submit"
@@ -137,7 +241,7 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Vincular Dispositivo</span>
+                  <span>Vincular Nuevo Dispositivo</span>
                 </>
               )}
             </button>

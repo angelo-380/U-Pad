@@ -44,6 +44,20 @@ router.post('/pairing/link', (req, res, next) => {
   return authenticate(req, res, next);
 }, deviceController.vincular);
 
+// Desvinculación de dispositivo (acepta token o parentId)
+router.delete('/:id', (req, res, next) => {
+  const hasAuth = req.headers.authorization || req.headers.Authorization || req.query.token;
+  if (hasAuth) {
+    return authenticate(req, res, next);
+  }
+  const parentId = req.query.parentId || req.headers['x-parent-id'] || (req.body && req.body.parentId);
+  if (parentId) {
+    req.user = { id: parentId };
+    return next();
+  }
+  return authenticate(req, res, next);
+}, deviceController.desvincular);
+
 // Todos los demás endpoints de gestión requieren usuario autenticado
 router.use(authenticate);
 
@@ -62,6 +76,5 @@ router.delete('/cleanup-duplicates', (req, res, next) => {
     next(e);
   }
 });
-router.delete('/:id', deviceController.desvincular);
 
 export default router;

@@ -16,6 +16,7 @@ import {
   Database,
   Users,
   Building2,
+  TrendingUp,
 } from 'lucide-react';
 
 export const AppLayout = ({ children }) => {
@@ -34,27 +35,30 @@ export const AppLayout = ({ children }) => {
   };
 
   const isEmpresario = user?.rol === 'empresario';
+  const homePath = isDeveloperOrAdmin ? '/admin/usuarios' : isEmpresario ? '/gerencial' : '/rutinas';
 
-  const mainLinks = [
-    { label: t('nav_routines'), path: '/rutinas', icon: CalendarCheck },
-    { label: t('nav_gps') || 'GPS & Ubicación', path: '/gps', icon: Compass },
-    { label: t('nav_ai') || 'Asistente IA', path: '/ia', icon: Cpu },
-  ];
-
-  if (isDeveloperOrAdmin) {
-    mainLinks.push({
-      label: 'Auditoría & Usuarios',
-      path: '/admin/usuarios',
-      icon: Users,
-    });
-  }
-
-  if (isEmpresario || isDeveloperOrAdmin) {
-    mainLinks.push({
-      label: 'Panel Gerencial',
-      path: '/gerencial',
-      icon: Building2,
-    });
+  let mainLinks = [];
+  if (isEmpresario) {
+    mainLinks = [
+      { label: 'Panel Gerencial (Colegio Sol)', path: '/gerencial', icon: Building2 },
+      { label: 'Análisis de Desempeño', path: '/desempeno', icon: TrendingUp },
+    ];
+  } else if (isDeveloperOrAdmin) {
+    mainLinks = [
+      { label: 'Developer Center & BD', path: '/admin/usuarios', icon: Users },
+      { label: 'Panel Gerencial', path: '/gerencial', icon: Building2 },
+      { label: 'Rutinas', path: '/rutinas', icon: CalendarCheck },
+      { label: 'Desempeño', path: '/desempeno', icon: TrendingUp },
+      { label: 'GPS', path: '/gps', icon: Compass },
+      { label: 'IA', path: '/ia', icon: Cpu },
+    ];
+  } else {
+    mainLinks = [
+      { label: t('nav_routines'), path: '/rutinas', icon: CalendarCheck },
+      { label: 'Análisis de Desempeño', path: '/desempeno', icon: TrendingUp },
+      { label: t('nav_gps') || 'GPS & Ubicación', path: '/gps', icon: Compass },
+      { label: t('nav_ai') || 'Asistente IA', path: '/ia', icon: Cpu },
+    ];
   }
 
   const displayName = user?.nombre || (user?.email ? user.email.split('@')[0] : 'Usuario');
@@ -88,7 +92,7 @@ export const AppLayout = ({ children }) => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-6">
               <Link
-                to="/rutinas"
+                to={homePath}
                 className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 rounded-xl p-1"
                 aria-label="U-Pad Inicio"
               >

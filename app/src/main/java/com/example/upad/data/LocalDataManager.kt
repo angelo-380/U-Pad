@@ -827,6 +827,18 @@ object LocalDataManager {
         saveDevicesMap(devices)
     }
 
+    fun unlinkChildDevice(deviceId: String, parentId: String = "") {
+        deleteDevice(deviceId)
+        kotlin.concurrent.thread {
+            try {
+                val urlParam = if (parentId.isNotEmpty()) "?parentId=$parentId" else ""
+                httpDelete("/api/v1/devices/$deviceId$urlParam")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error unlinking device from server: ${e.message}")
+            }
+        }
+    }
+
     fun deletePairingCode(code: String) {
         val map = getPairingCodes().toMutableMap()
         map.remove(code)

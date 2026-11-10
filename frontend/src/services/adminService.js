@@ -15,8 +15,40 @@ export const adminService = {
     const res = await api.get(`/api/admin/users${query}`);
     return {
       users: res?.data || [],
-      pagination: res?.pagination || { page: 1, limit: 15, total: 0, totalPages: 1 },
+      pagination: res?.pagination || { page: 1, limit: 25, total: 0, totalPages: 1 },
     };
+  },
+
+  /**
+   * Poder Absoluto Developer: Crear nuevo usuario directamente en la base de datos
+   */
+  async crearUsuario(userData) {
+    const res = await api.post('/api/admin/users', userData);
+    return res?.data || res;
+  },
+
+  /**
+   * Poder Absoluto Developer: Editar usuario existente (nombre, email, rol, activo, password)
+   */
+  async editarUsuario(userId, userData) {
+    const res = await api.put(`/api/admin/users/${userId}`, userData);
+    return res?.data || res;
+  },
+
+  /**
+   * Poder Absoluto Developer: Eliminar usuario y todas sus dependencias con borrado en cascada
+   */
+  async eliminarUsuario(userId) {
+    const res = await api.delete(`/api/admin/users/${userId}`);
+    return res?.data || res;
+  },
+
+  /**
+   * Poder Absoluto Developer: Ejecutar consultas SQL arbitrarias (SELECT, INSERT, UPDATE, DELETE)
+   */
+  async ejecutarSql(sqlQuery) {
+    const res = await api.post('/api/admin/sql-execute', { query: sqlQuery });
+    return res;
   },
 
   /**

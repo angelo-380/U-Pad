@@ -34,8 +34,17 @@ export const LoginPage = () => {
 
     try {
       setLoading(true);
-      await login(email, password);
-      navigate(from, { replace: true });
+      const res = await login(email, password);
+      const userRole = res?.usuario?.rol;
+      if (from && from !== '/' && from !== '/login') {
+        navigate(from, { replace: true });
+      } else if (userRole === 'developer' || userRole === 'admin') {
+        navigate('/admin/usuarios', { replace: true });
+      } else if (userRole === 'empresario') {
+        navigate('/gerencial', { replace: true });
+      } else {
+        navigate('/rutinas', { replace: true });
+      }
     } catch (err) {
       if (err.status === 429) {
         setIsRateLimited(true);

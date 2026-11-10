@@ -354,7 +354,11 @@ fun ConnectionScreen(
 
                                         IconButton(
                                             onClick = {
-                                                firestore.collection("dispositivos_niños").document(dispositivo.id).delete()
+                                                com.example.upad.data.LocalDataManager.unlinkChildDevice(dispositivo.id, idPadre)
+                                                listaDispositivos.removeAll { it.id == dispositivo.id }
+                                                try {
+                                                    firestore.collection("dispositivos_niños").document(dispositivo.id).delete()
+                                                } catch (e: Exception) {}
                                             }
                                         ) {
                                             Icon(

@@ -208,22 +208,6 @@ fun DashboardDrawerContent(
             modifier = Modifier.padding(horizontal = 12.dp)
         )
 
-        // Bloquear Dispositivo
-        NavigationDrawerItem(
-            icon = { Icon(Icons.Default.Lock, contentDescription = null) },
-            label = {
-                Text(
-                    text = stringResource(R.string.lock_device),
-                    fontWeight = FontWeight.Medium,
-                    color = colorTextoPrincipal,
-                    fontFamily = fuentePremium
-                )
-            },
-            selected = false,
-            onClick = onNavigateToDeviceManagement,
-            colors = drawerColors,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
 
         // Conectar con el Niño
         NavigationDrawerItem(

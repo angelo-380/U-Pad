@@ -8,6 +8,7 @@ import { AppLayout } from './components/layout/AppLayout.jsx';
 import { LoginPage } from './pages/auth/LoginPage.jsx';
 import { RegisterPage } from './pages/auth/RegisterPage.jsx';
 import { RutinasPage } from './pages/rutinas/RutinasPage.jsx';
+import { DesempenoPage } from './pages/analytics/DesempenoPage.jsx';
 import { GpsPage } from './pages/monitoring/GpsPage.jsx';
 import { AiAssistantPage } from './pages/ai/AiAssistantPage.jsx';
 import { DeveloperUsersPage } from './pages/admin/DeveloperUsersPage.jsx';
@@ -15,6 +16,16 @@ import { GerencialKpiPage } from './pages/admin/GerencialKpiPage.jsx';
 import { ForbiddenPage } from './pages/errors/ForbiddenPage.jsx';
 import { NotFoundPage } from './pages/errors/NotFoundPage.jsx';
 import { ServerErrorPage } from './pages/errors/ServerErrorPage.jsx';
+import { useAuth } from './context/AuthContext.jsx';
+
+const HomeRedirect = () => {
+  const { user, isAuthenticated, loading } = useAuth();
+  if (loading) return null;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.rol === 'developer' || user?.rol === 'admin') return <Navigate to="/admin/usuarios" replace />;
+  if (user?.rol === 'empresario') return <Navigate to="/gerencial" replace />;
+  return <Navigate to="/rutinas" replace />;
+};
 
 export default function App() {
   return (
@@ -34,6 +45,18 @@ export default function App() {
                 <ProtectedRoute>
                   <AppLayout>
                     <RutinasPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Módulo de Análisis de Desempeño Clínico TEA */}
+            <Route
+              path="/desempeno"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <DesempenoPage />
                   </AppLayout>
                 </ProtectedRoute>
               }
@@ -90,8 +113,8 @@ export default function App() {
             <Route path="/404" element={<NotFoundPage />} />
             <Route path="/500" element={<ServerErrorPage />} />
 
-            {/* Redirección raíz y rutas inexistentes (404) */}
-            <Route path="/" element={<Navigate to="/rutinas" replace />} />
+            {/* Redirección inteligente de inicio según rol (Developer -> /admin/usuarios, Empresario -> /gerencial, Tutor -> /rutinas) */}
+            <Route path="/" element={<HomeRedirect />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </ToastProvider>

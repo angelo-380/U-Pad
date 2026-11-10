@@ -90,16 +90,15 @@ export const deviceService = {
   },
 
   /**
-   * Desvincula un dispositivo.
+   * Desvincula y elimina un dispositivo vinculado a la cuenta del padre.
    */
-  async desvincular(deviceId, parentId) {
-    const existing = db.prepare('SELECT * FROM child_devices WHERE device_id = ? AND parent_id = ?').get(deviceId, parentId);
-    if (!existing) {
-      throw new AppError('Dispositivo no encontrado o no pertenece a tu cuenta.', 404);
+  async desvincular(deviceId, parentId = null) {
+    if (parentId) {
+      db.prepare('DELETE FROM child_devices WHERE (device_id = ? OR id = ?) AND parent_id = ?').run(deviceId, deviceId, parentId);
+    } else {
+      db.prepare('DELETE FROM child_devices WHERE device_id = ? OR id = ?').run(deviceId, deviceId);
     }
-
-    db.prepare('UPDATE child_devices SET parent_id = NULL WHERE device_id = ?').run(deviceId);
-    db.prepare('UPDATE pairing_codes SET pairing_status = "PENDING", parent_id = NULL WHERE device_id = ?').run(deviceId);
+    db.prepare('DELETE FROM pairing_codes WHERE device_id = ?').run(deviceId);
 
     return { deviceId, desvinculado: true };
   },
