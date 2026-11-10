@@ -32,8 +32,8 @@ export const rutinasController = {
    */
   async listar(req, res, next) {
     try {
-      const { turno, organizacionId, page, limit } = req.query;
-      const resultado = await rutinasService.listar({ turno, organizacionId, page, limit }, req.user);
+      const { turno, organizacionId, page, limit, all, scope } = req.query;
+      const resultado = await rutinasService.listar({ turno, organizacionId, page, limit, all, scope }, req.user);
 
       if (resultado && resultado.pagination) {
         return res.status(200).json({

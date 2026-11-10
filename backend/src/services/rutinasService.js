@@ -67,8 +67,15 @@ export const rutinasService = {
     let whereClause = ' WHERE 1=1';
     const params = [];
 
-    // Aislamiento por rol:
-    if (usuarioActual.rol === 'empresario') {
+    // Aislamiento estricto por usuario:
+    // - tutor: ve ÚNICAMENTE sus propias rutinas creadas
+    // - empresario: ve rutinas de su organización si tiene organizacionId, o las suyas
+    // - developer / admin: ve sus propias rutinas personales por defecto en su panel principal,
+    //   salvo que explícitamente pase ?all=true para auditoría global del sistema o ?organizacionId=...
+    if (usuarioActual.rol === 'tutor') {
+      whereClause += ' AND creadoPor = ?';
+      params.push(usuarioActual.id);
+    } else if (usuarioActual.rol === 'empresario') {
       if (usuarioActual.organizacionId) {
         whereClause += ' AND organizacionId = ?';
         params.push(usuarioActual.organizacionId);
@@ -76,12 +83,18 @@ export const rutinasService = {
         whereClause += ' AND creadoPor = ?';
         params.push(usuarioActual.id);
       }
-    } else if (usuarioActual.rol === 'tutor') {
-      whereClause += ' AND creadoPor = ?';
-      params.push(usuarioActual.id);
-    } else if ((usuarioActual.rol === 'admin' || usuarioActual.rol === 'developer') && filtros.organizacionId) {
-      whereClause += ' AND organizacionId = ?';
-      params.push(filtros.organizacionId);
+    } else if (usuarioActual.rol === 'developer' || usuarioActual.rol === 'admin') {
+      if (filtros.all === 'true' || filtros.scope === 'all') {
+        // Modo auditoría global: ve todas o filtra por organizacionId si se especifica
+        if (filtros.organizacionId) {
+          whereClause += ' AND organizacionId = ?';
+          params.push(filtros.organizacionId);
+        }
+      } else {
+        // En su vista de panel normal, solo ve las rutinas propias de su cuenta
+        whereClause += ' AND creadoPor = ?';
+        params.push(usuarioActual.id);
+      }
     }
 
     // Filtro opcional por turno
