@@ -12,6 +12,8 @@ import rutinasRoutes from './routes/rutinasRoutes.js';
 import deviceRoutes from './routes/deviceRoutes.js';
 import backupRoutes from './routes/backupRoutes.js';
 import mobileSyncRoutes from './routes/mobileSyncRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import kpiRoutes from './routes/kpiRoutes.js';
 import { generalLimiter } from './middlewares/rateLimiter.js';
 import { notFoundHandler } from './middlewares/notFoundHandler.js';
 import { errorHandler } from './middlewares/errorHandler.js';
@@ -125,6 +127,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/rutinas', rutinasRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/admin/backups', backupRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/empresario', kpiRoutes);
 app.use('/api', mobileSyncRoutes);
 
 // Alias para compatibilidad con prefijo /api/v1/
@@ -132,6 +136,8 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/routines', rutinasRoutes);
 app.use('/api/v1/devices', deviceRoutes);
 app.use('/api/v1/admin/backups', backupRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/empresario', kpiRoutes);
 app.use('/api/v1', mobileSyncRoutes);
 
 // ==============================================================================

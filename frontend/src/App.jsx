@@ -10,6 +10,8 @@ import { RegisterPage } from './pages/auth/RegisterPage.jsx';
 import { RutinasPage } from './pages/rutinas/RutinasPage.jsx';
 import { GpsPage } from './pages/monitoring/GpsPage.jsx';
 import { AiAssistantPage } from './pages/ai/AiAssistantPage.jsx';
+import { DeveloperUsersPage } from './pages/admin/DeveloperUsersPage.jsx';
+import { GerencialKpiPage } from './pages/admin/GerencialKpiPage.jsx';
 import { ForbiddenPage } from './pages/errors/ForbiddenPage.jsx';
 import { NotFoundPage } from './pages/errors/NotFoundPage.jsx';
 import { ServerErrorPage } from './pages/errors/ServerErrorPage.jsx';
@@ -54,6 +56,30 @@ export default function App() {
                 <ProtectedRoute>
                   <AppLayout>
                     <AiAssistantPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Vista Especial Developer: Auditoría Global de Usuarios y Rutinas */}
+            <Route
+              path="/admin/usuarios"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <DeveloperUsersPage />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Vista Gerencial Directiva: KPIs agregados sin datos personales */}
+            <Route
+              path="/gerencial"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <GerencialKpiPage />
                   </AppLayout>
                 </ProtectedRoute>
               }

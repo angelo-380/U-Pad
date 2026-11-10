@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { rutinasService } from '../../services/rutinasService.js';
 import { devicesService } from '../../services/devicesService.js';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -19,6 +21,8 @@ import {
   ChevronRight,
   Layers,
   Sparkles,
+  Users,
+  Building2,
 } from 'lucide-react';
 
 export const RutinasPage = () => {
@@ -54,6 +58,7 @@ export const RutinasPage = () => {
 
   const toast = useToast();
   const { t } = useLanguage();
+  const { user } = useAuth();
 
   const cargarDispositivos = useCallback(async () => {
     try {
@@ -168,6 +173,50 @@ export const RutinasPage = () => {
 
   return (
     <div className="space-y-8 pb-16">
+      {/* Banner especial para Developer: acceso a auditoría de usuarios y sus rutinas */}
+      {user?.rol === 'developer' && (
+        <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-soft-xs">
+          <div className="flex items-center gap-3">
+            <span className="p-2 rounded-xl bg-purple-600 text-white font-black text-xs">DEV</span>
+            <div>
+              <p className="font-extrabold text-purple-900">Modo Desarrollador Cloud Activo</p>
+              <p className="text-purple-700 text-[11px]">
+                Tienes acceso para auditar todos los usuarios del sistema ({pagination.total || 'miles'}) y ver qué rutinas tiene cada uno.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/admin/usuarios"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors shadow-sm flex-shrink-0"
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Abrir Auditoría de Usuarios</span>
+          </Link>
+        </div>
+      )}
+
+      {/* Banner especial para Empresario (Director de Colegio / Clínica) */}
+      {user?.rol === 'empresario' && (
+        <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-soft-xs">
+          <div className="flex items-center gap-3">
+            <span className="p-2 rounded-xl bg-indigo-600 text-white font-black text-xs">DIR</span>
+            <div>
+              <p className="font-extrabold text-indigo-900">Panel Directivo Institucional ({user?.email?.includes('colegiosol') ? 'Colegio Sol' : 'Institución'})</p>
+              <p className="text-indigo-700 text-[11px]">
+                Accede a las métricas e indicadores clave (KPIs) de asistencia, adherencia y alumnos con privacidad protegida.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/gerencial"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-colors shadow-sm flex-shrink-0"
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Ver Panel Gerencial</span>
+          </Link>
+        </div>
+      )}
+
       {/* Cabecera Principal */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
         <div>

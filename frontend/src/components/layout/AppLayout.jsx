@@ -14,6 +14,8 @@ import {
   Menu,
   X,
   Database,
+  Users,
+  Building2,
 } from 'lucide-react';
 
 export const AppLayout = ({ children }) => {
@@ -31,11 +33,29 @@ export const AppLayout = ({ children }) => {
     navigate('/login');
   };
 
+  const isEmpresario = user?.rol === 'empresario';
+
   const mainLinks = [
     { label: t('nav_routines'), path: '/rutinas', icon: CalendarCheck },
     { label: t('nav_gps') || 'GPS & Ubicación', path: '/gps', icon: Compass },
     { label: t('nav_ai') || 'Asistente IA', path: '/ia', icon: Cpu },
   ];
+
+  if (isDeveloperOrAdmin) {
+    mainLinks.push({
+      label: 'Auditoría & Usuarios',
+      path: '/admin/usuarios',
+      icon: Users,
+    });
+  }
+
+  if (isEmpresario || isDeveloperOrAdmin) {
+    mainLinks.push({
+      label: 'Panel Gerencial',
+      path: '/gerencial',
+      icon: Building2,
+    });
+  }
 
   const displayName = user?.nombre || (user?.email ? user.email.split('@')[0] : 'Usuario');
 
