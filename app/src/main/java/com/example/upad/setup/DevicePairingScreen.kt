@@ -308,9 +308,17 @@ fun DevicePairingScreen(
                             estaConectando = true
 
                             val parentId = currentParentId.ifEmpty { LocalDataManager.getCurrentUserId() }
-                            LocalDataManager.linkDeviceToParent(pairingCode, parentId)
-                            estaConectando = false
-                            isPaired = true
+                            kotlin.concurrent.thread {
+                                val result = LocalDataManager.linkDeviceToParent(pairingCode, parentId)
+                                (context as? android.app.Activity)?.runOnUiThread {
+                                    estaConectando = false
+                                    if (result.first) {
+                                        isPaired = true
+                                    } else {
+                                        mensajeError = result.second
+                                    }
+                                }
+                            }
                         } else {
                             mensajeError = "Introduce los 6 números obligatorios."
                         }
