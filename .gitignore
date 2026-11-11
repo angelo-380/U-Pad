@@ -33,11 +33,9 @@ node_modules/
 frontend/dist/
 backend/coverage/
 *.apk
+!UPad_Cloud_Ready.apk
 *.zip
 *.docx
 *.pdf
 *.exe
 tools/k6.exe
-
-# Temp and stray files
-h -u origin main
