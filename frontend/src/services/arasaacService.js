@@ -3,7 +3,7 @@
  * API oficial: https://api.arasaac.org/
  * CDN oficial: https://static.arasaac.org/pictograms/{id}/{id}_{size}.png
  *
- * Utiliza el idioma inglés ('en') según requerimiento.
+ * Utiliza el idioma español ('es') por defecto para coincidir con las palabras clave de la aplicación.
  */
 
 const ARASAAC_API_BASE = 'https://api.arasaac.org/api';
@@ -23,25 +23,26 @@ export const arasaacService = {
   },
 
   /**
-   * Busca pictogramas por palabra clave en ARASAAC (idioma inglés por defecto).
+   * Busca pictogramas por palabra clave en ARASAAC (idioma español por defecto).
    * Retorna una lista de coincidencias con su _id, keywords y URL de imagen.
    */
-  async searchPictograms(keyword, locale = 'en') {
+  async searchPictograms(keyword, locale = 'es') {
     if (!keyword || typeof keyword !== 'string') return [];
     const term = keyword.trim().toLowerCase();
     if (!term) return [];
 
-    const cacheKey = `${locale}:${term}`;
+    const lang = locale || 'es';
+    const cacheKey = `${lang}:${term}`;
     if (searchCache.has(cacheKey)) {
       return searchCache.get(cacheKey);
     }
 
     try {
-      const url = `${ARASAAC_API_BASE}/pictograms/${locale}/search/${encodeURIComponent(term)}`;
+      const url = `${ARASAAC_API_BASE}/pictograms/${lang}/search/${encodeURIComponent(term)}`;
       const res = await fetch(url);
 
       if (!res.ok) {
-        // Si no se encuentra (404), cacheamos arreglo vacío
+        // Si no se encuentra (404), cacheamos arreglo vacío sin ruido
         searchCache.set(cacheKey, []);
         return [];
       }
@@ -60,27 +61,29 @@ export const arasaacService = {
 
       searchCache.set(cacheKey, formatted);
       return formatted;
-    } catch (err) {
-      console.warn(`[ARASAAC] Error buscando "${term}":`, err.message);
+    } catch {
+      // Si falla la red o da error, retornamos vacío de manera silenciosa
+      searchCache.set(cacheKey, []);
       return [];
     }
   },
 
   /**
-   * Obtiene el pictograma más representativo para una palabra clave (locale 'en').
+   * Obtiene el pictograma más representativo para una palabra clave (locale 'es' por defecto).
    * Retorna { id, url, keyword } o null si no se encuentra.
    */
-  async getPictogramByKeyword(keyword, locale = 'en') {
+  async getPictogramByKeyword(keyword, locale = 'es') {
     if (!keyword || typeof keyword !== 'string') return null;
     const term = keyword.trim().toLowerCase();
     if (!term) return null;
 
-    const cacheKey = `${locale}:${term}`;
+    const lang = locale || 'es';
+    const cacheKey = `${lang}:${term}`;
     if (pictogramCache.has(cacheKey)) {
       return pictogramCache.get(cacheKey);
     }
 
-    const results = await this.searchPictograms(term, locale);
+    const results = await this.searchPictograms(term, lang);
     if (results && results.length > 0) {
       const best = results[0];
       const match = {
@@ -92,11 +95,10 @@ export const arasaacService = {
       return match;
     }
 
-    // Si no encontró en inglés directo, probamos con una palabra limpia
-    // (por ejemplo si contiene guiones o múltiples palabras, tomamos la primera)
+    // Si contiene varias palabras o guiones, probar con la primera palabra significativa
     const firstWord = term.split(/[\s_-]+/)[0];
     if (firstWord && firstWord !== term) {
-      const fallbackResults = await this.searchPictograms(firstWord, locale);
+      const fallbackResults = await this.searchPictograms(firstWord, lang);
       if (fallbackResults && fallbackResults.length > 0) {
         const best = fallbackResults[0];
         const match = {

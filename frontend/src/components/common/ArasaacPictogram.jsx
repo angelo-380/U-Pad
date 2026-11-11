@@ -55,7 +55,7 @@ export const ArasaacPictogram = ({
     setHasError(false);
 
     arasaacService
-      .getPictogramByKeyword(cleanKeyword, 'en')
+      .getPictogramByKeyword(cleanKeyword, 'es')
       .then((result) => {
         if (!isMounted) return;
         if (result && result.url) {
