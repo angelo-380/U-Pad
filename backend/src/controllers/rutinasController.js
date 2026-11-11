@@ -8,7 +8,8 @@ export const rutinasController = {
    */
   async crear(req, res, next) {
     try {
-      const { titulo, turno, ninoId, organizacionId, pasos } = req.body;
+      // La organización de la rutina la define el servidor (la del usuario autenticado); el body no la controla
+      const { titulo, turno, ninoId, pasos } = req.body;
 
       if (!titulo) {
         throw new AppError('El campo [titulo] es obligatorio para crear una rutina.', 400, {
@@ -17,7 +18,7 @@ export const rutinasController = {
       }
 
       const rutinaCreada = await rutinasService.crear(
-        { titulo, turno, ninoId, organizacionId, pasos },
+        { titulo, turno, ninoId, pasos },
         req.user
       );
 

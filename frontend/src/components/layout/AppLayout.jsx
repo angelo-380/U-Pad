@@ -40,7 +40,7 @@ export const AppLayout = ({ children }) => {
   let mainLinks = [];
   if (isEmpresario) {
     mainLinks = [
-      { label: 'Panel Gerencial (Colegio Sol)', path: '/gerencial', icon: Building2 },
+      { label: 'Panel Gerencial', path: '/gerencial', icon: Building2 },
       { label: 'Análisis de Desempeño', path: '/desempeno', icon: TrendingUp },
     ];
   } else if (isDeveloper) {

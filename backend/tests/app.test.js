@@ -8,9 +8,18 @@ import {
   inicializarEsquema,
   crearDeveloperInicial,
   migrarRolAdmin,
+  migrarOrganizaciones,
   verifyPassword,
 } from '../src/config/database.js';
 import { rutinasService } from '../src/services/rutinasService.js';
+import {
+  LONGITUD_CODIGO,
+  generarCodigo,
+  normalizarCodigo,
+  formatearCodigo,
+  crearOrganizacion,
+  buscarPorCodigo,
+} from '../src/utils/organizaciones.js';
 
 // ─── Sin mock: los tests golpean el emulador real de Firestore ──────────────
 // setup.js ya configura FIREBASE_PROJECT_ID y FIRESTORE_EMULATOR_HOST
@@ -749,6 +758,522 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
         // Segunda ejecución: nada que migrar y sin ruido en consola
         expect(migrarRolAdmin(conexion, consola)).toBe(0);
         expect(consola.warn).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  // 9. Bloque B: organizaciones con código (el cliente nunca envía un organizacionId)
+  describe('9. Organizaciones: código de organización, aislamiento y migración', () => {
+    const REGEX_CODIGO_VISIBLE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/;
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const emailUnico = (etiqueta) => `test-${TIMESTAMP}-${etiqueta}-${crypto.randomUUID().slice(0, 8)}@upad.test`;
+    const contarUsuarios = (email) => db.prepare('SELECT COUNT(*) AS total FROM usuarios WHERE email = ?').get(email).total;
+    const filaOrganizacion = (id) => db.prepare('SELECT * FROM organizaciones WHERE id = ?').get(id);
+
+    const registrar = (datos) => request(app)
+      .post('/api/auth/register')
+      .send({ password: passwordGenerada(), email: emailUnico('org'), ...datos });
+
+    const registrarEmpresario = async (nombre = 'Colegio de Prueba') => {
+      const res = await registrar({ nombre, rol: 'empresario' });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    const registrarTutor = async (codigoOrganizacion) => {
+      const res = await registrar({
+        nombre: 'Tutor de Prueba',
+        rol: 'tutor',
+        ...(codigoOrganizacion !== undefined ? { codigoOrganizacion } : {}),
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    const crearRutina = (token, extra = {}) => request(app)
+      .post('/api/rutinas')
+      .set(auth(token))
+      .send({ titulo: `Rutina ${crypto.randomUUID().slice(0, 8)}`, turno: 'MANANA', pasos: [], ...extra });
+
+    const kpis = (token, query = '') => request(app).get(`/api/empresario/kpis${query}`).set(auth(token));
+
+    describe('9.1 El empresario recibe su propia organización al registrarse', () => {
+      test('se crea la organización (propietario, nombre y código válido) y el token la incluye', async () => {
+        const datos = await registrarEmpresario('Colegio Nueva Esperanza');
+
+        expect(datos.organizacion.nombre).toBe('Colegio Nueva Esperanza');
+        expect(datos.organizacion.codigo).toMatch(REGEX_CODIGO_VISIBLE);
+        expect(datos.usuario.organizacionId).toBe(datos.organizacion.id);
+
+        const fila = filaOrganizacion(datos.organizacion.id);
+        expect(fila.propietarioId).toBe(datos.usuario.id);
+        expect(fila.nombre).toBe('Colegio Nueva Esperanza');
+        expect(fila.codigo).toBe(datos.organizacion.codigo.replace('-', ''));
+
+        const me = await request(app).get('/api/auth/me').set(auth(datos.token));
+        expect(me.body.data.usuario.organizacionId).toBe(datos.organizacion.id);
+      });
+
+      test('dos empresarios reciben organizaciones y códigos distintos', async () => {
+        const a = await registrarEmpresario('Institución A');
+        const b = await registrarEmpresario('Institución B');
+
+        expect(a.organizacion.id).not.toBe(b.organizacion.id);
+        expect(a.organizacion.codigo).not.toBe(b.organizacion.codigo);
+      });
+
+      test('un organizacionId enviado por el cliente se ignora (empresario y tutor)', async () => {
+        const ajena = await registrarEmpresario('Institución Ajena');
+
+        const empresario = await registrar({ nombre: 'Intruso Empresario', rol: 'empresario', organizacionId: ajena.organizacion.id });
+        expect(empresario.status).toBe(201);
+        expect(empresario.body.data.usuario.organizacionId).not.toBe(ajena.organizacion.id);
+        expect(filaOrganizacion(empresario.body.data.usuario.organizacionId).propietarioId).toBe(empresario.body.data.usuario.id);
+
+        const tutor = await registrar({ nombre: 'Intruso Tutor', rol: 'tutor', organizacionId: ajena.organizacion.id });
+        expect(tutor.status).toBe(201);
+        expect(tutor.body.data.usuario.organizacionId).toBeNull();
+      });
+
+      test('un empresario con codigoOrganizacion es rechazado (400) y NO se crea la cuenta', async () => {
+        const ajena = await registrarEmpresario('Institución Ajena 2');
+        const email = emailUnico('emp-con-codigo');
+
+        const res = await registrar({ nombre: 'Empresario Con Código', email, rol: 'empresario', codigoOrganizacion: ajena.organizacion.codigo });
+
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('ORGANIZACION_CODIGO_NO_APLICA');
+        expect(contarUsuarios(email)).toBe(0);
+      });
+    });
+
+    describe('9.2 El tutor puede ingresar el código de su organización o quedar sin organización', () => {
+      let organizacionA;
+
+      beforeAll(async () => {
+        organizacionA = (await registrarEmpresario('Institución Tutores')).organizacion;
+      });
+
+      test.each([
+        ['con el formato mostrado', (c) => c],
+        ['en minúsculas y sin guion', (c) => c.toLowerCase().replace('-', '')],
+        ['con espacios alrededor', (c) => `  ${c}  `],
+      ])('código válido %s: el tutor se une a la organización (sin ver el código)', async (_descripcion, transformar) => {
+        const datos = await registrarTutor(transformar(organizacionA.codigo));
+
+        expect(datos.usuario.organizacionId).toBe(organizacionA.id);
+        expect(datos.organizacion).toEqual({ id: organizacionA.id, nombre: organizacionA.nombre });
+        expect(datos.organizacion).not.toHaveProperty('codigo');
+      });
+
+      test.each([[undefined], [''], ['   '], [null]])('sin código (%p): el tutor queda sin organización', async (vacio) => {
+        const datos = await registrarTutor(vacio);
+
+        expect(datos.usuario.organizacionId).toBeNull();
+        expect(datos.organizacion).toBeNull();
+      });
+
+      test('códigos inválidos reciben el MISMO error genérico y NO crean la cuenta', async () => {
+        const mensajes = new Set();
+
+        for (const invalido of ['ZZZZ-ZZZZ', 'abc', '1234-5678', 123, {}, ['K7M2Q9XD']]) {
+          const email = emailUnico('codigo-invalido');
+          const res = await registrar({ nombre: 'Tutor Código Inválido', email, rol: 'tutor', codigoOrganizacion: invalido });
+
+          expect(res.status).toBe(400);
+          expect(res.body.errors.code).toBe('ORGANIZACION_CODIGO_INVALIDO');
+          expect(contarUsuarios(email)).toBe(0);
+          mensajes.add(res.body.message);
+        }
+
+        // Un solo mensaje: no se puede distinguir "formato inválido" de "código inexistente"
+        expect(mensajes.size).toBe(1);
+      });
+    });
+
+    describe('9.3 La organización de una rutina la define el servidor', () => {
+      test('el organizacionId del body se ignora al crear rutinas (tutor sin organización y empresarios)', async () => {
+        const a = await registrarEmpresario('Institución Rutinas A');
+        const b = await registrarEmpresario('Institución Rutinas B');
+        const tutorSinOrg = await registrarTutor();
+
+        const deTutor = await crearRutina(tutorSinOrg.token, { organizacionId: a.organizacion.id });
+        expect(deTutor.status).toBe(201);
+        expect(deTutor.body.data.organizacionId).toBeNull();
+
+        const deEmpresarioB = await crearRutina(b.token, { organizacionId: a.organizacion.id });
+        expect(deEmpresarioB.status).toBe(201);
+        expect(deEmpresarioB.body.data.organizacionId).toBe(b.organizacion.id);
+      });
+
+      test('la rutina de un tutor miembro queda en la organización de su institución', async () => {
+        const a = await registrarEmpresario('Institución Rutinas C');
+        const tutor = await registrarTutor(a.organizacion.codigo);
+
+        const res = await crearRutina(tutor.token);
+
+        expect(res.status).toBe(201);
+        expect(res.body.data.organizacionId).toBe(a.organizacion.id);
+      });
+    });
+
+    describe('9.4 Aislamiento entre organizaciones y KPIs reales', () => {
+      let a;
+      let b;
+      let tutorDeA;
+      let rutinaDelTutorId;
+
+      beforeAll(async () => {
+        a = await registrarEmpresario('Institución Aislada A');
+        b = await registrarEmpresario('Institución Aislada B');
+        tutorDeA = await registrarTutor(a.organizacion.codigo);
+      });
+
+      test('una organización recién creada muestra ceros (sin cifras de relleno ni fallback a una organización demo)', async () => {
+        const res = await kpis(a.token);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.organizacionId).toBe(a.organizacion.id);
+        expect(res.body.data.institucion).toBe('Institución Aislada A');
+        expect(res.body.data.organizacion.codigo).toBe(a.organizacion.codigo);
+        expect(res.body.data.kpis.totalRutinasEstructuradas).toBe(0);
+        expect(res.body.data.kpis.totalEstudiantesInstitucion).toBe(0);
+        expect(res.body.data.kpis.dispositivosKioskEnPerimetro).toBe(0);
+      });
+
+      test('la rutina de un tutor suma a "Rutinas Institucionales" de su empresario y este la ve en su lista', async () => {
+        const creada = await crearRutina(tutorDeA.token, { turno: 'TARDE' });
+        expect(creada.status).toBe(201);
+        rutinaDelTutorId = creada.body.data.id;
+
+        const lista = await request(app).get('/api/rutinas').set(auth(a.token));
+        expect(lista.body.data.map((r) => r.id)).toContain(rutinaDelTutorId);
+
+        const res = await kpis(a.token);
+        expect(res.body.data.kpis.totalRutinasEstructuradas).toBe(1);
+        expect(res.body.data.kpis.distribucionTurnos.tarde).toBe(1);
+      });
+
+      test('los niños vinculados por los tutores de la organización cuentan como estudiantes y kioscos', async () => {
+        const vincular = await request(app)
+          .post('/api/devices/pairing/link')
+          .set(auth(tutorDeA.token))
+          .send({ code: String(100000 + crypto.randomInt(900000)), childName: 'Niño de Prueba', deviceModel: 'Tablet de Prueba' });
+        expect(vincular.status).toBe(201);
+
+        const res = await kpis(a.token);
+        expect(res.body.data.kpis.totalEstudiantesInstitucion).toBe(1);
+        expect(res.body.data.kpis.dispositivosKioskEnPerimetro).toBe(1);
+      });
+
+      test('otro empresario NO ve, NO borra y NO cuenta las rutinas de la organización A', async () => {
+        const lista = await request(app).get('/api/rutinas').set(auth(b.token));
+        expect(lista.status).toBe(200);
+        expect(lista.body.data.map((r) => r.id)).not.toContain(rutinaDelTutorId);
+
+        const borrado = await request(app).delete(`/api/rutinas/${rutinaDelTutorId}`).set(auth(b.token));
+        expect(borrado.status).toBe(403);
+        expect(borrado.body.errors.code).toBe('FORBIDDEN_RESOURCE');
+
+        const res = await kpis(b.token);
+        expect(res.body.data.kpis.totalRutinasEstructuradas).toBe(0);
+        expect(res.body.data.kpis.totalEstudiantesInstitucion).toBe(0);
+        // El código de A nunca se filtra a B
+        expect(JSON.stringify(res.body)).not.toContain(a.organizacion.codigo);
+      });
+
+      test('un empresario sin organización en el token recibe 409 (no hay fallback a una organización demo)', async () => {
+        const tokenSinOrg = signToken({ id: `emp_sin_org_${TIMESTAMP}`, email: `test-${TIMESTAMP}-sinorg@upad.test`, rol: 'empresario', organizacionId: null });
+
+        const res = await kpis(tokenSinOrg);
+
+        expect(res.status).toBe(409);
+        expect(res.body.errors.code).toBe('ORGANIZACION_NO_ASIGNADA');
+      });
+
+      test('el developer ve el agregado global o una organización concreta; una inexistente da 404', async () => {
+        const developerToken = signToken({ id: `dev9_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev9@upad.test`, rol: 'developer', organizacionId: null });
+
+        const global = await kpis(developerToken);
+        expect(global.status).toBe(200);
+        expect(global.body.data.institucion).toBe('Todas las organizaciones');
+        expect(global.body.data.kpis.totalRutinasEstructuradas).toBeGreaterThanOrEqual(1);
+
+        const concreta = await kpis(developerToken, `?organizacionId=${a.organizacion.id}`);
+        expect(concreta.body.data.institucion).toBe('Institución Aislada A');
+        expect(concreta.body.data.kpis.totalRutinasEstructuradas).toBe(1);
+
+        const inexistente = await kpis(developerToken, '?organizacionId=org_que_no_existe');
+        expect(inexistente.status).toBe(404);
+      });
+    });
+
+    describe('9.5 GET /api/organizaciones/mia', () => {
+      test('el empresario propietario ve su código; el tutor miembro no; el tutor sin organización recibe null', async () => {
+        const empresario = await registrarEmpresario('Institución Mía');
+        const tutorMiembro = await registrarTutor(empresario.organizacion.codigo);
+        const tutorSinOrg = await registrarTutor();
+
+        const deEmpresario = await request(app).get('/api/organizaciones/mia').set(auth(empresario.token));
+        expect(deEmpresario.status).toBe(200);
+        expect(deEmpresario.body.data.organizacion).toEqual({
+          id: empresario.organizacion.id,
+          nombre: 'Institución Mía',
+          codigo: empresario.organizacion.codigo,
+        });
+
+        const deTutor = await request(app).get('/api/organizaciones/mia').set(auth(tutorMiembro.token));
+        expect(deTutor.body.data.organizacion).toEqual({ id: empresario.organizacion.id, nombre: 'Institución Mía' });
+
+        const sinOrg = await request(app).get('/api/organizaciones/mia').set(auth(tutorSinOrg.token));
+        expect(sinOrg.status).toBe(200);
+        expect(sinOrg.body.data.organizacion).toBeNull();
+      });
+
+      test('sin token responde 401', async () => {
+        const res = await request(app).get('/api/organizaciones/mia');
+        expect(res.status).toBe(401);
+      });
+    });
+
+    describe('9.6 El developer asigna organizaciones solo si existen (/api/admin/users)', () => {
+      const developerToken = signToken({ id: `dev96_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev96@upad.test`, rol: 'developer', organizacionId: null });
+      let orgA;
+      let orgB;
+
+      beforeAll(async () => {
+        orgA = (await registrarEmpresario('Institución Admin A')).organizacion;
+        orgB = (await registrarEmpresario('Institución Admin B')).organizacion;
+      });
+
+      const crearUsuarioAdmin = (extra) => request(app)
+        .post('/api/admin/users')
+        .set(auth(developerToken))
+        .send({ nombre: 'Creado por Developer', email: emailUnico('admin-org'), password: passwordGenerada(), ...extra });
+
+      test('una organización inexistente se rechaza (400 ORGANIZACION_NO_ENCONTRADA) y no crea el usuario', async () => {
+        const email = emailUnico('admin-org-inexistente');
+        const res = await crearUsuarioAdmin({ email, rol: 'tutor', organizacionId: 'org_que_no_existe' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('ORGANIZACION_NO_ENCONTRADA');
+        expect(contarUsuarios(email)).toBe(0);
+      });
+
+      test('una organización existente se asigna; un empresario sin organización recibe una propia', async () => {
+        const tutor = await crearUsuarioAdmin({ rol: 'tutor', organizacionId: orgA.id });
+        expect(tutor.status).toBe(201);
+        expect(tutor.body.data.organizacionId).toBe(orgA.id);
+
+        const empresario = await crearUsuarioAdmin({ nombre: 'Empresario Admin', rol: 'empresario' });
+        expect(empresario.status).toBe(201);
+        const fila = filaOrganizacion(empresario.body.data.organizacionId);
+        expect(fila.propietarioId).toBe(empresario.body.data.id);
+        expect(fila.nombre).toBe('Empresario Admin');
+      });
+
+      test('al cambiar la organización de un usuario, sus rutinas se mueven con él', async () => {
+        const tutor = await crearUsuarioAdmin({ rol: 'tutor', organizacionId: orgA.id });
+        const tokenTutor = signToken({ id: tutor.body.data.id, email: tutor.body.data.email, rol: 'tutor', organizacionId: orgA.id });
+        const rutina = await crearRutina(tokenTutor);
+        expect(rutina.body.data.organizacionId).toBe(orgA.id);
+
+        const aB = await request(app).put(`/api/admin/users/${tutor.body.data.id}`).set(auth(developerToken)).send({ organizacionId: orgB.id });
+        expect(aB.status).toBe(200);
+        expect(aB.body.data.organizacionId).toBe(orgB.id);
+        expect(db.prepare('SELECT organizacionId FROM rutinas WHERE id = ?').get(rutina.body.data.id).organizacionId).toBe(orgB.id);
+
+        const sinOrg = await request(app).put(`/api/admin/users/${tutor.body.data.id}`).set(auth(developerToken)).send({ organizacionId: '' });
+        expect(sinOrg.status).toBe(200);
+        expect(sinOrg.body.data.organizacionId).toBeNull();
+        expect(db.prepare('SELECT organizacionId FROM rutinas WHERE id = ?').get(rutina.body.data.id).organizacionId).toBeNull();
+
+        const invalida = await request(app).put(`/api/admin/users/${tutor.body.data.id}`).set(auth(developerToken)).send({ organizacionId: 'org_que_no_existe' });
+        expect(invalida.status).toBe(400);
+        expect(invalida.body.errors.code).toBe('ORGANIZACION_NO_ENCONTRADA');
+      });
+
+      test('promover a un tutor sin organización a empresario le crea su organización', async () => {
+        const tutor = await crearUsuarioAdmin({ nombre: 'Tutor Promovido', rol: 'tutor' });
+        expect(tutor.body.data.organizacionId).toBeNull();
+
+        const promovido = await request(app).put(`/api/admin/users/${tutor.body.data.id}`).set(auth(developerToken)).send({ rol: 'empresario' });
+
+        expect(promovido.status).toBe(200);
+        expect(filaOrganizacion(promovido.body.data.organizacionId).propietarioId).toBe(tutor.body.data.id);
+      });
+    });
+
+    describe('9.7 Códigos de organización (utils/organizaciones.js)', () => {
+      const nuevaConexion = () => {
+        const conexion = new DatabaseSync(':memory:');
+        inicializarEsquema(conexion);
+        return conexion;
+      };
+
+      test('generarCodigo produce 8 caracteres del alfabeto sin ambiguos y con variedad', () => {
+        const codigos = new Set();
+        for (let i = 0; i < 200; i += 1) {
+          const codigo = generarCodigo();
+          expect(codigo).toHaveLength(LONGITUD_CODIGO);
+          expect(codigo).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
+          codigos.add(codigo);
+        }
+        expect(codigos.size).toBeGreaterThan(190);
+      });
+
+      test('normalizarCodigo acepta distintos formatos y rechaza lo inválido', () => {
+        expect(normalizarCodigo('k7m2-q9xd')).toBe('K7M2Q9XD');
+        expect(normalizarCodigo(' K7M2 Q9XD ')).toBe('K7M2Q9XD');
+        expect(normalizarCodigo('K7M2Q9X')).toBeNull(); // corto
+        expect(normalizarCodigo('K7M2Q9XDA')).toBeNull(); // largo
+        expect(normalizarCodigo('K7M2Q9X0')).toBeNull(); // 0 no pertenece al alfabeto
+        expect(normalizarCodigo('K7M2Q9XI')).toBeNull(); // I no pertenece al alfabeto
+        expect(normalizarCodigo(12345678)).toBeNull();
+        expect(normalizarCodigo(null)).toBeNull();
+        expect(normalizarCodigo({})).toBeNull();
+        expect(formatearCodigo('K7M2Q9XD')).toBe('K7M2-Q9XD');
+      });
+
+      test('crearOrganizacion reintenta ante un código repetido y falla si no logra uno único', () => {
+        const conexion = nuevaConexion();
+        const primera = crearOrganizacion(conexion, { nombre: 'Primera', propietarioId: 'usr_1' }, () => 'AAAAAAAA');
+        expect(primera.codigo).toBe('AAAAAAAA');
+
+        const secuencia = ['AAAAAAAA', 'AAAAAAAA', 'BBBBBBBB'];
+        const segunda = crearOrganizacion(conexion, { nombre: 'Segunda', propietarioId: 'usr_2' }, () => secuencia.shift());
+        expect(segunda.codigo).toBe('BBBBBBBB');
+
+        expect(() => crearOrganizacion(conexion, { nombre: 'Tercera' }, () => 'AAAAAAAA')).toThrow(/código de organización único/);
+        expect(conexion.prepare('SELECT COUNT(*) AS total FROM organizaciones').get().total).toBe(2);
+      });
+
+      test('buscarPorCodigo encuentra la organización con cualquier formato y devuelve null si no existe', () => {
+        const conexion = nuevaConexion();
+        const creada = crearOrganizacion(conexion, { nombre: 'Buscada', propietarioId: 'usr_1' }, () => 'K7M2Q9XD');
+
+        expect(buscarPorCodigo(conexion, 'k7m2-q9xd').id).toBe(creada.id);
+        expect(buscarPorCodigo(conexion, 'K7M2Q9XD').id).toBe(creada.id);
+        expect(buscarPorCodigo(conexion, 'ZZZZZZZZ')).toBeNull();
+        expect(buscarPorCodigo(conexion, 'basura')).toBeNull();
+      });
+    });
+
+    describe('9.8 Migración de datos existentes (migrarOrganizaciones)', () => {
+      const nuevaConexion = () => {
+        const conexion = new DatabaseSync(':memory:');
+        inicializarEsquema(conexion);
+        return conexion;
+      };
+      const consolaFalsa = () => ({ log: jest.fn(), warn: jest.fn(), error: jest.fn() });
+      const insertarUsuario = (conexion, { id, rol, org = null, creadoEn }) => conexion.prepare(`
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+        VALUES (?, ?, ?, 'hash', 'salt', ?, ?, 1, ?)
+      `).run(id, `Nombre ${id}`, `${id}@example.com`, rol, org, creadoEn);
+      const insertarRutina = (conexion, { id, creadoPor, org = null }) => conexion.prepare(`
+        INSERT INTO rutinas (id, titulo, turno, ninoId, organizacionId, pasos, activa, creadoPor, creadoEn, actualizadoEn)
+        VALUES (?, 'Rutina', 'MANANA', NULL, ?, '[]', 1, ?, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')
+      `).run(id, org, creadoPor);
+      const orgDe = (conexion, tabla, id) => conexion.prepare(`SELECT organizacionId FROM ${tabla} WHERE id = ?`).get(id).organizacionId;
+      const version = (conexion) => conexion.prepare('PRAGMA user_version').get().user_version;
+
+      const escenario = () => {
+        const conexion = nuevaConexion();
+        // Dos empresarios comparten org_x (el más antiguo debe quedarse con ella), uno sin org y uno con org propia
+        insertarUsuario(conexion, { id: 'e1', rol: 'empresario', org: 'org_x', creadoEn: '2026-01-01T00:00:00.000Z' });
+        insertarUsuario(conexion, { id: 'e2', rol: 'empresario', org: 'org_x', creadoEn: '2026-02-01T00:00:00.000Z' });
+        insertarUsuario(conexion, { id: 'e3', rol: 'empresario', org: null, creadoEn: '2026-03-01T00:00:00.000Z' });
+        insertarUsuario(conexion, { id: 'e4', rol: 'empresario', org: 'org_y', creadoEn: '2026-04-01T00:00:00.000Z' });
+        // Tutores y developer: org válida se conserva, org desconocida se limpia
+        insertarUsuario(conexion, { id: 't1', rol: 'tutor', org: 'org_x', creadoEn: '2026-01-05T00:00:00.000Z' });
+        insertarUsuario(conexion, { id: 't2', rol: 'tutor', org: 'org_desconocida', creadoEn: '2026-01-06T00:00:00.000Z' });
+        insertarUsuario(conexion, { id: 't3', rol: 'tutor', org: null, creadoEn: '2026-01-07T00:00:00.000Z' });
+        insertarUsuario(conexion, { id: 'd1', rol: 'developer', org: 'org_upad_cloud', creadoEn: '2026-01-08T00:00:00.000Z' });
+        // Rutinas
+        insertarRutina(conexion, { id: 'r1', creadoPor: 't1', org: null }); // rutina móvil de un tutor con org
+        insertarRutina(conexion, { id: 'r2', creadoPor: 't2', org: 'org_desconocida' });
+        insertarRutina(conexion, { id: 'r3', creadoPor: 'e2', org: 'org_x' }); // del empresario movido
+        insertarRutina(conexion, { id: 'r4', creadoPor: 'usr_fantasma', org: 'org_x' }); // creador inexistente, org existente
+        insertarRutina(conexion, { id: 'r5', creadoPor: 'usr_fantasma', org: 'org_nada' }); // creador inexistente, org inexistente
+        return conexion;
+      };
+
+      test('asigna propietarios, mueve co-empresarios, limpia membresías inválidas y alinea rutinas', () => {
+        const conexion = escenario();
+        const consola = consolaFalsa();
+
+        const resumen = migrarOrganizaciones(conexion, consola);
+
+        expect(resumen).toEqual({ organizacionesCreadas: 4, empresariosMovidos: 1, membresiasLimpiadas: 2, rutinasNormalizadas: 4 });
+
+        // org_x conserva su id y su propietario es el empresario más antiguo
+        const orgX = conexion.prepare("SELECT * FROM organizaciones WHERE id = 'org_x'").get();
+        expect(orgX.propietarioId).toBe('e1');
+        expect(conexion.prepare("SELECT propietarioId FROM organizaciones WHERE id = 'org_y'").get().propietarioId).toBe('e4');
+
+        // El co-empresario y el empresario sin org reciben una organización propia
+        for (const id of ['e2', 'e3']) {
+          const org = orgDe(conexion, 'usuarios', id);
+          expect(org).not.toBe('org_x');
+          expect(conexion.prepare('SELECT propietarioId FROM organizaciones WHERE id = ?').get(org).propietarioId).toBe(id);
+        }
+
+        // Tutor con org válida se conserva; org desconocida y org huérfana del developer se limpian
+        expect(orgDe(conexion, 'usuarios', 't1')).toBe('org_x');
+        expect(orgDe(conexion, 'usuarios', 't2')).toBeNull();
+        expect(orgDe(conexion, 'usuarios', 't3')).toBeNull();
+        expect(orgDe(conexion, 'usuarios', 'd1')).toBeNull();
+
+        // Rutinas: siguen a su creador; las huérfanas quedan en NULL
+        expect(orgDe(conexion, 'rutinas', 'r1')).toBe('org_x');
+        expect(orgDe(conexion, 'rutinas', 'r2')).toBeNull();
+        expect(orgDe(conexion, 'rutinas', 'r3')).toBe(orgDe(conexion, 'usuarios', 'e2'));
+        expect(orgDe(conexion, 'rutinas', 'r4')).toBe('org_x');
+        expect(orgDe(conexion, 'rutinas', 'r5')).toBeNull();
+
+        // Todos los códigos son únicos y válidos
+        const codigos = conexion.prepare('SELECT codigo FROM organizaciones').all().map((o) => o.codigo);
+        expect(new Set(codigos).size).toBe(codigos.length);
+        codigos.forEach((codigo) => expect(normalizarCodigo(codigo)).toBe(codigo));
+
+        // Se informa en consola quién fue movido
+        expect(consola.warn).toHaveBeenCalledTimes(1);
+        expect(consola.warn.mock.calls[0][0]).toContain('e2@example.com');
+        expect(version(conexion)).toBe(1);
+      });
+
+      test('es de una sola vez: una segunda ejecución no cambia nada ni escribe en consola', () => {
+        const conexion = escenario();
+        migrarOrganizaciones(conexion, consolaFalsa());
+        const antes = JSON.stringify(conexion.prepare('SELECT * FROM organizaciones ORDER BY id').all());
+        const consola = consolaFalsa();
+
+        expect(migrarOrganizaciones(conexion, consola)).toBeNull();
+
+        expect(JSON.stringify(conexion.prepare('SELECT * FROM organizaciones ORDER BY id').all())).toBe(antes);
+        expect(consola.warn).not.toHaveBeenCalled();
+      });
+
+      test('en una base vacía no hace nada y deja la versión marcada', () => {
+        const conexion = nuevaConexion();
+        const consola = consolaFalsa();
+
+        expect(migrarOrganizaciones(conexion, consola)).toEqual({ organizacionesCreadas: 0, empresariosMovidos: 0, membresiasLimpiadas: 0, rutinasNormalizadas: 0 });
+        expect(consola.warn).not.toHaveBeenCalled();
+        expect(version(conexion)).toBe(1);
+      });
+
+      test('un empresario que ya es propietario de su organización no se toca', () => {
+        const conexion = nuevaConexion();
+        insertarUsuario(conexion, { id: 'e1', rol: 'empresario', org: 'org_p', creadoEn: '2026-01-01T00:00:00.000Z' });
+        crearOrganizacion(conexion, { id: 'org_p', nombre: 'Ya existente', propietarioId: 'e1' });
+
+        const resumen = migrarOrganizaciones(conexion, consolaFalsa());
+
+        expect(resumen.organizacionesCreadas).toBe(0);
+        expect(resumen.empresariosMovidos).toBe(0);
+        expect(orgDe(conexion, 'usuarios', 'e1')).toBe('org_p');
+        expect(conexion.prepare('SELECT COUNT(*) AS total FROM organizaciones').get().total).toBe(1);
       });
     });
   });

@@ -8,7 +8,7 @@ export const rutinasService = {
   /**
    * Crea una nueva rutina en la base de datos relacional asociada al usuario y organización.
    */
-  async crear({ titulo, turno, ninoId, organizacionId, pasos = [] }, usuarioActual) {
+  async crear({ titulo, turno, ninoId, pasos = [] }, usuarioActual) {
     const turnoNormalizado = turno ? turno.toUpperCase().trim() : 'MANANA';
 
     if (!TURNOS_VALIDOS.includes(turnoNormalizado)) {
@@ -45,7 +45,8 @@ export const rutinasService = {
     }
 
     const rutinaId = `rut_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
-    const orgId = organizacionId || usuarioActual.organizacionId || null;
+    // La organización siempre es la del usuario autenticado (nunca un valor enviado por el cliente)
+    const orgId = usuarioActual.organizacionId || null;
     const ahora = new Date().toISOString();
     const pasosJson = JSON.stringify(Array.isArray(pasos) ? pasos : []);
 

@@ -9,7 +9,9 @@ export const authController = {
    */
   async register(req, res, next) {
     try {
-      const { nombre, email, password, rol, organizacionId } = req.body;
+      // El cliente NUNCA envía un organizacionId: un tutor puede enviar `codigoOrganizacion`
+      // y el empresario recibe su propia organización al registrarse (ver authService.register).
+      const { nombre, email, password, rol, codigoOrganizacion } = req.body;
 
       // Validaciones de presencia
       if (!nombre || !email || !password) {
@@ -41,7 +43,7 @@ export const authController = {
         email,
         password,
         rol,
-        organizacionId,
+        codigoOrganizacion,
       });
 
       return sendCreated(res, 'Usuario registrado exitosamente', result);

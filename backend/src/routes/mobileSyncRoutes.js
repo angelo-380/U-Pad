@@ -44,11 +44,16 @@ router.post('/mobile/sync-routines', (req, res) => {
     }]);
     const creadoEn = new Date().toISOString();
 
+    // La organización de la rutina es la del usuario creador (definida por el servidor, no por el cliente),
+    // para que las rutinas creadas desde la app del tutor cuenten como institucionales de su organización.
+    const creador = db.prepare('SELECT organizacionId FROM usuarios WHERE id = ?').get(creadorId);
+    const organizacionId = creador?.organizacionId || null;
+
     // Guardar en la base de datos relacional de la nube asociada al usuario actual
     db.prepare(`
       INSERT INTO rutinas (id, titulo, turno, ninoId, organizacionId, pasos, activa, creadoPor, creadoEn, actualizadoEn)
-      VALUES (?, ?, ?, 'dev_child_default', NULL, ?, 1, ?, ?, ?)
-    `).run(id, titulo, turnoNormalizado, pasos, creadorId, creadoEn, creadoEn);
+      VALUES (?, ?, ?, 'dev_child_default', ?, ?, 1, ?, ?, ?)
+    `).run(id, titulo, turnoNormalizado, organizacionId, pasos, creadorId, creadoEn, creadoEn);
 
     res.status(201).json({
       status: 'success',

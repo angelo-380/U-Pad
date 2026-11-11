@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { rutinasService } from '../../services/rutinasService.js';
 import { devicesService } from '../../services/devicesService.js';
+import { organizacionesService } from '../../services/organizacionesService.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { RutinasSummaryStrip } from '../../components/rutinas/RutinasSummaryStrip.jsx';
@@ -30,6 +31,7 @@ export const RutinasPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filtroTurno, setFiltroTurno] = useState('');
+  const [organizacion, setOrganizacion] = useState(null);
 
   // Paginación
   const [page, setPage] = useState(1);
@@ -59,6 +61,12 @@ export const RutinasPage = () => {
   const toast = useToast();
   const { t } = useLanguage();
   const { user } = useAuth();
+
+  // Nombre real de la institución del empresario (para el banner del panel directivo)
+  useEffect(() => {
+    if (user?.rol !== 'empresario') return;
+    organizacionesService.obtenerMia().then(setOrganizacion).catch(() => setOrganizacion(null));
+  }, [user?.rol]);
 
   const cargarDispositivos = useCallback(async () => {
     try {
@@ -204,7 +212,7 @@ export const RutinasPage = () => {
           <div className="flex items-center gap-3">
             <span className="p-2 rounded-xl bg-indigo-600 text-white font-black text-xs">DIR</span>
             <div>
-              <p className="font-extrabold text-indigo-900">Panel Directivo Institucional ({user?.email?.includes('colegiosol') ? 'Colegio Sol' : 'Institución'})</p>
+              <p className="font-extrabold text-indigo-900">Panel Directivo Institucional ({organizacion?.nombre || 'Institución'})</p>
               <p className="text-indigo-700 text-[11px]">
                 Accede a las métricas e indicadores clave (KPIs) de asistencia, adherencia y alumnos con privacidad protegida.
               </p>

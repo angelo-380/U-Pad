@@ -799,7 +799,7 @@ export const DeveloperUsersPage = () => {
                     type="text"
                     value={createUserData.organizacionId}
                     onChange={(e) => setCreateUserData({ ...createUserData, organizacionId: e.target.value })}
-                    placeholder="org_colegio_sol"
+                    placeholder="Id de una organización existente (org_…)"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                   />
                 </div>
@@ -902,7 +902,7 @@ export const DeveloperUsersPage = () => {
                     type="text"
                     value={editUserData.organizacionId}
                     onChange={(e) => setEditUserData({ ...editUserData, organizacionId: e.target.value })}
-                    placeholder="org_colegio_sol"
+                    placeholder="Id de una organización existente (org_…)"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                   />
                 </div>

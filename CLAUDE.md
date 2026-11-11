@@ -21,7 +21,7 @@
 
 ## 4. Tests
 - Backend: `cd backend && npm test` (Jest + Supertest, `NODE_ENV=test`).
-- 68/68 pruebas pasan (verificado 11-nov-2026, tras el bloque A); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
+- 102/102 pruebas pasan (verificado 11-nov-2026, tras el bloque B); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
 - `tests/setup.js` fuerza una base SQLite temporal por corrida (y su carpeta `backups/`): los tests nunca tocan una base real ni crean `.db` en el repo.
 
 ## 5. Roles (estado actual del código)
@@ -39,6 +39,15 @@ Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y 
 - Lógica por rol: `services/rutinasService.js` (listar, obtener, editar, borrar; deniega por defecto a roles desconocidos) y `services/backupService.js`.
 - Registro público: `services/authService.js` solo acepta `empresario` y `tutor` (`developer` se rechaza con `INVALID_ROLE`). Al crear/editar usuarios, `routes/adminRoutes.js` valida el rol con lista blanca (`ROLES_ASIGNABLES`).
 - Frontend: `App.jsx` (HomeRedirect), `components/layout/AppLayout.jsx`, `components/common/ProtectedRoute.jsx`, `components/common/RoleBadge.jsx`, `pages/auth/*`, `pages/admin/DeveloperUsersPage.jsx`.
+
+### Organizaciones (bloque B)
+- REGLA: el cliente NUNCA envía un `organizacionId` (ni al registrarse ni al crear rutinas). La organización siempre la define el servidor.
+- Tabla `organizaciones` (`id`, `nombre`, `codigo` único, `propietarioId`, `creadoEn`). 1 empresario = 1 organización propia, creada al registrarse (su `nombre` es el nombre de la institución). Los tutores son miembros.
+- Código: 8 caracteres sin ambiguos (`K7M2-Q9XD`), generado en `backend/src/utils/organizaciones.js`. Un tutor puede enviar `codigoOrganizacion` al registrarse (inválido → 400 `ORGANIZACION_CODIGO_INVALIDO`, sin crear la cuenta) o quedar sin organización. Solo el empresario propietario ve el código (`GET /api/organizaciones/mia`, KPIs).
+- La rutina toma la organización del usuario autenticado (token); así las rutinas de los tutores miembros suman a "Rutinas Institucionales" del empresario (`routes/kpiRoutes.js`, datos reales por organización; solo adherencia semanal e indicadores de calidad siguen simulados).
+- El developer asigna organizaciones solo por id existente (`routes/adminRoutes.js`); todo empresario creado o promovido recibe una organización propia.
+- Migración única al arrancar (`migrarOrganizaciones` en `database.js`, controlada con `PRAGMA user_version`): propietario = empresario más antiguo; co-empresarios pasan a una organización propia; membresías inválidas → NULL; las rutinas siguen a su creador.
+- Pendiente: rotar el código, unirse/salir de una organización después del registro, y código en la app Android (hoy los tutores móviles quedan sin organización).
 
 ## 6. Reglas de trabajo
 - Rama de trabajo: `feature/mejoras-feedback-docente`.

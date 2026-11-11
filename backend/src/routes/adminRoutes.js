@@ -5,6 +5,7 @@ import { authenticate, authorizeRoles } from '../middlewares/authMiddleware.js';
 import { sendSuccess } from '../utils/responseHandler.js';
 import { AppError } from '../utils/AppError.js';
 import { ROLES, ROLES_ASIGNABLES, normalizarRol } from '../utils/roles.js';
+import { crearOrganizacion, obtenerOrganizacionPorId } from '../utils/organizaciones.js';
 
 const router = Router();
 
@@ -30,6 +31,29 @@ const validarRolAsignable = (rol) => {
     );
   }
   return rolNormalizado;
+};
+
+/**
+ * Valida la organización indicada por el developer: debe venir vacía o existir en `organizaciones`.
+ * Devuelve el id de la organización (o null si se dejó vacía).
+ */
+const validarOrganizacionExistente = (organizacionId) => {
+  if (organizacionId === undefined || organizacionId === null) return null;
+
+  const id = typeof organizacionId === 'string' ? organizacionId.trim() : null;
+  if (id === '') return null;
+
+  if (!id || !obtenerOrganizacionPorId(db, id)) {
+    throw new AppError(
+      `La organización [${String(organizacionId)}] no existe. Indica el id de una organización registrada o deja el campo vacío.`,
+      400,
+      {
+        field: 'organizacionId',
+        code: 'ORGANIZACION_NO_ENCONTRADA',
+      }
+    );
+  }
+  return id;
 };
 
 /**
@@ -117,6 +141,8 @@ router.post('/users', (req, res, next) => {
 
     // Lista blanca de roles: si no se indica, el usuario se crea como tutor
     const rolValidado = (rol === undefined || rol === null) ? ROLES.TUTOR : validarRolAsignable(rol);
+    // La organización debe existir (o quedar vacía)
+    const organizacionValidada = validarOrganizacionExistente(organizacionId);
 
     const cleanEmail = email.trim().toLowerCase();
     const existing = db.prepare('SELECT id FROM usuarios WHERE email = ?').get(cleanEmail);
@@ -128,10 +154,24 @@ router.post('/users', (req, res, next) => {
     const { hash, salt } = hashPassword(password);
     const now = new Date().toISOString();
 
-    db.prepare(`
-      INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-    `).run(userId, nombre.trim(), cleanEmail, hash, salt, rolValidado, organizacionId || null, now);
+    db.exec('BEGIN');
+    try {
+      // Todo empresario es propietario de una organización: si no se asignó una existente, se le crea una
+      let organizacionFinal = organizacionValidada;
+      if (rolValidado === ROLES.EMPRESARIO && !organizacionFinal) {
+        organizacionFinal = crearOrganizacion(db, { nombre: nombre.trim(), propietarioId: userId }).id;
+      }
+
+      db.prepare(`
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      `).run(userId, nombre.trim(), cleanEmail, hash, salt, rolValidado, organizacionFinal, now);
+
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
 
     const created = db.prepare('SELECT id, nombre, email, rol, organizacionId, activo, creadoEn FROM usuarios WHERE id = ?').get(userId);
 
@@ -172,22 +212,41 @@ router.put('/users/:userId', (req, res, next) => {
     const newNombre = nombre ? nombre.trim() : existing.nombre;
     // Lista blanca de roles: solo se valida si el cliente envía un rol; si no, se conserva el actual
     const newRol = (rol === undefined || rol === null) ? existing.rol : validarRolAsignable(rol);
-    const newOrg = organizacionId !== undefined ? (organizacionId ? organizacionId.trim() : null) : existing.organizacionId;
+    // La organización debe existir (o quedar vacía); si no se envía, se conserva la actual
+    let newOrg = organizacionId !== undefined ? validarOrganizacionExistente(organizacionId) : existing.organizacionId;
     const newActivo = activo !== undefined ? (activo ? 1 : 0) : existing.activo;
 
-    if (password && password.trim().length >= 6) {
-      const { hash, salt } = hashPassword(password.trim());
-      db.prepare(`
-        UPDATE usuarios 
-        SET nombre = ?, email = ?, rol = ?, organizacionId = ?, activo = ?, password_hash = ?, password_salt = ?
-        WHERE id = ?
-      `).run(newNombre, cleanEmail, newRol, newOrg, newActivo, hash, salt, userId);
-    } else {
-      db.prepare(`
-        UPDATE usuarios 
-        SET nombre = ?, email = ?, rol = ?, organizacionId = ?, activo = ?
-        WHERE id = ?
-      `).run(newNombre, cleanEmail, newRol, newOrg, newActivo, userId);
+    db.exec('BEGIN');
+    try {
+      // Todo empresario es propietario de una organización: si queda sin una, se le crea
+      if (newRol === ROLES.EMPRESARIO && !newOrg) {
+        newOrg = crearOrganizacion(db, { nombre: newNombre, propietarioId: userId }).id;
+      }
+
+      if (password && password.trim().length >= 6) {
+        const { hash, salt } = hashPassword(password.trim());
+        db.prepare(`
+          UPDATE usuarios
+          SET nombre = ?, email = ?, rol = ?, organizacionId = ?, activo = ?, password_hash = ?, password_salt = ?
+          WHERE id = ?
+        `).run(newNombre, cleanEmail, newRol, newOrg, newActivo, hash, salt, userId);
+      } else {
+        db.prepare(`
+          UPDATE usuarios
+          SET nombre = ?, email = ?, rol = ?, organizacionId = ?, activo = ?
+          WHERE id = ?
+        `).run(newNombre, cleanEmail, newRol, newOrg, newActivo, userId);
+      }
+
+      // Si cambió la organización del usuario, sus rutinas se mueven con él
+      if (newOrg !== existing.organizacionId) {
+        db.prepare('UPDATE rutinas SET organizacionId = ? WHERE creadoPor = ?').run(newOrg, userId);
+      }
+
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
     }
 
     const updated = db.prepare('SELECT id, nombre, email, rol, organizacionId, activo, creadoEn FROM usuarios WHERE id = ?').get(userId);

@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'node:crypto';
 import { validarPassword } from '../utils/passwordPolicy.js';
+import { crearOrganizacion } from '../utils/organizaciones.js';
 
 // Buscar la única base de datos relacional de Google Cloud
 const cloudDbPath1 = path.resolve(process.cwd(), '../cloud/upad_relational.db');
@@ -166,6 +167,18 @@ export function inicializarEsquema(conexion) {
     creado_por TEXT NOT NULL,
     creado_en TEXT NOT NULL
   );
+
+  -- Organizaciones (colegios y centros). Un empresario es propietario de una; los tutores se unen con su código.
+  CREATE TABLE IF NOT EXISTS organizaciones (
+    id TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    codigo TEXT NOT NULL UNIQUE,
+    propietarioId TEXT,
+    creadoEn TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_usuarios_organizacion ON usuarios(organizacionId);
+  CREATE INDEX IF NOT EXISTS idx_rutinas_organizacion ON rutinas(organizacionId);
 `);
 }
 
@@ -197,6 +210,96 @@ export function migrarRolAdmin(conexion, consola = console) {
     afectados.map((u) => u.email).join(', ')
   );
   return afectados.length;
+}
+
+/**
+ * Migración de organizaciones (una sola vez, controlada con PRAGMA user_version):
+ * antes `organizacionId` era un texto libre enviado por el cliente. Ahora cada empresario es
+ * propietario de UNA organización registrada y los demás usuarios solo pueden pertenecer a una existente.
+ *
+ * 1. Cada organizacionId usado por empresarios pasa a ser una organización (se conserva el id);
+ *    el empresario más antiguo es el propietario.
+ * 2. Los demás empresarios que compartían ese id reciben una organización propia (regla 1:1).
+ * 3. Los empresarios sin organización reciben una.
+ * 4. Tutores y demás usuarios cuya organización no existe quedan sin organización (NULL).
+ * 5. Cada rutina toma la organización de su creador; las que apuntan a una organización inexistente quedan en NULL.
+ * Todo ocurre en una transacción. Devuelve el resumen, o null si la migración ya estaba aplicada.
+ */
+export function migrarOrganizaciones(conexion, consola = console) {
+  const { user_version: version } = conexion.prepare('PRAGMA user_version').get();
+  if (version >= 1) return null;
+
+  const resumen = { organizacionesCreadas: 0, empresariosMovidos: 0, membresiasLimpiadas: 0, rutinasNormalizadas: 0 };
+  const emailsMovidos = [];
+
+  conexion.exec('BEGIN');
+  try {
+    const existentes = new Map(
+      conexion.prepare('SELECT id, propietarioId FROM organizaciones').all().map((o) => [o.id, o.propietarioId])
+    );
+    const empresarios = conexion.prepare(
+      "SELECT id, nombre, email, organizacionId FROM usuarios WHERE rol = 'empresario' ORDER BY creadoEn ASC, id ASC"
+    ).all();
+
+    for (const empresario of empresarios) {
+      const orgActual = empresario.organizacionId;
+
+      if (orgActual && !existentes.has(orgActual)) {
+        // Primer (más antiguo) empresario de ese id: conserva el id como propietario
+        crearOrganizacion(conexion, { id: orgActual, nombre: empresario.nombre, propietarioId: empresario.id });
+        existentes.set(orgActual, empresario.id);
+        resumen.organizacionesCreadas += 1;
+        continue;
+      }
+
+      if (orgActual && existentes.get(orgActual) === empresario.id) continue; // ya es propietario
+
+      // Sin organización, o comparte una con otro propietario: recibe una propia
+      const nueva = crearOrganizacion(conexion, { nombre: empresario.nombre, propietarioId: empresario.id });
+      existentes.set(nueva.id, empresario.id);
+      conexion.prepare('UPDATE usuarios SET organizacionId = ? WHERE id = ?').run(nueva.id, empresario.id);
+      resumen.organizacionesCreadas += 1;
+      if (orgActual) {
+        resumen.empresariosMovidos += 1;
+        emailsMovidos.push(empresario.email);
+      }
+    }
+
+    resumen.membresiasLimpiadas = Number(conexion.prepare(`
+      UPDATE usuarios SET organizacionId = NULL
+      WHERE organizacionId IS NOT NULL AND organizacionId NOT IN (SELECT id FROM organizaciones)
+    `).run().changes);
+
+    const alineadas = Number(conexion.prepare(`
+      UPDATE rutinas
+      SET organizacionId = (SELECT u.organizacionId FROM usuarios u WHERE u.id = rutinas.creadoPor)
+      WHERE creadoPor IN (SELECT id FROM usuarios)
+        AND organizacionId IS NOT (SELECT u.organizacionId FROM usuarios u WHERE u.id = rutinas.creadoPor)
+    `).run().changes);
+    const huerfanas = Number(conexion.prepare(`
+      UPDATE rutinas SET organizacionId = NULL
+      WHERE organizacionId IS NOT NULL AND organizacionId NOT IN (SELECT id FROM organizaciones)
+    `).run().changes);
+    resumen.rutinasNormalizadas = alineadas + huerfanas;
+
+    conexion.exec('PRAGMA user_version = 1');
+    conexion.exec('COMMIT');
+  } catch (error) {
+    conexion.exec('ROLLBACK');
+    consola.error(`[U-Pad] Falló la migración de organizaciones (se revirtió): ${error.message}`);
+    throw error;
+  }
+
+  if (Object.values(resumen).some((valor) => valor > 0)) {
+    consola.warn(
+      `[U-Pad] Migración de organizaciones: ${resumen.organizacionesCreadas} creada(s), ` +
+      `${resumen.empresariosMovidos} empresario(s) movido(s) a una organización propia, ` +
+      `${resumen.membresiasLimpiadas} membresía(s) inválida(s) limpiada(s), ` +
+      `${resumen.rutinasNormalizadas} rutina(s) normalizada(s).` +
+      (emailsMovidos.length > 0 ? ` Empresarios movidos: ${emailsMovidos.slice(0, 20).join(', ')}${emailsMovidos.length > 20 ? ', …' : ''}` : '')
+    );
+  }
+  return resumen;
 }
 
 /**
@@ -249,6 +352,7 @@ export function crearDeveloperInicial(conexion, entorno = process.env, consola =
 }
 
 migrarRolAdmin(db);
+migrarOrganizaciones(db);
 crearDeveloperInicial(db);
 
 
