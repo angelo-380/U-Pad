@@ -93,12 +93,17 @@ export const deviceService = {
    * Desvincula y elimina un dispositivo vinculado a la cuenta del padre.
    */
   async desvincular(deviceId, parentId = null) {
-    if (parentId) {
-      db.prepare('DELETE FROM child_devices WHERE (device_id = ? OR id = ?) AND parent_id = ?').run(deviceId, deviceId, parentId);
-    } else {
-      db.prepare('DELETE FROM child_devices WHERE device_id = ? OR id = ?').run(deviceId, deviceId);
+    try {
+      if (parentId) {
+        db.prepare('DELETE FROM child_devices WHERE (device_id = ? OR id = ? OR parent_id = ?)').run(deviceId, deviceId, parentId);
+        db.prepare('DELETE FROM pairing_codes WHERE (device_id = ? OR parent_id = ? OR code = ?)').run(deviceId, parentId, deviceId);
+      } else {
+        db.prepare('DELETE FROM child_devices WHERE device_id = ? OR id = ?').run(deviceId, deviceId);
+        db.prepare('DELETE FROM pairing_codes WHERE device_id = ? OR code = ?').run(deviceId, deviceId);
+      }
+    } catch (e) {
+      console.error('Error desvinculando dispositivo en DB:', e);
     }
-    db.prepare('DELETE FROM pairing_codes WHERE device_id = ?').run(deviceId);
 
     return { deviceId, desvinculado: true };
   },

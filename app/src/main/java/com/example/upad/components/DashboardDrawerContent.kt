@@ -43,7 +43,6 @@ import com.example.upad.R
  * @param onCancelPremium       Acción al pulsar "Volver a Plan Básico".
  * @param onUbicarHijo          Acción al pulsar "Ubicar a mi Hijo".
  * @param onNavigateToAnalytics Acción para ir a Análisis.
- * @param onNavigateToDeviceManagement Acción para ir a Bloquear Dispositivo.
  * @param onNavigateToConnection Acción para ir a Conectar con el Niño.
  * @param onNavigateToProfile   Acción para ir a Mi Perfil.
  * @param onNavigateToSettings  Acción para ir a Ajustes.
@@ -64,7 +63,6 @@ fun DashboardDrawerContent(
     onCancelPremium: () -> Unit,
     onUbicarHijo: () -> Unit,
     onNavigateToAnalytics: () -> Unit,
-    onNavigateToDeviceManagement: () -> Unit,
     onNavigateToConnection: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToSettings: () -> Unit

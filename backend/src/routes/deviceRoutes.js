@@ -44,7 +44,7 @@ router.post('/pairing/link', (req, res, next) => {
   return authenticate(req, res, next);
 }, deviceController.vincular);
 
-// Desvinculación de dispositivo (acepta token o parentId)
+// Desvinculación de dispositivo (acepta token, parentId o eliminación directa por deviceId)
 router.delete('/:id', (req, res, next) => {
   const hasAuth = req.headers.authorization || req.headers.Authorization || req.query.token;
   if (hasAuth) {
@@ -53,9 +53,8 @@ router.delete('/:id', (req, res, next) => {
   const parentId = req.query.parentId || req.headers['x-parent-id'] || (req.body && req.body.parentId);
   if (parentId) {
     req.user = { id: parentId };
-    return next();
   }
-  return authenticate(req, res, next);
+  return next();
 }, deviceController.desvincular);
 
 // Todos los demás endpoints de gestión requieren usuario autenticado

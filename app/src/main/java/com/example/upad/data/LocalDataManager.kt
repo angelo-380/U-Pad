@@ -832,18 +832,53 @@ object LocalDataManager {
         }
     }
 
-    fun deleteDevice(deviceId: String) {
+    fun deleteDevice(deviceId: String, parentId: String = "") {
         val devices = getAllDevices().toMutableMap()
-        devices.remove(deviceId)
+        val keysToRemove = devices.filter { entry ->
+            entry.key == deviceId || 
+            entry.value.deviceId == deviceId || 
+            (parentId.isNotEmpty() && entry.value.padreId == parentId && (deviceId.isEmpty() || entry.value.deviceId == deviceId))
+        }.keys.toList()
+
+        for (k in keysToRemove) {
+            devices.remove(k)
+        }
         saveDevicesMap(devices)
+
+        // Limpiar códigos de emparejamiento asociados
+        val codes = getPairingCodes().toMutableMap()
+        val codesToRemove = codes.filter { entry ->
+            entry.key == deviceId || 
+            entry.value.deviceId == deviceId || 
+            (parentId.isNotEmpty() && entry.value.padreId == parentId)
+        }.keys.toList()
+        for (c in codesToRemove) {
+            codes.remove(c)
+        }
+        prefs.edit().putString(KEY_PAIRING_CODES, gson.toJson(codes)).apply()
+
+        // Notificar en tiempo real en el hilo principal para reactividad instantánea en Compose
+        mainHandler.post {
+            deviceListeners[deviceId]?.forEach { it.invoke(null) }
+            if (parentId.isNotEmpty()) {
+                val remaining = devices.values.filter { it.padreId == parentId }
+                parentDeviceListListeners[parentId]?.forEach { it.invoke(remaining) }
+            } else {
+                parentDeviceListListeners.forEach { (pId, listeners) ->
+                    val remaining = devices.values.filter { it.padreId == pId }
+                    listeners.forEach { it.invoke(remaining) }
+                }
+            }
+        }
     }
 
     fun unlinkChildDevice(deviceId: String, parentId: String = "") {
-        deleteDevice(deviceId)
+        deleteDevice(deviceId, parentId)
         kotlin.concurrent.thread {
             try {
                 val urlParam = if (parentId.isNotEmpty()) "?parentId=$parentId" else ""
                 httpDelete("/api/v1/devices/$deviceId$urlParam")
+                httpDelete("/api/devices/$deviceId$urlParam")
             } catch (e: Exception) {
                 Log.e(TAG, "Error unlinking device from server: ${e.message}")
             }

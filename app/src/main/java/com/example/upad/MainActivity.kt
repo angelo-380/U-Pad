@@ -571,7 +571,6 @@ fun UPadNavigation(
                         onNavigateToSettings = { navController.navigate("settings") },
                         onNavigateToConnection = { navController.navigate("connection_code") },
                         onNavigateToAnalytics = { navController.navigate("analytics") },
-                        onNavigateToDeviceManagement = { navController.navigate("device_management") },
                         onNavigateToChangePlan = { navController.navigate("change_plan") },
                         onNavigateToTracking = { hijoId -> navController.navigate("tracking/$hijoId") },
                         onNavigateToHelp = { navController.navigate("help_tutorial") }

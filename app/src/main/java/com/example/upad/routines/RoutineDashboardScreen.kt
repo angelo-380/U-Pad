@@ -53,7 +53,6 @@ fun RoutineDashboardScreen(
     onNavigateToSettings: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {},
     onNavigateToConnection: () -> Unit = {},
-    onNavigateToDeviceManagement: () -> Unit = {},
     onNavigateToChangePlan: () -> Unit = {},
     onNavigateToTracking: (String) -> Unit = {},
     onNavigateToHelp: () -> Unit = {}
@@ -207,7 +206,6 @@ fun RoutineDashboardScreen(
                 onCancelPremium = { scope.launch { drawerState.close() }; routineViewModel.cancelPremium(currentUser?.uid ?: "") },
                 onUbicarHijo = { scope.launch { drawerState.close() }; onUbicarHijoAccionUnificada() },
                 onNavigateToAnalytics = { scope.launch { drawerState.close() }; onNavigateToAnalytics() },
-                onNavigateToDeviceManagement = { scope.launch { drawerState.close() }; onNavigateToDeviceManagement() },
                 onNavigateToConnection = { scope.launch { drawerState.close() }; onNavigateToConnection() },
                 onNavigateToProfile = { scope.launch { drawerState.close() }; onNavigateToProfile() },
                 onNavigateToSettings = { scope.launch { drawerState.close() }; onNavigateToSettings() }

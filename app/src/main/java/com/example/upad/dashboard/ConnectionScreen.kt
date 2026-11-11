@@ -354,10 +354,23 @@ fun ConnectionScreen(
 
                                         IconButton(
                                             onClick = {
-                                                com.example.upad.data.LocalDataManager.unlinkChildDevice(dispositivo.id, idPadre)
-                                                listaDispositivos.removeAll { it.id == dispositivo.id }
+                                                val devId = dispositivo.id
+                                                com.example.upad.data.LocalDataManager.unlinkChildDevice(devId, idPadre)
+                                                listaDispositivos.removeAll { it.id == devId }
                                                 try {
-                                                    firestore.collection("dispositivos_niños").document(dispositivo.id).delete()
+                                                    firestore.collection("dispositivos_niños").document(devId).delete()
+                                                } catch (e: Exception) {}
+                                                try {
+                                                    firestore.collection("dispositivos_niños")
+                                                        .whereEqualTo("padreId", idPadre)
+                                                        .get()
+                                                        .addOnSuccessListener { query ->
+                                                            for (d in query.documents) {
+                                                                if (d.id == devId || d.getString("deviceId") == devId) {
+                                                                    d.reference.delete()
+                                                                }
+                                                            }
+                                                        }
                                                 } catch (e: Exception) {}
                                             }
                                         ) {

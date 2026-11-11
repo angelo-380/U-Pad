@@ -27,6 +27,14 @@ if (!fs.existsSync(dbDir)) {
 
 export const db = new DatabaseSync(DB_PATH);
 
+// Optimizaciones de concurrencia y estrés masivo para Cloud Run (WAL, busy_timeout y cache)
+try {
+  db.exec('PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA busy_timeout = 10000;');
+  db.exec('PRAGMA synchronous = NORMAL;');
+  db.exec('PRAGMA cache_size = -64000;');
+} catch (e) {}
+
 // Configuración de llaves de Google Cloud KMS para Pepper Master Key
 export const KMS_PEPPER = process.env.GCP_KMS_PEPPER_SECRET || 'UpadSecureGcpKmsPepper2026_EnterpriseKey!#';
 
@@ -182,11 +190,4 @@ if (seedDevCheck.count === 0) {
   `).run('usr_developer_master', 'Lead Cloud Developer & Architect', 'developer@upad.cloud', devPass.hash, devPass.salt, new Date().toISOString());
 }
 
-// 3. Vincular dispositivo demo para pruebas
-try {
-  db.prepare(`
-    INSERT INTO child_devices (device_id, parent_id, child_name, device_model, is_kiosk_active)
-    VALUES ('dev_tablet_diego', 'usr_director_sol', 'Diego (Mi Hijo)', 'Android Tablet Kiosk v14', 1)
-    ON CONFLICT(device_id) DO NOTHING
-  `).run();
-} catch (e) {}
+
