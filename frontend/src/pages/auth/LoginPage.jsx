@@ -38,7 +38,7 @@ export const LoginPage = () => {
       const userRole = res?.usuario?.rol;
       if (from && from !== '/' && from !== '/login') {
         navigate(from, { replace: true });
-      } else if (userRole === 'developer' || userRole === 'admin') {
+      } else if (userRole === 'developer') {
         navigate('/admin/usuarios', { replace: true });
       } else if (userRole === 'empresario') {
         navigate('/gerencial', { replace: true });

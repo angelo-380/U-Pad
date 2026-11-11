@@ -7,9 +7,9 @@ import { AppError } from '../utils/AppError.js';
 
 const router = Router();
 
-// Exclusivo para developer y admin
+// Exclusivo para el rol developer
 router.use(authenticate);
-router.use(authorizeRoles('developer', 'admin'));
+router.use(authorizeRoles('developer'));
 
 router.get('/', backupController.listar);
 router.post('/', backupController.crear);

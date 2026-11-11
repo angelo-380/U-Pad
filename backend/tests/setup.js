@@ -1,10 +1,22 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import dotenv from 'dotenv';
 
 // Guardar valor de RATE_LIMIT_AUTH_MAX si fue provisto en el entorno de ejecución
 const customAuthMax = process.env.RATE_LIMIT_AUTH_MAX;
 
+// Aislamiento: los tests SIEMPRE usan una base SQLite temporal propia (y su carpeta backups/),
+// nunca una base real. Se define antes de dotenv.config() para que ningún .env la sobrescriba.
+process.env.DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'upad-test-')), 'upad_relational.db');
+
 // Cargar variables del archivo .env utilizado por el backend
 dotenv.config();
+
+// La cuenta developer inicial nunca se crea desde el entorno real durante los tests
+delete process.env.DEV_EMAIL;
+delete process.env.DEV_PASSWORD;
+delete process.env.DEV_NAME;
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_secret_upad_2026_super_seguro_min_32_chars';

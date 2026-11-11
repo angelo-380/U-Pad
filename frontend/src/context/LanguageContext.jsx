@@ -129,7 +129,6 @@ export const TRANSLATIONS = {
     select_language: 'Cambiar idioma',
 
     // Roles
-    role_admin: 'Administrador',
     role_empresario: 'Empresario',
     role_tutor: 'Tutor / Familiar',
     role_anonymous: 'Anónimo',
@@ -137,6 +136,35 @@ export const TRANSLATIONS = {
     // Botones y Auth
     btn_login: 'Iniciar Sesión',
     btn_register: 'Registrarse',
+
+    // Registro de cuenta (idioma base: español; los demás idiomas usan estas frases mientras no se traduzcan)
+    register_title: 'Registro de cuenta',
+    register_subtitle: 'Completa tus datos para habilitar el acceso',
+    register_hero_title: 'Crea tu cuenta de U-Pad',
+    register_hero_desc: 'Únete a la plataforma para coordinar y supervisar agendas visuales en colegios y centros de terapia.',
+    have_account: '¿Ya tienes una cuenta?',
+    login_here: 'Inicia sesión',
+    person_name_label: 'Nombre completo',
+    person_name_placeholder: 'Ej. María Pérez',
+    org_name_label: 'Nombre de la institución',
+    org_name_placeholder: 'Ej. Colegio San Martín',
+    email_label: 'Correo electrónico',
+    role_label: 'Tipo de perfil',
+    role_org_option: 'Colegio o centro de terapia (director)',
+    role_tutor_option: 'Tutor o familiar',
+    password_policy_label: 'Contraseña (mín. 8 caracteres, con mayúscula, número y símbolo)',
+    creating_account: 'Creando cuenta segura...',
+    register_fill_fields: 'Completa todos los campos obligatorios.',
+    register_pass_short: 'La contraseña debe tener al menos 8 caracteres.',
+    register_pass_policy: 'La contraseña debe incluir una mayúscula, un número y un símbolo especial.',
+    register_error: 'No se pudo completar el registro. Inténtalo de nuevo.',
+    org_code_label: 'Código de organización (opcional)',
+    org_code_placeholder: 'Ej. K7M2-Q9XD',
+    org_code_hint: 'Si tu colegio o centro te entregó un código, ingrésalo para que tus rutinas se sumen a sus Rutinas Institucionales. Su director podrá ver esas rutinas. Si no tienes un código, déjalo vacío.',
+    org_code_card_title: 'Código de organización',
+    org_code_card_hint: 'Compártelo con los tutores de tu institución para que se unan al registrarse.',
+    org_code_copy: 'Copiar código',
+    org_code_copied: 'Código copiado',
 
     // Rutinas Page
     routines_title: 'Gestión de Rutinas',
@@ -241,7 +269,6 @@ export const TRANSLATIONS = {
     select_language: 'Change language',
 
     // Roles
-    role_admin: 'Administrator',
     role_empresario: 'Manager',
     role_tutor: 'Tutor / Guardian',
     role_anonymous: 'Anonymous',
@@ -353,7 +380,6 @@ export const TRANSLATIONS = {
     select_language: 'Mudar idioma',
 
     // Roles
-    role_admin: 'Administrador',
     role_empresario: 'Gestor',
     role_tutor: 'Tutor / Familiar',
     role_anonymous: 'Anônimo',
@@ -461,7 +487,6 @@ export const TRANSLATIONS = {
     select_language: 'Changer de langue',
 
     // Roles
-    role_admin: 'Administrateur',
     role_empresario: 'Gestionnaire',
     role_tutor: 'Tuteur / Famille',
     role_anonymous: 'Anonyme',
@@ -569,7 +594,6 @@ export const TRANSLATIONS = {
     select_language: 'Sprache wechseln',
 
     // Roles
-    role_admin: 'Administrator',
     role_empresario: 'Manager',
     role_tutor: 'Betreuer / Familie',
     role_anonymous: 'Anonym',

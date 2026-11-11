@@ -5,7 +5,6 @@ import {
   Filter,
   Eye,
   CalendarCheck,
-  ShieldAlert,
   ShieldCheck,
   Server,
   RefreshCw,
@@ -202,13 +201,6 @@ export const DeveloperUsersPage = () => {
             Developer
           </span>
         );
-      case 'admin':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 border border-rose-200">
-            <ShieldAlert className="w-3 h-3" />
-            Admin
-          </span>
-        );
       case 'empresario':
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-200">
@@ -389,7 +381,6 @@ export const DeveloperUsersPage = () => {
               >
                 <option value="">Todos los Roles</option>
                 <option value="developer">Developer</option>
-                <option value="admin">Administrador</option>
                 <option value="empresario">Empresario / Colegio</option>
                 <option value="tutor">Tutor / Familiar</option>
               </select>
@@ -799,7 +790,6 @@ export const DeveloperUsersPage = () => {
                     <option value="tutor">Tutor</option>
                     <option value="empresario">Empresario / Colegio</option>
                     <option value="developer">Developer</option>
-                    <option value="admin">Administrador</option>
                   </select>
                 </div>
 
@@ -809,7 +799,7 @@ export const DeveloperUsersPage = () => {
                     type="text"
                     value={createUserData.organizacionId}
                     onChange={(e) => setCreateUserData({ ...createUserData, organizacionId: e.target.value })}
-                    placeholder="org_colegio_sol"
+                    placeholder="Id de una organización existente (org_…)"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                   />
                 </div>
@@ -903,7 +893,6 @@ export const DeveloperUsersPage = () => {
                     <option value="tutor">Tutor</option>
                     <option value="empresario">Empresario / Colegio</option>
                     <option value="developer">Developer</option>
-                    <option value="admin">Administrador</option>
                   </select>
                 </div>
 
@@ -913,7 +902,7 @@ export const DeveloperUsersPage = () => {
                     type="text"
                     value={editUserData.organizacionId}
                     onChange={(e) => setEditUserData({ ...editUserData, organizacionId: e.target.value })}
-                    placeholder="org_colegio_sol"
+                    placeholder="Id de una organización existente (org_…)"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                   />
                 </div>

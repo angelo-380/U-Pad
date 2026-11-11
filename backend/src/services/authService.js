@@ -3,6 +3,8 @@ import bcrypt from 'bcrypt';
 import { db, hashPassword, verifyPassword, hashPasswordAsync, verifyPasswordAsync } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
 import { signToken } from '../utils/jwt.js';
+import { ROLES, ROLES_REGISTRO_PUBLICO, normalizarRol } from '../utils/roles.js';
+import { buscarPorCodigo, crearOrganizacion, formatearCodigo } from '../utils/organizaciones.js';
 
 const LOCKOUT_THRESHOLD = 5;
 
@@ -36,10 +38,56 @@ export const authService = {
   /**
    * Registra un nuevo usuario con hashing seguro PBKDF2 + Cloud KMS Pepper.
    */
-  async register({ nombre, email, password, rol = 'empresario', organizacionId = null }) {
+  async register({ nombre, email, password, rol = 'empresario', codigoOrganizacion = null }) {
     const emailNormalizado = email.toLowerCase().trim();
 
-    // 1. Verificar si el correo ya existe
+    // 1. Lista permitida (allowlist) de roles para registro público: 'empresario' y 'tutor'.
+    //    'developer' (y cualquier otro rol) NUNCA se obtiene por registro público.
+    const rolNormalizado = (rol === undefined || rol === null) ? ROLES.EMPRESARIO : normalizarRol(rol);
+
+    if (!rolNormalizado || !ROLES_REGISTRO_PUBLICO.includes(rolNormalizado)) {
+      throw new AppError(
+        `Rol no permitido [${String(rol)}]. El registro público solo acepta los roles: ${ROLES_REGISTRO_PUBLICO.join(', ')}.`,
+        400,
+        {
+          field: 'rol',
+          code: 'INVALID_ROLE',
+          allowedRoles: ROLES_REGISTRO_PUBLICO,
+        }
+      );
+    }
+
+    // 2. Organización: el cliente NUNCA envía un organizacionId.
+    //    - empresario: recibe una organización propia (se crea más abajo, junto con su cuenta).
+    //    - tutor: puede ingresar el código de la organización de su institución (validado contra las
+    //      organizaciones existentes) o quedar sin organización.
+    const hayCodigo = !(
+      codigoOrganizacion === undefined ||
+      codigoOrganizacion === null ||
+      (typeof codigoOrganizacion === 'string' && codigoOrganizacion.trim() === '')
+    );
+    let organizacionUnida = null;
+
+    if (hayCodigo) {
+      if (rolNormalizado !== ROLES.TUTOR) {
+        throw new AppError('El código de organización solo aplica al registro de tutores.', 400, {
+          field: 'codigoOrganizacion',
+          code: 'ORGANIZACION_CODIGO_NO_APLICA',
+        });
+      }
+
+      organizacionUnida = buscarPorCodigo(db, codigoOrganizacion);
+      if (!organizacionUnida) {
+        // Mensaje único: no revela si el código tiene formato válido o simplemente no existe
+        throw new AppError(
+          'El código de organización no es válido. Verifica el código que te entregó tu institución o déjalo vacío.',
+          400,
+          { field: 'codigoOrganizacion', code: 'ORGANIZACION_CODIGO_INVALIDO' }
+        );
+      }
+    }
+
+    // 3. Verificar si el correo ya existe
     const existing = db.prepare('SELECT id FROM usuarios WHERE email = ?').get(emailNormalizado);
     if (existing) {
       throw new AppError('El correo electrónico ya se encuentra registrado.', 409, {
@@ -48,31 +96,32 @@ export const authService = {
       });
     }
 
-    // 2. Lista permitida (allowlist) de roles para registro público: 'empresario', 'tutor', 'developer'
-    const ALLOWED_ROLES = ['empresario', 'tutor', 'developer'];
-    const rolNormalizado = (rol !== undefined && rol !== null) ? String(rol).toLowerCase().trim() : 'empresario';
-
-    if (!ALLOWED_ROLES.includes(rolNormalizado)) {
-      throw new AppError(
-        `Rol no permitido [${rol}]. El registro público solo acepta los roles: ${ALLOWED_ROLES.join(', ')}.`,
-        400,
-        {
-          field: 'rol',
-          code: 'INVALID_ROLE',
-          allowedRoles: ALLOWED_ROLES,
-        }
-      );
-    }
-
-    // 3. Hashear la contraseña con PBKDF2 + Salt + Cloud KMS Pepper (asíncrono para alto rendimiento)
+    // 4. Hashear la contraseña con PBKDF2 + Salt + Cloud KMS Pepper (asíncrono para alto rendimiento)
     const { hash, salt } = await hashPasswordAsync(password, null, emailNormalizado);
     const userId = `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
     const creadoEn = new Date().toISOString();
 
-    db.prepare(`
-      INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-    `).run(userId, nombre.trim(), emailNormalizado, hash, salt, rolNormalizado, organizacionId || null, creadoEn);
+    // 5. Crear la cuenta (y la organización del empresario) en una sola transacción
+    let organizacionId = organizacionUnida ? organizacionUnida.id : null;
+    let organizacionPropia = null;
+
+    db.exec('BEGIN');
+    try {
+      if (rolNormalizado === ROLES.EMPRESARIO) {
+        organizacionPropia = crearOrganizacion(db, { nombre: nombre.trim(), propietarioId: userId });
+        organizacionId = organizacionPropia.id;
+      }
+
+      db.prepare(`
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      `).run(userId, nombre.trim(), emailNormalizado, hash, salt, rolNormalizado, organizacionId, creadoEn);
+
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
 
     // Sincronizar en la tabla users para compatibilidad con la app móvil
     try {
@@ -85,20 +134,25 @@ export const authService = {
         emailNormalizado,
         hash,
         nombre.trim(),
-        rolNormalizado === 'tutor' ? 'PARENT' : (rolNormalizado === 'developer' ? 'DEVELOPER' : 'ADMIN')
+        // Valor legado de la tabla `users` (compatibilidad con la app móvil): tutor -> PARENT, empresario -> ADMIN
+        rolNormalizado === 'tutor' ? 'PARENT' : 'ADMIN'
       );
     } catch (e) {}
 
-    // 4. Generar token JWT
+    // 6. Generar token JWT
     const tokenPayload = {
       id: userId,
       email: emailNormalizado,
       rol: rolNormalizado,
-      organizacionId: organizacionId || null,
+      organizacionId,
     };
     const token = signToken(tokenPayload);
 
-    // 5. Retornar datos limpios (sin password)
+    // 7. Retornar datos limpios (sin password). El código de la organización solo se devuelve a su propietario.
+    const organizacion = organizacionPropia
+      ? { id: organizacionPropia.id, nombre: organizacionPropia.nombre, codigo: formatearCodigo(organizacionPropia.codigo) }
+      : (organizacionUnida ? { id: organizacionUnida.id, nombre: organizacionUnida.nombre } : null);
+
     return {
       token,
       usuario: {
@@ -106,10 +160,11 @@ export const authService = {
         nombre: nombre.trim(),
         email: emailNormalizado,
         rol: rolNormalizado,
-        organizacionId: organizacionId || null,
+        organizacionId,
         activo: true,
         creadoEn,
       },
+      organizacion,
     };
   },
 

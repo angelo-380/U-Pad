@@ -8,7 +8,7 @@ export const rutinasService = {
   /**
    * Crea una nueva rutina en la base de datos relacional asociada al usuario y organización.
    */
-  async crear({ titulo, turno, ninoId, organizacionId, pasos = [] }, usuarioActual) {
+  async crear({ titulo, turno, ninoId, pasos = [] }, usuarioActual) {
     const turnoNormalizado = turno ? turno.toUpperCase().trim() : 'MANANA';
 
     if (!TURNOS_VALIDOS.includes(turnoNormalizado)) {
@@ -45,7 +45,8 @@ export const rutinasService = {
     }
 
     const rutinaId = `rut_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
-    const orgId = organizacionId || usuarioActual.organizacionId || null;
+    // La organización siempre es la del usuario autenticado (nunca un valor enviado por el cliente)
+    const orgId = usuarioActual.organizacionId || null;
     const ahora = new Date().toISOString();
     const pasosJson = JSON.stringify(Array.isArray(pasos) ? pasos : []);
 
@@ -95,8 +96,9 @@ export const rutinasService = {
     // Aislamiento estricto por usuario:
     // - tutor: ve ÚNICAMENTE sus propias rutinas creadas
     // - empresario: ve rutinas de su organización si tiene organizacionId, o las suyas
-    // - developer / admin: ve sus propias rutinas personales por defecto en su panel principal,
+    // - developer: ve sus propias rutinas personales por defecto en su panel principal,
     //   salvo que explícitamente pase ?all=true para auditoría global del sistema o ?organizacionId=...
+    // - cualquier otro rol: acceso denegado (denegar por defecto)
     if (usuarioActual.rol === 'tutor') {
       whereClause += ' AND creadoPor = ?';
       params.push(usuarioActual.id);
@@ -120,12 +122,8 @@ export const rutinasService = {
         whereClause += ' AND creadoPor = ?';
         params.push(usuarioActual.id);
       }
-    } else if (usuarioActual.rol === 'admin') {
-      // Admin tiene permisos globales de supervisión y auditoría en todas las organizaciones
-      if (filtros.organizacionId) {
-        whereClause += ' AND organizacionId = ?';
-        params.push(filtros.organizacionId);
-      }
+    } else {
+      throw new AppError('Acceso denegado: tu rol no tiene permisos para listar rutinas.', 403, { code: 'FORBIDDEN_ROLE' });
     }
 
     // Filtro opcional por turno
@@ -211,8 +209,8 @@ export const rutinasService = {
       })(),
     };
 
-    // Verificación de acceso y permisos:
-    if (usuarioActual.rol === 'admin' || usuarioActual.rol === 'developer') {
+    // Verificación de acceso y permisos (denegar por defecto):
+    if (usuarioActual.rol === 'developer') {
       return rutina;
     }
 
@@ -224,13 +222,17 @@ export const rutinasService = {
       } else if (rutina.creadoPor !== usuarioActual.id) {
         throw new AppError('No tienes permisos para acceder o modificar esta rutina.', 403, { code: 'FORBIDDEN_RESOURCE' });
       }
+      return rutina;
     }
 
-    if (usuarioActual.rol === 'tutor' && rutina.creadoPor !== usuarioActual.id) {
-      throw new AppError('No tienes permisos para acceder o modificar esta rutina.', 403, { code: 'FORBIDDEN_RESOURCE' });
+    if (usuarioActual.rol === 'tutor') {
+      if (rutina.creadoPor !== usuarioActual.id) {
+        throw new AppError('No tienes permisos para acceder o modificar esta rutina.', 403, { code: 'FORBIDDEN_RESOURCE' });
+      }
+      return rutina;
     }
 
-    return rutina;
+    throw new AppError('Acceso denegado: tu rol no tiene permisos sobre esta rutina.', 403, { code: 'FORBIDDEN_ROLE' });
   },
 
   /**
@@ -311,8 +313,8 @@ export const rutinasService = {
       return { id, eliminada: true };
     }
 
-    // developer y admin tienen poder absoluto para eliminar
-    if (usuarioActual.rol === 'developer' || usuarioActual.rol === 'admin') {
+    // developer tiene poder absoluto para eliminar
+    if (usuarioActual.rol === 'developer') {
       db.prepare('DELETE FROM rutinas WHERE id = ?').run(id);
       return { id, eliminada: true };
     }
@@ -335,7 +337,7 @@ export const rutinasService = {
       throw new AppError('No tienes permisos para eliminar esta rutina.', 403, { code: 'FORBIDDEN_RESOURCE' });
     }
 
-    db.prepare('DELETE FROM rutinas WHERE id = ?').run(id);
-    return { id, eliminada: true };
+    // Cualquier otro rol: acceso denegado (denegar por defecto)
+    throw new AppError('Acceso denegado: tu rol no tiene permisos para eliminar rutinas.', 403, { code: 'FORBIDDEN_ROLE' });
   },
 };

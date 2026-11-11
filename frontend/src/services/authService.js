@@ -4,8 +4,16 @@ export const authService = {
   /**
    * Registro de usuario
    */
-  async register({ nombre, email, password, rol = 'empresario' }) {
-    const res = await api.post('/api/auth/register', { nombre, email, password, rol });
+  async register({ nombre, email, password, rol = 'empresario', codigoOrganizacion }) {
+    // Nunca se envía un organizacionId: el empresario recibe su organización al registrarse y el tutor
+    // puede ingresar el código de su institución (opcional).
+    const res = await api.post('/api/auth/register', {
+      nombre,
+      email,
+      password,
+      rol,
+      ...(codigoOrganizacion ? { codigoOrganizacion } : {}),
+    });
     if (res?.data?.token) {
       api.setToken(res.data.token);
     }

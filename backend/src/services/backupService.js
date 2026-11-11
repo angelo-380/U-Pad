@@ -8,10 +8,10 @@ const BACKUPS_DIR = path.resolve(path.dirname(DB_PATH), 'backups');
 export const backupService = {
   /**
    * Crea un backup consistente en caliente de la base de datos relacional de Google Cloud.
-   * Solo ejecutable por roles autorizados (developer o admin).
+   * Solo ejecutable por el rol developer.
    */
   async crearBackup(usuarioActual) {
-    if (usuarioActual.rol !== 'developer' && usuarioActual.rol !== 'admin') {
+    if (usuarioActual.rol !== 'developer') {
       throw new AppError(
         'Acceso denegado: El control y generación de backups está reservado exclusivamente al rol Desarrollador / Administrador de Infraestructura.',
         403,
@@ -70,7 +70,7 @@ export const backupService = {
    * Lista todos los backups existentes en el almacenamiento persistente.
    */
   async listarBackups(usuarioActual) {
-    if (usuarioActual.rol !== 'developer' && usuarioActual.rol !== 'admin') {
+    if (usuarioActual.rol !== 'developer') {
       throw new AppError(
         'Acceso denegado: Consulta de backups reservada al rol Desarrollador / Administrador.',
         403,
@@ -106,7 +106,7 @@ export const backupService = {
    * Obtiene la ruta física segura de un archivo de backup para descarga.
    */
   async obtenerRutaBackup(filename, usuarioActual) {
-    if (usuarioActual.rol !== 'developer' && usuarioActual.rol !== 'admin') {
+    if (usuarioActual.rol !== 'developer') {
       throw new AppError('Acceso denegado a backups', 403);
     }
     const cleanFilename = path.basename(filename);

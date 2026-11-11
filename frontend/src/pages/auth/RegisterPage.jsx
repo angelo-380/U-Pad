@@ -4,13 +4,14 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { LanguageSelector } from '../../components/common/LanguageSelector.jsx';
 import { ImagePlaceholder } from '../../components/common/ImagePlaceholder.jsx';
-import { User, Mail, Lock, UserPlus, AlertCircle, Loader2, Briefcase } from 'lucide-react';
+import { User, Mail, Lock, UserPlus, AlertCircle, Loader2, Briefcase, KeyRound } from 'lucide-react';
 
 export const RegisterPage = () => {
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rol, setRol] = useState('empresario');
+  const [codigoOrganizacion, setCodigoOrganizacion] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -39,8 +40,16 @@ export const RegisterPage = () => {
 
     try {
       setLoading(true);
-      await register({ nombre, email, password, rol });
-      navigate('/rutinas', { replace: true });
+      // Nunca se envía un organizacionId; el código de organización es opcional y solo aplica a tutores
+      await register({
+        nombre,
+        email,
+        password,
+        rol,
+        codigoOrganizacion: rol === 'tutor' ? codigoOrganizacion.trim() : '',
+      });
+      // La redirección por rol lleva al empresario a su panel, donde ve el código de su organización
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err.message || t('register_error') || 'Error processing registration.');
     } finally {
@@ -109,7 +118,7 @@ export const RegisterPage = () => {
                 htmlFor="nombre"
                 className="block text-xs font-bold uppercase tracking-wider text-tea-text mb-1.5"
               >
-                {t('name_label') || 'Full Name or Organization'}
+                {rol === 'empresario' ? t('org_name_label') : t('person_name_label')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -122,7 +131,7 @@ export const RegisterPage = () => {
                   disabled={loading}
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
-                  placeholder="e.g. St. Jude Therapy Center"
+                  placeholder={rol === 'empresario' ? t('org_name_placeholder') : t('person_name_placeholder')}
                   className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-tea-border bg-slate-50 focus:bg-white text-tea-text placeholder:text-slate-400 transition-colors"
                 />
               </div>
@@ -166,7 +175,10 @@ export const RegisterPage = () => {
                 <select
                   id="rol"
                   value={rol}
-                  onChange={(e) => setRol(e.target.value)}
+                  onChange={(e) => {
+                    setRol(e.target.value);
+                    setCodigoOrganizacion(''); // el código solo aplica a tutores
+                  }}
                   disabled={loading}
                   className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-tea-border bg-slate-50 focus:bg-white text-tea-text transition-colors"
                 >
@@ -175,6 +187,38 @@ export const RegisterPage = () => {
                 </select>
               </div>
             </div>
+
+            {rol === 'tutor' && (
+              <div>
+                <label
+                  htmlFor="codigoOrganizacion"
+                  className="block text-xs font-bold uppercase tracking-wider text-tea-text mb-1.5"
+                >
+                  {t('org_code_label')}
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <KeyRound className="w-4 h-4" />
+                  </div>
+                  <input
+                    id="codigoOrganizacion"
+                    type="text"
+                    disabled={loading}
+                    value={codigoOrganizacion}
+                    onChange={(e) => setCodigoOrganizacion(e.target.value.toUpperCase())}
+                    maxLength={12}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder={t('org_code_placeholder')}
+                    aria-describedby="codigoOrganizacionAyuda"
+                    className="w-full pl-10 pr-4 py-2.5 text-sm font-mono tracking-widest rounded-xl border border-tea-border bg-slate-50 focus:bg-white text-tea-text placeholder:text-slate-400 placeholder:tracking-normal placeholder:font-sans transition-colors"
+                  />
+                </div>
+                <p id="codigoOrganizacionAyuda" className="mt-1.5 text-[11px] leading-relaxed text-tea-muted">
+                  {t('org_code_hint')}
+                </p>
+              </div>
+            )}
 
             <div>
               <label

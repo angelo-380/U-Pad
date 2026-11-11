@@ -24,9 +24,8 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   // Si se definieron roles permitidos y el usuario no cuenta con ese rol
-  // Nota: El rol 'admin' cuenta con autorización global de acceso a rutas protegidas
   if (allowedRoles && Array.isArray(allowedRoles)) {
-    if (user?.rol !== 'admin' && !allowedRoles.includes(user?.rol)) {
+    if (!allowedRoles.includes(user?.rol)) {
       return <Navigate to="/403" replace />;
     }
   }
