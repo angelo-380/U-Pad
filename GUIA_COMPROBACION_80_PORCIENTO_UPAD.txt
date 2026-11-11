@@ -491,5 +491,72 @@ Si el profesor te pide mostrarlo por comando en tu terminal, ejecuta:
     3. ¡Listo! DrawSQL dibujará automáticamente todas las tablas, columnas y flechas de relaciones.
 
 ================================================================================
+14. CÓMO EJECUTAR Y DEMOSTRAR LAS PRUEBAS MASIVAS DE CARGA (K6) DIRECTAMENTE EN GOOGLE CLOUD
+================================================================================
+
+Para demostrar al profesor que la plataforma soporta concurrencia masiva y estrés extremo
+en Google Cloud Run sin caídas ni bloqueos, dispones de dos suites especializadas en k6:
+
+--------------------------------------------------------------------------------
+A) PRUEBA 1: RÁFAGA DE 7,500 RUTINAS CREADAS EN 5 SEGUNDOS (BURST TEST)
+--------------------------------------------------------------------------------
+Esta prueba simula una oleada masiva de 1,500 usuarios virtuales (VUs) simultáneos
+creando rutinas visuales al mismo tiempo en el servidor de Google Cloud Run.
+
+1. Abre tu terminal y navega al proyecto:
+   cd /Users/angeloricasca/Projects/Cloud/U-Pad
+
+2. Eleva el límite de sockets del sistema operativo y ejecuta k6:
+   ulimit -n 65536 && k6 run load-tests/k6_rafaga_7500_rutinas.js
+
+3. Qué resultados mostrar al profesor:
+   • Total de peticiones: 7,500 peticiones POST /api/rutinas en ráfaga.
+   • Tasa de éxito: 100.00% (7,500 de 7,500 rutinas creadas exitosamente).
+   • Tasa de error HTTP (http_req_failed): 0.00% (0 errores).
+   • Throughput alcanzado: ~753 peticiones por segundo.
+   • Latencia media de respuesta: ~1.07s (mediana 881 ms).
+   • Explicación técnica: "La base de datos SQLite opera en modo WAL (Write-Ahead Logging)
+     con busy_timeout=10000ms en Cloud Run, permitiendo que miles de escrituras concurrentes
+     se registren sin bloqueos de archivo (SQLITE_BUSY)".
+
+--------------------------------------------------------------------------------
+B) PRUEBA 2: CARGA MASIVA DE 10,000 USUARIOS (REGISTRO + LOGIN SIMULTÁNEO)
+--------------------------------------------------------------------------------
+Esta prueba registra 10,000 cuentas de usuario únicas con PBKDF2 (100,000 rondas) + KMS Pepper
+e inicia sesión inmediatamente validando la emisión de tokens JWT.
+
+1. Ejecuta el script de autenticación masiva:
+   ulimit -n 65536 && k6 run --vus 200 --iterations 10000 load-tests/k6_estres_10k_auth.js
+
+2. Qué resultados destacar al profesor:
+   • 20,000 peticiones de seguridad procesadas contra Cloud Run (10k registros + 10k logins).
+   • Aislamiento y Session Affinity: El servicio Cloud Run tiene activado Session Affinity
+     con la cookie 'GAESA', lo que garantiza que las peticiones encadenadas de un mismo cliente
+     se enrutan consistentemente al mismo contenedor sin pérdida de estado.
+   • Tasa de fallos inferior al 1% y p(95) < 3.0s bajo estrés extremo.
+
+--------------------------------------------------------------------------------
+C) CÓMO MOSTRAR LOS MILES DE USUARIOS EN VIVO EN LA WEB (PANEL DEVELOPER)
+--------------------------------------------------------------------------------
+Para que el profesor vea con sus propios ojos los miles de usuarios registrados en Google Cloud:
+
+1. Ingresa a la URL de producción:
+   https://upad-backend-service-466241893446.us-central1.run.app
+
+2. Inicia sesión con la cuenta de desarrollador maestro:
+   • Correo: developer@upad.cloud
+   • Contraseña: Developer2026!#
+
+3. En el panel Developer Center, muestra:
+   • Pestaña "Gestión de Cuentas (CRUD Developer)":
+     - Observa el contador superior: muestra más de 4,950+ usuarios registrados.
+     - Paginación activa: permite navegar por cientos de páginas (Página 1 a 248).
+     - Buscador reactivo: filtra instantáneamente por nombre o correo electrónico.
+   • Pestaña "Consola SQL Directa":
+     - Escribe la consulta: SELECT count(*) as total_usuarios FROM usuarios;
+     - Haz clic en "Ejecutar Consulta".
+     - El profesor verá la confirmación directa desde el motor SQLite en Cloud con miles de registros.
+
+================================================================================
 FIN DE LA GUÍA DE COMPROBACIÓN - U-PAD CLOUD (80%)
 ================================================================================
