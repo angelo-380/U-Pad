@@ -4,6 +4,11 @@ import { Counter, Rate, Trend } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'https://upad-backend-service-466241893446.us-central1.run.app';
 
+// Parámetros dinámicos desde CLI (--vus, --iterations, --duration o flags -e)
+const VUS = parseInt(__ENV.VUS || '250', 10);
+const ITERATIONS = parseInt(__ENV.ITERATIONS || '10000', 10);
+const DURATION = __ENV.DURATION || '90s';
+
 const registrosExitosos = new Counter('registros_exitosos');
 const loginsExitosos = new Counter('logins_exitosos');
 const errorRate = new Rate('tasa_errores');
@@ -11,16 +16,9 @@ const latenciaRegistro = new Trend('latencia_registro_ms');
 const latenciaLogin = new Trend('latencia_login_ms');
 
 export const options = {
-  scenarios: {
-    // 10,000 usuarios ejecutando registro y login
-    autenticacion_10k: {
-      executor: 'shared-iterations',
-      vus: 250,
-      iterations: 10000,
-      maxDuration: '90s',
-      gracefulStop: '5s',
-    },
-  },
+  vus: VUS,
+  iterations: ITERATIONS,
+  duration: DURATION,
   thresholds: {
     http_req_failed: ['rate<0.02'],
     http_req_duration: ['p(95)<3000'],
