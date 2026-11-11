@@ -73,3 +73,24 @@ b) Se eliminan los seeders y los datos demo. Hecho en `backend/src/config/databa
 c) Solo se trabaja la web. La app Android no se toca (ver sección 7).
 d) El informe del proyecto es la referencia. Más adelante se implementará lo que dice: pepper con Cloud KMS, backups a Cloud Storage y persistencia de la base de datos. Hoy NADA de eso existe (el pepper es una variable de entorno, los backups viven en el disco efímero del contenedor). No lo des por hecho en el código ni en la documentación.
 e) El build del frontend se copia a `backend/public_html` solo cuando el usuario lo pida, al final del trabajo. Mientras tanto, no se regenera ni se modifica.
+
+## 10. Estado de avance (actualizado 11-nov-2026)
+
+### Hecho
+- **A. Roles y seeders:** rol `admin` eliminado (backend, frontend y tests); registro público cerrado a `developer`; lista blanca de roles al crear/editar usuarios; sin cuentas sembradas; `seedAdmin.js` y `seed:admin` eliminados; primera cuenta `developer` creada solo por entorno (`DEV_EMAIL`, `DEV_PASSWORD`, `DEV_NAME`) si no hay usuarios.
+- **A2. Organizaciones y KPIs reales:** tabla `organizaciones` con código de unión para tutores; el cliente nunca envía `organizacionId`; `GET /api/organizaciones/mia`; migración única de datos existentes; KPIs de rutinas institucionales y estudiantes (niños vinculados) con datos reales por organización.
+
+### Pendiente
+- **B. Limpieza de UI:** puntos 2, 7, 11, 14, 15, 17, 20 y 21.
+- **C. Análisis de desempeño con datos reales:** la adherencia semanal y los indicadores de calidad siguen simulados.
+- **D. Hijos:** vinculación de 60 s y desvincular en la web.
+- **E. GPS.**
+- **F. Developer Center:** rutinas y paginación.
+- **G. Login con Google.**
+- **H. Coherencia con el informe:** Cloud KMS, backups a Cloud Storage y persistencia de la base de datos.
+
+### Recordatorios
+- Rotar o eliminar en producción las cuentas semilla antiguas (siguen en las bases creadas antes, p. ej. la de Cloud Run).
+- Regenerar `backend/public_html` al final del trabajo (hoy contiene un build viejo).
+- Las traducciones nuevas están solo en español; los demás idiomas caen a español hasta que se traduzcan.
+- En el primer arranque en producción, la migración creará una organización por cada empresario existente (incluidas las cuentas de las pruebas de carga).
