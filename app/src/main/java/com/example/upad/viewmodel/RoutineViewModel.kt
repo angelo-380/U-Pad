@@ -656,7 +656,7 @@ class RoutineViewModel(
     fun removeTask(turn: String, index: Int) {
         val turnoValido = normalizarTurno(turn)
         val uidValido = obtenerUidSeguro("")
-        val diaFull = ultimoDiaCargado
+        val todosLosDias = listOf("LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO")
 
         viewModelScope.launch {
             val listLocal = when (turnoValido) {
@@ -676,7 +676,15 @@ class RoutineViewModel(
 
                 try {
                     com.example.upad.data.LocalDataManager.deleteRoutineTask(uidValido, turnoValido, removedTask.actividad)
-                    repository.saveRoutinePorDia(uidValido, turnoValido, diaFull, listLocal)
+                    for (d in todosLosDias) {
+                        try {
+                            val diaList = repository.obtenerRutinasDelPadreDirectoPorDia(uidValido, turnoValido, d).toMutableList()
+                            val changed = diaList.removeAll { it.actividad.trim().equals(removedTask.actividad.trim(), ignoreCase = true) }
+                            if (changed || d == ultimoDiaCargado) {
+                                repository.saveRoutinePorDia(uidValido, turnoValido, d, diaList)
+                            }
+                        } catch (e: Exception) {}
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }

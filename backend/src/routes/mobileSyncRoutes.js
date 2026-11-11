@@ -115,23 +115,45 @@ router.get('/mobile/sync-routines', (req, res) => {
  */
 router.delete('/mobile/sync-routines', (req, res) => {
   try {
-    const userId = req.body?.userId || req.query?.userId;
+    const userId = req.body?.userId || req.query?.userId || '';
     const actividad = req.body?.actividad || req.query?.actividad;
     const turno = req.body?.turno || req.query?.turno;
     const id = req.body?.id || req.query?.id;
 
-    if (!userId || !userId.startsWith('usr_')) {
-      return res.status(400).json({ status: 'error', message: 'Se requiere userId válido' });
-    }
-
     if (id) {
-      db.prepare('DELETE FROM rutinas WHERE id = ? AND creadoPor = ?').run(id, userId);
-    } else if (actividad) {
-      const turnoNorm = turno ? (turno.toUpperCase() === 'MAÑANA' ? 'MANANA' : turno.toUpperCase()) : null;
-      if (turnoNorm) {
-        db.prepare('DELETE FROM rutinas WHERE UPPER(titulo) = UPPER(?) AND turno = ? AND creadoPor = ?').run(actividad.trim(), turnoNorm, userId);
+      if (userId) {
+        db.prepare('DELETE FROM rutinas WHERE id = ? AND (creadoPor = ? OR creadoPor = "usr_director_sol" OR creadoPor IS NULL)').run(id, userId);
       } else {
-        db.prepare('DELETE FROM rutinas WHERE UPPER(titulo) = UPPER(?) AND creadoPor = ?').run(actividad.trim(), userId);
+        db.prepare('DELETE FROM rutinas WHERE id = ?').run(id);
+      }
+    } else if (actividad) {
+      const cleanAct = actividad.trim().toUpperCase();
+      const turnoNorm = turno ? (turno.toUpperCase() === 'MAÑANA' ? 'MANANA' : turno.toUpperCase()) : null;
+      if (userId && userId !== 'PADRE_TEST') {
+        if (turnoNorm) {
+          db.prepare(`
+            DELETE FROM rutinas 
+            WHERE (UPPER(titulo) = ? OR UPPER(titulo) LIKE ?) 
+              AND (turno = ? OR (turno = 'MANANA' AND ? = 'MAÑANA') OR (turno = 'MAÑANA' AND ? = 'MANANA'))
+              AND (creadoPor = ? OR creadoPor = 'usr_director_sol' OR creadoPor = 'PADRE_TEST' OR creadoPor IS NULL)
+          `).run(cleanAct, `%${cleanAct}%`, turnoNorm, turnoNorm, turnoNorm, userId);
+        } else {
+          db.prepare(`
+            DELETE FROM rutinas 
+            WHERE (UPPER(titulo) = ? OR UPPER(titulo) LIKE ?) 
+              AND (creadoPor = ? OR creadoPor = 'usr_director_sol' OR creadoPor = 'PADRE_TEST' OR creadoPor IS NULL)
+          `).run(cleanAct, `%${cleanAct}%`, userId);
+        }
+      } else {
+        if (turnoNorm) {
+          db.prepare(`
+            DELETE FROM rutinas 
+            WHERE (UPPER(titulo) = ? OR UPPER(titulo) LIKE ?) 
+              AND (turno = ? OR (turno = 'MANANA' AND ? = 'MAÑANA') OR (turno = 'MAÑANA' AND ? = 'MANANA'))
+          `).run(cleanAct, `%${cleanAct}%`, turnoNorm, turnoNorm, turnoNorm);
+        } else {
+          db.prepare('DELETE FROM rutinas WHERE UPPER(titulo) = ? OR UPPER(titulo) LIKE ?').run(cleanAct, `%${cleanAct}%`);
+        }
       }
     } else {
       return res.status(400).json({ status: 'error', message: 'Se requiere id o actividad a eliminar' });

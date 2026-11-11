@@ -142,11 +142,14 @@ export const RutinasPage = () => {
 
   const handleConfirmDelete = async () => {
     if (!rutinaToDelete) return;
+    const targetId = rutinaToDelete.id;
+    const targetTitle = rutinaToDelete.titulo;
     try {
       setDeleteLoading(true);
-      await rutinasService.eliminar(rutinaToDelete.id);
+      await rutinasService.eliminar(targetId);
+      setRutinas((prev) => prev.filter((r) => r.id !== targetId));
       toast.success(
-        `La rutina "${rutinaToDelete.titulo}" fue eliminada del sistema.`,
+        `La rutina "${targetTitle}" fue eliminada del sistema.`,
         'Rutina Eliminada'
       );
       setDeleteDialogOpen(false);
@@ -409,6 +412,8 @@ export const RutinasPage = () => {
 
       <DeleteConfirmDialog
         isOpen={deleteDialogOpen}
+        rutina={rutinaToDelete}
+        onCancel={() => setDeleteDialogOpen(false)}
         onClose={() => setDeleteDialogOpen(false)}
         onConfirm={handleConfirmDelete}
         title={t('delete_modal_title')}

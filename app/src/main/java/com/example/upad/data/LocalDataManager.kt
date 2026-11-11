@@ -374,6 +374,17 @@ object LocalDataManager {
             "MAÑANA" -> "MANANA"
             else -> turn.uppercase().trim()
         }
+        val cleanAct = actividad.trim().uppercase()
+        val todosLosDias = listOf("LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO")
+        for (d in todosLosDias) {
+            val key = routineKey(u, turnEnvio, d)
+            val current = getRoutinePorDia(u, turnEnvio, d).toMutableList()
+            val removed = current.removeAll { it.actividad.trim().equals(cleanAct, ignoreCase = true) }
+            if (removed) {
+                prefs.edit().putString(key, gson.toJson(current)).apply()
+                routineListeners[key]?.forEach { it.invoke(current) }
+            }
+        }
         val encodedAct = try {
             java.net.URLEncoder.encode(actividad, "UTF-8")
         } catch (e: Exception) {

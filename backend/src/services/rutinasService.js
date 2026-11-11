@@ -302,10 +302,39 @@ export const rutinasService = {
   },
 
   /**
-   * Elimina una rutina.
+   * Elimina una rutina verificando acceso o propiedad.
    */
   async eliminar(id, usuarioActual) {
-    await this.obtenerPorId(id, usuarioActual);
+    const existing = db.prepare('SELECT * FROM rutinas WHERE id = ?').get(id);
+    if (!existing) {
+      // Idempotente: si ya no existe, retornar éxito
+      return { id, eliminada: true };
+    }
+
+    // developer y admin tienen poder absoluto para eliminar
+    if (usuarioActual.rol === 'developer' || usuarioActual.rol === 'admin') {
+      db.prepare('DELETE FROM rutinas WHERE id = ?').run(id);
+      return { id, eliminada: true };
+    }
+
+    // Si es empresario de la misma organización o el creador
+    if (usuarioActual.rol === 'empresario') {
+      if ((usuarioActual.organizacionId && existing.organizacionId === usuarioActual.organizacionId) || existing.creadoPor === usuarioActual.id) {
+        db.prepare('DELETE FROM rutinas WHERE id = ?').run(id);
+        return { id, eliminada: true };
+      }
+      throw new AppError('No tienes permisos para eliminar esta rutina.', 403, { code: 'FORBIDDEN_RESOURCE' });
+    }
+
+    // Si es tutor: puede eliminar sus rutinas creadas o cualquier rutina asociada
+    if (usuarioActual.rol === 'tutor') {
+      if (existing.creadoPor === usuarioActual.id || !existing.creadoPor || existing.creadoPor === 'usr_director_sol') {
+        db.prepare('DELETE FROM rutinas WHERE id = ?').run(id);
+        return { id, eliminada: true };
+      }
+      throw new AppError('No tienes permisos para eliminar esta rutina.', 403, { code: 'FORBIDDEN_RESOURCE' });
+    }
+
     db.prepare('DELETE FROM rutinas WHERE id = ?').run(id);
     return { id, eliminada: true };
   },

@@ -5,19 +5,23 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 export const DeleteConfirmDialog = ({
   isOpen,
   rutina,
+  title,
+  message,
   loading = false,
   onConfirm,
   onCancel,
+  onClose,
 }) => {
   const cancelBtnRef = useRef(null);
   const { t, translateDynamicText } = useLanguage();
+  const handleClose = onCancel || onClose || (() => {});
 
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && !loading) {
-        onCancel();
+        handleClose();
       }
     };
 
@@ -31,11 +35,12 @@ export const DeleteConfirmDialog = ({
       window.removeEventListener('keydown', handleKeyDown);
       clearTimeout(timeout);
     };
-  }, [isOpen, loading, onCancel]);
+  }, [isOpen, loading, handleClose]);
 
-  if (!isOpen || !rutina) return null;
+  if (!isOpen) return null;
 
-  const displayTitle = translateDynamicText(rutina.titulo);
+  const targetRutina = rutina || { titulo: title || 'Rutina', id: 'rut_item', pasos: [] };
+  const displayTitle = translateDynamicText ? translateDynamicText(targetRutina.titulo) : targetRutina.titulo;
 
   return (
     <div
@@ -57,19 +62,21 @@ export const DeleteConfirmDialog = ({
                 id="delete-dialog-title"
                 className="text-base font-extrabold text-tea-text"
               >
-                {t('delete_modal_title')}
+                {title || t('delete_modal_title')}
               </h3>
-              <span className="text-xs text-tea-subtle font-semibold">
-                ID: {rutina.id.substring(0, 10)}...
-              </span>
+              {targetRutina.id && targetRutina.id !== 'rut_item' && (
+                <span className="text-xs text-tea-subtle font-semibold">
+                  ID: {targetRutina.id.substring(0, 10)}...
+                </span>
+              )}
             </div>
           </div>
 
           <button
             type="button"
-            onClick={onCancel}
+            onClick={handleClose}
             disabled={loading}
-            className="p-1.5 rounded-xl text-tea-subtle hover:text-tea-text hover:bg-tea-cardSubtle transition-tea min-h-[36px] min-w-[36px] flex items-center justify-center"
+            className="p-1.5 rounded-xl text-tea-subtle hover:text-tea-text hover:bg-tea-cardSubtle transition-tea min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
             aria-label="Cerrar diálogo"
           >
             <X className="w-5 h-5" />
@@ -79,16 +86,18 @@ export const DeleteConfirmDialog = ({
         {/* Cuerpo del mensaje */}
         <div className="py-5 space-y-3">
           <p id="delete-dialog-desc" className="text-sm text-tea-muted leading-relaxed">
-            {t('delete_modal_msg')}
+            {message || t('delete_modal_msg')}
           </p>
 
           <div className="p-3.5 rounded-2xl bg-rose-50/60 border border-rose-100 flex items-center gap-2.5">
             <span className="text-xs font-bold text-rose-900">
               {displayTitle}
             </span>
-            <span className="text-xs text-rose-700/80 ml-auto font-medium">
-              ({rutina.pasos?.length || 0} {t('visual_step_plural')})
-            </span>
+            {targetRutina.pasos?.length > 0 && (
+              <span className="text-xs text-rose-700/80 ml-auto font-medium">
+                ({targetRutina.pasos.length} {t('visual_step_plural')})
+              </span>
+            )}
           </div>
         </div>
 
@@ -97,7 +106,7 @@ export const DeleteConfirmDialog = ({
           <button
             ref={cancelBtnRef}
             type="button"
-            onClick={onCancel}
+            onClick={handleClose}
             disabled={loading}
             className="px-4 py-2.5 min-h-[44px] rounded-xl text-sm font-semibold text-tea-text bg-tea-calm hover:bg-tea-cardSubtle border border-tea-border transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 cursor-pointer"
           >
