@@ -92,7 +92,7 @@ export const GerencialKpiPage = () => {
             </h1>
           </div>
           <p className="text-sm text-tea-muted mt-1">
-            {institucionNombre} · Supervisión ejecutiva basada en evidencias para directores de colegio y clínicas.
+            {institucionNombre}
           </p>
         </div>
 
@@ -148,28 +148,8 @@ export const GerencialKpiPage = () => {
         </div>
       )}
 
-      {/* Banner de Cumplimiento de Privacidad y Anonimización */}
-      <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2.5 text-indigo-900">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center flex-shrink-0">
-            <Lock className="w-4 h-4" />
-          </div>
-          <div>
-            <span className="font-extrabold block">
-              Vista Gerencial con Privacidad Protegida (Cero Datos Personales)
-            </span>
-            <span className="text-indigo-700 text-[11px]">
-              Cumplimiento de la Ley de Protección de Datos de Menores TEA: Los nombres, correos y fichas médicas personales están completamente aislados y no son visibles en esta vista de dirección.
-            </span>
-          </div>
-        </div>
-        <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 flex-shrink-0">
-          ✓ PII Blindado
-        </span>
-      </div>
-
-      {/* 4 Tarjetas de KPIs Principales */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Tarjetas de KPIs Principales */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Total Estudiantes / Usuarios de la Institución */}
         <div className="bg-white rounded-2xl p-5 border border-tea-border shadow-soft-xs space-y-2">
           <div className="flex items-center justify-between">
@@ -203,42 +183,6 @@ export const GerencialKpiPage = () => {
           </p>
           <p className="text-[11px] text-tea-muted">
             Secuencias visuales adaptadas
-          </p>
-        </div>
-
-        {/* Tasa de Cumplimiento / Adherencia */}
-        <div className="bg-white rounded-2xl p-5 border border-tea-border shadow-soft-xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider">
-              Tasa de Adherencia TEA
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-emerald-700">
-            {kpis.tasaCumplimientoAdherencia}%
-          </p>
-          <p className="text-[11px] text-emerald-600 font-semibold">
-            +3.2% respecto a la semana anterior
-          </p>
-        </div>
-
-        {/* Tablets Kiosk en el Perímetro */}
-        <div className="bg-white rounded-2xl p-5 border border-tea-border shadow-soft-xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider">
-              Tablets en Perímetro
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Tablet className="w-5 h-5" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-tea-text">
-            {kpis.dispositivosKioskEnPerimetro}
-          </p>
-          <p className="text-[11px] text-tea-muted">
-            Dispositivos Kiosk activos en aula
           </p>
         </div>
       </div>

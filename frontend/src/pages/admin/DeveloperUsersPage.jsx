@@ -24,7 +24,6 @@ import {
   AlertTriangle,
   KeyRound,
   FileCode,
-  Table,
 } from 'lucide-react';
 import { adminService } from '../../services/adminService.js';
 import { ArasaacPictogram } from '../../components/common/ArasaacPictogram.jsx';
@@ -35,7 +34,7 @@ export const DeveloperUsersPage = () => {
   const { t } = useLanguage();
   const toast = useToast();
 
-  const [activeTab, setActiveTab] = useState('users_table'); // 'users_table' | 'raw_db' | 'sql_console'
+  const [activeTab, setActiveTab] = useState('users_table'); // 'users_table' | 'sql_console'
   const [users, setUsers] = useState([]);
   const [pageSize, setPageSize] = useState(25);
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
@@ -229,7 +228,7 @@ export const DeveloperUsersPage = () => {
               <Server className="w-5 h-5" />
             </span>
             <h1 className="text-2xl font-extrabold text-tea-text tracking-tight flex items-center gap-2">
-              Developer Center: Poder Absoluto de Base de Datos
+              Developer Center
               <span className="text-[10px] font-mono font-bold bg-purple-700 text-white px-2 py-0.5 rounded uppercase">
                 Root Access
               </span>
@@ -249,15 +248,6 @@ export const DeveloperUsersPage = () => {
             <UserPlus className="w-4 h-4" />
             <span>+ Crear Usuario</span>
           </button>
-          <button
-            type="button"
-            onClick={() => fetchUsers(pagination.page)}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-tea-text bg-white border border-tea-border hover:bg-slate-50 transition-tea shadow-sm cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-purple-600' : ''}`} />
-            <span>Refrescar</span>
-          </button>
         </div>
       </div>
 
@@ -273,20 +263,7 @@ export const DeveloperUsersPage = () => {
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Gestión de Cuentas (CRUD Developer)</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('raw_db')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-colors ${
-            activeTab === 'raw_db'
-              ? 'bg-white border-t border-x border-tea-border text-purple-700 -mb-px'
-              : 'text-tea-muted hover:text-tea-text'
-          }`}
-        >
-          <Table className="w-4 h-4" />
-          <span>SELECT * FROM usuarios (Raw Database View)</span>
+          <span>Gestión de Cuentas</span>
         </button>
 
         <button
@@ -307,7 +284,7 @@ export const DeveloperUsersPage = () => {
       {activeTab === 'users_table' && (
         <div className="space-y-6">
           {/* Tarjetas de Métricas de Auditoría */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3.5">
               <div className="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
                 <Users className="w-6 h-6" />
@@ -318,34 +295,6 @@ export const DeveloperUsersPage = () => {
                 </span>
                 <p className="text-xl font-black text-tea-text">
                   {pagination.total.toLocaleString()} usuarios
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
-                <Database className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
-                  Persistencia Cloud Run
-                </span>
-                <p className="text-xl font-black text-indigo-700">
-                  Google Cloud KMS Activo
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
-                  Poder de Administrador
-                </span>
-                <p className="text-xl font-black text-emerald-700">
-                  CRUD Completo Habilitado
                 </p>
               </div>
             </div>
@@ -582,57 +531,7 @@ export const DeveloperUsersPage = () => {
         </div>
       )}
 
-      {/* PESTAÑA 2: VISTA CRUDA DE BASE DE DATOS (SELECT * FROM usuarios) */}
-      {activeTab === 'raw_db' && (
-        <div className="space-y-4">
-          <div className="bg-slate-900 text-slate-200 p-4 rounded-2xl font-mono text-xs shadow-md">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-700 mb-3">
-              <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-                <Database className="w-4 h-4" />
-                sqlite3 /app/data/upad.db &gt; SELECT id, nombre, email, rol, organizacionId, activo, creadoEn, saltPreview FROM usuarios;
-              </span>
-              <span className="text-[11px] text-slate-400">
-                Filas devueltas: {users.length} (Página {pagination.page})
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-[11px]">
-                <thead>
-                  <tr className="border-b border-slate-700 text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="py-2 px-3">id</th>
-                    <th className="py-2 px-3">nombre</th>
-                    <th className="py-2 px-3">email</th>
-                    <th className="py-2 px-3">rol</th>
-                    <th className="py-2 px-3">organizacionId</th>
-                    <th className="py-2 px-3">activo</th>
-                    <th className="py-2 px-3">creadoEn</th>
-                    <th className="py-2 px-3">salt_preview</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {users.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-800/60 font-mono">
-                      <td className="py-2 px-3 text-purple-300">{u.id}</td>
-                      <td className="py-2 px-3 text-amber-200">{u.nombre}</td>
-                      <td className="py-2 px-3 text-cyan-300">{u.email}</td>
-                      <td className="py-2 px-3 text-emerald-300">{u.rol}</td>
-                      <td className="py-2 px-3 text-slate-400">{u.organizacionId || 'NULL'}</td>
-                      <td className="py-2 px-3 text-yellow-300">{u.activo ?? 1}</td>
-                      <td className="py-2 px-3 text-slate-400">{u.creadoEn}</td>
-                      <td className="py-2 px-3 text-rose-300 font-mono text-[9px]">
-                        {u.saltPreview ? u.saltPreview.substring(0, 12) + '...' : 'SECURE_SALT'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PESTAÑA 3: CONSOLA SQL DIRECTA */}
+      {/* PESTAÑA 2: CONSOLA SQL DIRECTA */}
       {activeTab === 'sql_console' && (
         <div className="space-y-4">
           <div className="bg-white rounded-3xl p-6 border border-tea-border shadow-soft-xs space-y-4">
