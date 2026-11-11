@@ -1,20 +1,20 @@
 {
-  "total": 5000,
-  "exitosas": 5000,
+  "total": 1000,
+  "exitosas": 1000,
   "fallidas": 0,
   "tasaExito": "100.00%",
-  "duracionSegundos": "0.36",
-  "rps": "13888.89",
+  "duracionSegundos": "0.05",
+  "rps": "20000.00",
   "latencias": {
     "min": 0,
-    "promedio": "8.72",
-    "p50": 8,
-    "p90": 11,
-    "p95": 12,
-    "max": 36
+    "promedio": "1.59",
+    "p50": 1,
+    "p90": 2,
+    "p95": 8,
+    "max": 10
   },
   "codigosHttp": {
-    "200": 5000
+    "200": 1000
   },
-  "timestamp": "2026-11-09T21:18:18.826Z"
+  "timestamp": "2026-11-11T03:09:02.219Z"
 }

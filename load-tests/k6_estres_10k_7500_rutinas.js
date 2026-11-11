@@ -97,14 +97,20 @@ export function authScenario() {
   }
   latencyAuth.add(regRes.timings.duration);
 
-  // 2. Login inmediato
+  // 2. Login inmediato con cookie de afinidad GAESA
+  const setCookie = regRes.headers['Set-Cookie'];
+  const loginHeaders = { 'Content-Type': 'application/json' };
+  if (setCookie) {
+    loginHeaders['Cookie'] = setCookie.split(';')[0];
+  }
+
   const loginPayload = JSON.stringify({
     email: email,
     password: password,
   });
 
   const loginRes = http.post(`${BASE_URL}/api/auth/login`, loginPayload, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: loginHeaders,
     tags: { name: 'POST /api/auth/login' },
   });
 

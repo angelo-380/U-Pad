@@ -60,7 +60,13 @@ export default function () {
   }
   latenciaRegistro.add(regRes.timings.duration);
 
-  // 2. Login inmediato (POST /api/auth/login)
+  // 2. Login inmediato (POST /api/auth/login) vinculando la cookie de afinidad de sesión GAESA de Google Cloud
+  const setCookie = regRes.headers['Set-Cookie'];
+  const loginHeaders = { 'Content-Type': 'application/json' };
+  if (setCookie) {
+    loginHeaders['Cookie'] = setCookie.split(';')[0];
+  }
+
   const loginRes = http.post(
     `${BASE_URL}/api/auth/login`,
     JSON.stringify({
@@ -68,7 +74,7 @@ export default function () {
       password: password,
     }),
     {
-      headers: { 'Content-Type': 'application/json' },
+      headers: loginHeaders,
       tags: { name: 'POST /api/auth/login' },
     }
   );
