@@ -2,7 +2,7 @@ import { api } from './apiClient.js';
 
 export const adminService = {
   /**
-   * Lista usuarios registrados para auditoría de Developer / Admin
+   * Lista usuarios registrados para auditoría del Developer
    */
   async listarUsuarios(filtros = {}) {
     const params = new URLSearchParams();

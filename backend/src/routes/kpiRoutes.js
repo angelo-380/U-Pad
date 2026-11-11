@@ -4,9 +4,9 @@ import { authenticate, authorizeRoles } from '../middlewares/authMiddleware.js';
 
 const router = Router();
 
-// Accesible por rol empresario (colegio/clínica), developer y admin
+// Accesible por rol empresario (colegio/clínica) y developer
 router.use(authenticate);
-router.use(authorizeRoles('empresario', 'developer', 'admin'));
+router.use(authorizeRoles('empresario', 'developer'));
 
 /**
  * GET /api/empresario/kpis

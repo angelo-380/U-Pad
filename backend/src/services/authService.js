@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import { db, hashPassword, verifyPassword, hashPasswordAsync, verifyPasswordAsync } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
 import { signToken } from '../utils/jwt.js';
+import { ROLES, ROLES_REGISTRO_PUBLICO, normalizarRol } from '../utils/roles.js';
 
 const LOCKOUT_THRESHOLD = 5;
 
@@ -39,29 +40,29 @@ export const authService = {
   async register({ nombre, email, password, rol = 'empresario', organizacionId = null }) {
     const emailNormalizado = email.toLowerCase().trim();
 
-    // 1. Verificar si el correo ya existe
+    // 1. Lista permitida (allowlist) de roles para registro público: 'empresario' y 'tutor'.
+    //    'developer' (y cualquier otro rol) NUNCA se obtiene por registro público.
+    const rolNormalizado = (rol === undefined || rol === null) ? ROLES.EMPRESARIO : normalizarRol(rol);
+
+    if (!rolNormalizado || !ROLES_REGISTRO_PUBLICO.includes(rolNormalizado)) {
+      throw new AppError(
+        `Rol no permitido [${String(rol)}]. El registro público solo acepta los roles: ${ROLES_REGISTRO_PUBLICO.join(', ')}.`,
+        400,
+        {
+          field: 'rol',
+          code: 'INVALID_ROLE',
+          allowedRoles: ROLES_REGISTRO_PUBLICO,
+        }
+      );
+    }
+
+    // 2. Verificar si el correo ya existe
     const existing = db.prepare('SELECT id FROM usuarios WHERE email = ?').get(emailNormalizado);
     if (existing) {
       throw new AppError('El correo electrónico ya se encuentra registrado.', 409, {
         field: 'email',
         code: 'EMAIL_ALREADY_EXISTS',
       });
-    }
-
-    // 2. Lista permitida (allowlist) de roles para registro público: 'empresario', 'tutor', 'developer'
-    const ALLOWED_ROLES = ['empresario', 'tutor', 'developer'];
-    const rolNormalizado = (rol !== undefined && rol !== null) ? String(rol).toLowerCase().trim() : 'empresario';
-
-    if (!ALLOWED_ROLES.includes(rolNormalizado)) {
-      throw new AppError(
-        `Rol no permitido [${rol}]. El registro público solo acepta los roles: ${ALLOWED_ROLES.join(', ')}.`,
-        400,
-        {
-          field: 'rol',
-          code: 'INVALID_ROLE',
-          allowedRoles: ALLOWED_ROLES,
-        }
-      );
     }
 
     // 3. Hashear la contraseña con PBKDF2 + Salt + Cloud KMS Pepper (asíncrono para alto rendimiento)
@@ -85,7 +86,8 @@ export const authService = {
         emailNormalizado,
         hash,
         nombre.trim(),
-        rolNormalizado === 'tutor' ? 'PARENT' : (rolNormalizado === 'developer' ? 'DEVELOPER' : 'ADMIN')
+        // Valor legado de la tabla `users` (compatibilidad con la app móvil): tutor -> PARENT, empresario -> ADMIN
+        rolNormalizado === 'tutor' ? 'PARENT' : 'ADMIN'
       );
     } catch (e) {}
 

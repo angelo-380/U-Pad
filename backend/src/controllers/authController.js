@@ -1,6 +1,7 @@
 import { authService } from '../services/authService.js';
 import { sendCreated, sendSuccess } from '../utils/responseHandler.js';
 import { AppError } from '../utils/AppError.js';
+import { validarPassword } from '../utils/passwordPolicy.js';
 
 export const authController = {
   /**
@@ -26,36 +27,12 @@ export const authController = {
         });
       }
 
-      // Validación estricta de robustez de contraseña (Enterprise Security Policy):
-      // - Mínimo 8 caracteres
-      // - Al menos una letra mayúscula
-      // - Al menos un dígito numérico
-      // - Al menos un carácter especial (@$!%*?&#/_-...)
-      if (password.length < 8) {
-        throw new AppError('La contraseña debe tener al menos 8 caracteres.', 400, {
-          field: 'password',
-          code: 'PASSWORD_TOO_SHORT',
-        });
-      }
-
-      if (!/[A-Z]/.test(password)) {
-        throw new AppError('La contraseña debe contener al menos una letra mayúscula.', 400, {
-          field: 'password',
-          code: 'PASSWORD_NO_UPPERCASE',
-        });
-      }
-
-      if (!/[0-9]/.test(password)) {
-        throw new AppError('La contraseña debe contener al menos un número.', 400, {
-          field: 'password',
-          code: 'PASSWORD_NO_DIGIT',
-        });
-      }
-
-      if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(password)) {
-        throw new AppError('La contraseña debe contener al menos un carácter especial (!@#$%^&*...).', 400, {
-          field: 'password',
-          code: 'PASSWORD_NO_SPECIAL',
+      // Validación estricta de robustez de contraseña (ver utils/passwordPolicy.js)
+      const errorPassword = validarPassword(password);
+      if (errorPassword) {
+        throw new AppError(errorPassword.message, 400, {
+          field: errorPassword.field,
+          code: errorPassword.code,
         });
       }
 

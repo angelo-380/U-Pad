@@ -2,7 +2,7 @@ import { api } from './apiClient.js';
 
 export const backupsService = {
   /**
-   * Listar backups del sistema (Solo rol 'developer' o 'admin')
+   * Listar backups del sistema (Solo rol 'developer')
    */
   async listar() {
     const res = await api.get('/api/admin/backups');

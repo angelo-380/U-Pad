@@ -14,7 +14,6 @@
     "carga": "k6 run --summary-export=reports/reporte-carga.json tests/carga.js",
     "carga:escritura": "k6 run tests/carga-escritura.js",
     "carga:ratelimit": "k6 run --summary-export=reports/reporte-rate-limit.json tests/carga.js",
-    "seed:admin": "node scripts/seedAdmin.js",
     "emulators:start": "firebase emulators:start --only firestore"
   },
   "keywords": [

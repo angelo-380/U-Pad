@@ -12,11 +12,6 @@ export const RoleBadge = ({ role, className = '' }) => {
       icon: Code2,
       bg: 'bg-indigo-50 text-indigo-900 border-indigo-200/80',
     },
-    admin: {
-      label: t('role_admin'),
-      icon: Shield,
-      bg: 'bg-purple-50 text-purple-900 border-purple-200/80',
-    },
     empresario: {
       label: t('role_empresario'),
       icon: Briefcase,

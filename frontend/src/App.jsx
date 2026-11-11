@@ -22,7 +22,7 @@ const HomeRedirect = () => {
   const { user, isAuthenticated, loading } = useAuth();
   if (loading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.rol === 'developer' || user?.rol === 'admin') return <Navigate to="/admin/usuarios" replace />;
+  if (user?.rol === 'developer') return <Navigate to="/admin/usuarios" replace />;
   if (user?.rol === 'empresario') return <Navigate to="/gerencial" replace />;
   return <Navigate to="/rutinas" replace />;
 };

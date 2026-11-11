@@ -27,7 +27,7 @@ export const AppLayout = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backupsModalOpen, setBackupsModalOpen] = useState(false);
 
-  const isDeveloperOrAdmin = user?.rol === 'developer' || user?.rol === 'admin';
+  const isDeveloper = user?.rol === 'developer';
 
   const handleLogout = () => {
     logout();
@@ -35,7 +35,7 @@ export const AppLayout = ({ children }) => {
   };
 
   const isEmpresario = user?.rol === 'empresario';
-  const homePath = isDeveloperOrAdmin ? '/admin/usuarios' : isEmpresario ? '/gerencial' : '/rutinas';
+  const homePath = isDeveloper ? '/admin/usuarios' : isEmpresario ? '/gerencial' : '/rutinas';
 
   let mainLinks = [];
   if (isEmpresario) {
@@ -43,7 +43,7 @@ export const AppLayout = ({ children }) => {
       { label: 'Panel Gerencial (Colegio Sol)', path: '/gerencial', icon: Building2 },
       { label: 'Análisis de Desempeño', path: '/desempeno', icon: TrendingUp },
     ];
-  } else if (isDeveloperOrAdmin) {
+  } else if (isDeveloper) {
     mainLinks = [
       { label: 'Developer Center & BD', path: '/admin/usuarios', icon: Users },
       { label: 'Panel Gerencial', path: '/gerencial', icon: Building2 },
@@ -139,8 +139,8 @@ export const AppLayout = ({ children }) => {
                   );
                 })}
 
-                {/* Botón de Backups del Sistema para Developer / Admin */}
-                {isDeveloperOrAdmin && (
+                {/* Botón de Backups del Sistema (solo Developer) */}
+                {isDeveloper && (
                   <button
                     type="button"
                     onClick={() => setBackupsModalOpen(true)}
@@ -240,7 +240,7 @@ export const AppLayout = ({ children }) => {
               })}
 
               {/* Backups en menú móvil */}
-                {isDeveloperOrAdmin && (
+                {isDeveloper && (
                   <button
                     type="button"
                     onClick={() => {
@@ -288,7 +288,7 @@ export const AppLayout = ({ children }) => {
         </div>
       </footer>
 
-      {isDeveloperOrAdmin && (
+      {isDeveloper && (
         <BackupsModal
           isOpen={backupsModalOpen}
           onClose={() => setBackupsModalOpen(false)}

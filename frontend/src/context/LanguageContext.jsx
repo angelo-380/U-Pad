@@ -129,7 +129,6 @@ export const TRANSLATIONS = {
     select_language: 'Cambiar idioma',
 
     // Roles
-    role_admin: 'Administrador',
     role_empresario: 'Empresario',
     role_tutor: 'Tutor / Familiar',
     role_anonymous: 'Anónimo',
@@ -237,7 +236,6 @@ export const TRANSLATIONS = {
     select_language: 'Change language',
 
     // Roles
-    role_admin: 'Administrator',
     role_empresario: 'Manager',
     role_tutor: 'Tutor / Guardian',
     role_anonymous: 'Anonymous',
@@ -345,7 +343,6 @@ export const TRANSLATIONS = {
     select_language: 'Mudar idioma',
 
     // Roles
-    role_admin: 'Administrador',
     role_empresario: 'Gestor',
     role_tutor: 'Tutor / Familiar',
     role_anonymous: 'Anônimo',
@@ -453,7 +450,6 @@ export const TRANSLATIONS = {
     select_language: 'Changer de langue',
 
     // Roles
-    role_admin: 'Administrateur',
     role_empresario: 'Gestionnaire',
     role_tutor: 'Tuteur / Famille',
     role_anonymous: 'Anonyme',
@@ -561,7 +557,6 @@ export const TRANSLATIONS = {
     select_language: 'Sprache wechseln',
 
     // Roles
-    role_admin: 'Administrator',
     role_empresario: 'Manager',
     role_tutor: 'Betreuer / Familie',
     role_anonymous: 'Anonym',

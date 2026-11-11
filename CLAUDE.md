@@ -6,10 +6,10 @@
 - `frontend/` es React + Vite + Tailwind. Su build se copia a `backend/public_html` (ver sección 9e).
 - Android (`app/`) está fuera de alcance (ver sección 7).
 - Base de datos: SQLite, archivo `upad_relational.db` (ruta resuelta en `backend/src/config/database.js`). Está en `.gitignore`. En Cloud Run vive dentro del contenedor y es efímera (se corregirá, ver 9d).
-- `backend/src/config/firebase.js` y `backend/scripts/seedAdmin.js` (Firestore) son restos heredados y no se usan en runtime. No los uses ni los ejecutes.
+- `backend/src/config/firebase.js` (Firestore) es un resto heredado y no se usa en runtime. No lo uses.
 
 ## 2. Prohibiciones
-- NUNCA ejecutes `cloud/deploy_gcp.sh` (ni `.ps1`), ni `gcloud`, ni `firebase` (incluye `npm run emulators:start`), ni `npm run seed:admin`.
+- NUNCA ejecutes `cloud/deploy_gcp.sh` (ni `.ps1`), ni `gcloud`, ni `firebase` (incluye `npm run emulators:start`).
 - NUNCA leas archivos `.env` (`backend/.env`, `frontend/.env`). Los nombres de variables se sacan del código con `grep process.env` o `grep import.meta.env`.
 - El despliegue lo hace solo el usuario, manualmente.
 
@@ -21,21 +21,23 @@
 
 ## 4. Tests
 - Backend: `cd backend && npm test` (Jest + Supertest, `NODE_ENV=test`).
-- 34/34 pruebas pasan (verificado 11-nov-2026); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
+- 68/68 pruebas pasan (verificado 11-nov-2026, tras el bloque A); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
+- `tests/setup.js` fuerza una base SQLite temporal por corrida (y su carpeta `backups/`): los tests nunca tocan una base real ni crean `.db` en el repo.
 
 ## 5. Roles (estado actual del código)
 Valores en minúscula, guardados en `usuarios.rol` y en el JWT (`rol`):
 - `developer`: administrador del sistema (backups, consola SQL, CRUD de usuarios).
-- `admin`: alias funcional de `developer`. SE ELIMINARÁ por completo (ver 9a). Mientras tanto aparece junto a `developer` en casi todas las validaciones.
 - `empresario`: director de colegio o clínica. KPIs agregados y rutinas de su organización. Rol por defecto del registro.
 - `tutor`: familiar o docente. Solo ve sus propias rutinas.
-- `niño`: rol objetivo (ver 9a). Aún no existe como rol en el backend web.
+- `nino` (sin tilde): rol objetivo (ver 9a). Solo existe como constante en `backend/src/utils/roles.js`; NO es registrable ni asignable y ninguna ruta lo autoriza. Hoy el niño es solo un dispositivo vinculado (`child_devices`, `rutinas.ninoId`).
+- El rol `admin` ya NO existe (eliminado en el bloque A). Las cuentas antiguas con ese rol se migran a `developer` al arrancar (`migrarRolAdmin` en `database.js`).
 
 Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y no tiene guardas por rol):
+- `backend/src/utils/roles.js`: catálogo de roles, `ROLES_REGISTRO_PUBLICO` (empresario, tutor), `ROLES_ASIGNABLES` (developer, empresario, tutor) y `normalizarRol`.
 - `backend/src/middlewares/authMiddleware.js` → `authenticate` y `authorizeRoles(...)`.
-- Rutas: `routes/adminRoutes.js` y `routes/backupRoutes.js` (developer, admin), `routes/rutinasRoutes.js` (developer, admin, empresario, tutor), `routes/kpiRoutes.js` (empresario, developer, admin).
-- Lógica por rol: `services/rutinasService.js` (listar, editar, borrar) y `services/backupService.js`.
-- Registro público: allowlist en `services/authService.js`. Hoy acepta `developer`: se corregirá en el bloque A (cerrar el registro con developer); no lo toques fuera de ese bloque.
+- Rutas: `routes/adminRoutes.js` y `routes/backupRoutes.js` (developer), `routes/rutinasRoutes.js` (developer, empresario, tutor), `routes/kpiRoutes.js` (empresario, developer).
+- Lógica por rol: `services/rutinasService.js` (listar, obtener, editar, borrar; deniega por defecto a roles desconocidos) y `services/backupService.js`.
+- Registro público: `services/authService.js` solo acepta `empresario` y `tutor` (`developer` se rechaza con `INVALID_ROLE`). Al crear/editar usuarios, `routes/adminRoutes.js` valida el rol con lista blanca (`ROLES_ASIGNABLES`).
 - Frontend: `App.jsx` (HomeRedirect), `components/layout/AppLayout.jsx`, `components/common/ProtectedRoute.jsx`, `components/common/RoleBadge.jsx`, `pages/auth/*`, `pages/admin/DeveloperUsersPage.jsx`.
 
 ## 6. Reglas de trabajo
@@ -57,8 +59,8 @@ Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y 
 - No imprimas secretos en la salida ni en los logs.
 
 ## 9. Decisiones del proyecto
-a) Se elimina por completo el rol `admin`. Se conservan `developer`, `empresario`, `tutor` y `niño`. Hay que quitarlo de backend (rutas, servicios, allowlists), frontend (guardas, badges, selects, traducciones) y de los tests.
-b) Se eliminan los seeders y los datos demo (incluye las cuentas sembradas y la auto-reparación de credenciales en `backend/src/config/database.js`, y `backend/scripts/seedAdmin.js`). La primera cuenta `developer` se crea mediante variables de entorno, solo si no existen usuarios. Los nombres de esas variables se definen en el bloque correspondiente; sus valores nunca se escriben en archivos.
+a) Se elimina por completo el rol `admin`. Se conservan `developer`, `empresario`, `tutor` y `niño`. Hecho en el bloque A para backend, frontend y tests (el identificador técnico de niño será `nino`, aún sin implementar).
+b) Se eliminan los seeders y los datos demo. Hecho en `backend/src/config/database.js` (sin cuentas sembradas ni auto-reparación de credenciales). La primera cuenta `developer` se crea SOLO si la tabla `usuarios` está vacía, leyendo `DEV_EMAIL`, `DEV_PASSWORD` y `DEV_NAME` del entorno (las tres son obligatorias; si falta alguna no se crea nada y se avisa en consola con los nombres faltantes). Sus valores nunca se escriben en archivos. `backend/scripts/seedAdmin.js` y el script `seed:admin` ya fueron eliminados. Pendiente: rotar/eliminar las cuentas sembradas que ya existan en bases de datos creadas antes (p. ej. la de Cloud Run).
 c) Solo se trabaja la web. La app Android no se toca (ver sección 7).
 d) El informe del proyecto es la referencia. Más adelante se implementará lo que dice: pepper con Cloud KMS, backups a Cloud Storage y persistencia de la base de datos. Hoy NADA de eso existe (el pepper es una variable de entorno, los backups viven en el disco efímero del contenedor). No lo des por hecho en el código ni en la documentación.
 e) El build del frontend se copia a `backend/public_html` solo cuando el usuario lo pida, al final del trabajo. Mientras tanto, no se regenera ni se modifica.

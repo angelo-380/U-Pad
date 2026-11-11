@@ -22,6 +22,9 @@ cp .env.example .env
 | `NODE_ENV` | Entorno de ejecución (`development`, `production`, `test`) | `development` |
 | `JWT_SECRET` | Secreto criptográfico simétrico para firma de tokens JWT | *(Clave segura de 32+ caracteres)* |
 | `JWT_EXPIRES_IN` | Duración del token de sesión | `24h` |
+| `DEV_EMAIL` | Correo de la cuenta `developer` inicial (solo se usa si la tabla `usuarios` está vacía) | *(sin valor: no se crea la cuenta)* |
+| `DEV_PASSWORD` | Contraseña de la cuenta `developer` inicial (mín. 8 caracteres, con mayúscula, número y carácter especial) | *(sin valor: no se crea la cuenta)* |
+| `DEV_NAME` | Nombre de la cuenta `developer` inicial | *(sin valor: no se crea la cuenta)* |
 | `FIRESTORE_EMULATOR_HOST` | Host y puerto del emulador local de Firestore | `127.0.0.1:8080` |
 | `RATE_LIMIT_WINDOW_MIN` | Ventana de tiempo en minutos para el conteo de peticiones | `15` |
 | `RATE_LIMIT_MAX` | Límite de peticiones permitidas en la ventana para toda la API | `100` |

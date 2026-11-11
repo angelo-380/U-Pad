@@ -44,7 +44,7 @@ export const authenticate = (req, res, next) => {
 };
 
 /**
- * Middleware para autorizar acceso únicamente a ciertos roles (ej. 'admin', 'empresario').
+ * Middleware para autorizar acceso únicamente a ciertos roles (ej. 'developer', 'empresario').
  * @param  {...string} rolesPermitidos Lista de roles con permiso
  */
 export const authorizeRoles = (...rolesPermitidos) => {

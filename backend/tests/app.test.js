@@ -1,12 +1,26 @@
+import crypto from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import request from 'supertest';
 import app from '../src/app.js';
 import { signToken } from '../src/utils/jwt.js';
+import {
+  db,
+  inicializarEsquema,
+  crearDeveloperInicial,
+  migrarRolAdmin,
+  verifyPassword,
+} from '../src/config/database.js';
+import { rutinasService } from '../src/services/rutinasService.js';
 
 // ─── Sin mock: los tests golpean el emulador real de Firestore ──────────────
 // setup.js ya configura FIREBASE_PROJECT_ID y FIRESTORE_EMULATOR_HOST
 // con los mismos valores que usa el backend (.env).
 
 const TIMESTAMP = Date.now();
+
+// Contraseña aleatoria que cumple la política (mayúscula, dígito, especial y 8+ caracteres).
+// Se genera en cada ejecución: los tests nunca contienen credenciales literales.
+const passwordGenerada = () => `Aa1!${crypto.randomBytes(9).toString('hex')}`;
 
 describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', () => {
   let authToken = '';
@@ -267,8 +281,8 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     });
   });
 
-  // 6. Control de Acceso por Roles (Admin vs Empresario)
-  describe('6. Control de Acceso por Roles (RBAC: Admin vs Empresario)', () => {
+  // 6. Control de Acceso por Roles (Empresario vs Developer)
+  describe('6. Control de Acceso por Roles (RBAC: Empresario vs Developer)', () => {
     const orgAId = `org_A_${TIMESTAMP}`;
     const orgBId = `org_B_${TIMESTAMP}`;
 
@@ -286,10 +300,10 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       organizacionId: orgBId,
     });
 
-    const adminToken = signToken({
-      id: `admin_${TIMESTAMP}`,
-      email: `test-${TIMESTAMP}-admin@upad.edu.pe`,
-      rol: 'admin',
+    const developerToken = signToken({
+      id: `dev_${TIMESTAMP}`,
+      email: `test-${TIMESTAMP}-dev@upad.test`,
+      rol: 'developer',
       organizacionId: null,
     });
 
@@ -332,10 +346,10 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       expect(res.body.errors.code).toBe('FORBIDDEN_RESOURCE');
     });
 
-    test('Admin PUEDE listar rutinas de cualquier organización incluyendo la Org A', async () => {
+    test('Developer PUEDE listar (con ?all=true) rutinas de cualquier organización incluyendo la Org A', async () => {
       const res = await request(app)
-        .get('/api/rutinas')
-        .set('Authorization', `Bearer ${adminToken}`);
+        .get('/api/rutinas?all=true')
+        .set('Authorization', `Bearer ${developerToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -343,10 +357,10 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       expect(ids).toContain(rutinaOrgAId);
     });
 
-    test('Admin PUEDE eliminar una rutina de cualquier organización', async () => {
+    test('Developer PUEDE eliminar una rutina de cualquier organización', async () => {
       const res = await request(app)
         .delete(`/api/rutinas/${rutinaOrgAId}`)
-        .set('Authorization', `Bearer ${adminToken}`);
+        .set('Authorization', `Bearer ${developerToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -360,10 +374,10 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
 
     beforeAll(() => {
       devToken = signToken({
-        id: 'usr_developer_master',
-        email: 'developer@upad.cloud',
+        id: `dev_backups_${TIMESTAMP}`,
+        email: `test-${TIMESTAMP}-dev-backups@upad.test`,
         rol: 'developer',
-        organizacionId: 'org_upad_cloud',
+        organizacionId: null,
       });
     });
 
@@ -447,6 +461,295 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       expect(res.status).toBe(403);
       expect(res.body.success).toBe(false);
       expect(res.body.errors.code).toBe('CORS_ORIGIN_NOT_ALLOWED');
+    });
+  });
+
+  // 8. Bloque A: rol admin eliminado, registro público cerrado y cuenta developer inicial
+  describe('8. Roles: sin admin, registro público cerrado y cuenta developer inicial', () => {
+    const emailUnico = (etiqueta) => `test-${TIMESTAMP}-${etiqueta}-${crypto.randomUUID().slice(0, 8)}@upad.test`;
+    const contarUsuarios = (email) => db.prepare('SELECT COUNT(*) AS total FROM usuarios WHERE email = ?').get(email).total;
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+
+    const developerToken = signToken({ id: `dev8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev8@upad.test`, rol: 'developer', organizacionId: null });
+    const tutorToken = signToken({ id: `tutor8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-tutor8@upad.test`, rol: 'tutor', organizacionId: null });
+    const empresarioToken = signToken({ id: `emp8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-emp8@upad.test`, rol: 'empresario', organizacionId: `org8_${TIMESTAMP}` });
+    // Token "legado": emitido cuando el rol admin aún existía
+    const adminLegadoToken = signToken({ id: `admin8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-admin8@upad.test`, rol: 'admin', organizacionId: null });
+
+    describe('8.1 Registro público', () => {
+      test('rol "developer" es rechazado (400 INVALID_ROLE) y NO crea la cuenta', async () => {
+        const email = emailUnico('reg-dev');
+        const res = await request(app)
+          .post('/api/auth/register')
+          .send({ nombre: 'Intento Developer', email, password: passwordGenerada(), rol: 'developer' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.errors.code).toBe('INVALID_ROLE');
+        expect(res.body.errors.allowedRoles).toEqual(['empresario', 'tutor']);
+        expect(contarUsuarios(email)).toBe(0);
+      });
+
+      test.each([['DEVELOPER'], ['superman'], [''], [123], [{}]])(
+        'rol inválido %p es rechazado (400 INVALID_ROLE) y NO crea la cuenta',
+        async (rolInvalido) => {
+          const email = emailUnico('reg-invalido');
+          const res = await request(app)
+            .post('/api/auth/register')
+            .send({ nombre: 'Rol Invalido', email, password: passwordGenerada(), rol: rolInvalido });
+
+          expect(res.status).toBe(400);
+          expect(res.body.errors.code).toBe('INVALID_ROLE');
+          expect(contarUsuarios(email)).toBe(0);
+        }
+      );
+
+      test('rol "tutor" sigue permitido (201) y queda guardado como tutor', async () => {
+        const email = emailUnico('reg-tutor');
+        const res = await request(app)
+          .post('/api/auth/register')
+          .send({ nombre: 'Tutor Valido', email, password: passwordGenerada(), rol: 'tutor' });
+
+        expect(res.status).toBe(201);
+        expect(res.body.data.usuario.rol).toBe('tutor');
+      });
+    });
+
+    describe('8.2 El rol admin ya no existe', () => {
+      test.each([
+        ['get', '/api/rutinas'],
+        ['get', '/api/admin/users'],
+        ['get', '/api/admin/backups'],
+        ['get', '/api/empresario/kpis'],
+      ])('token con rol "admin": %s %s responde 403 FORBIDDEN_ROLE', async (metodo, url) => {
+        const res = await request(app)[metodo](url).set(auth(adminLegadoToken));
+
+        expect(res.status).toBe(403);
+        expect(res.body.errors.code).toBe('FORBIDDEN_ROLE');
+      });
+
+      test('rutinasService deniega por defecto a roles desconocidos (admin, nino): listar, obtener y eliminar', async () => {
+        const creada = await request(app)
+          .post('/api/rutinas')
+          .set(auth(tutorToken))
+          .send({ titulo: `Rutina deny ${TIMESTAMP}`, turno: 'MANANA', pasos: [] });
+        expect(creada.status).toBe(201);
+        const rutinaId = creada.body.data.id;
+
+        for (const rol of ['admin', 'nino']) {
+          const usuario = { id: `x_${rol}`, rol };
+          await expect(rutinasService.listar({}, usuario)).rejects.toMatchObject({ statusCode: 403 });
+          await expect(rutinasService.obtenerPorId(rutinaId, usuario)).rejects.toMatchObject({ statusCode: 403 });
+          await expect(rutinasService.eliminar(rutinaId, usuario)).rejects.toMatchObject({ statusCode: 403 });
+        }
+
+        // La rutina no fue borrada por ningún rol desconocido
+        expect(db.prepare('SELECT COUNT(*) AS total FROM rutinas WHERE id = ?').get(rutinaId).total).toBe(1);
+      });
+    });
+
+    describe('8.3 Lista blanca de roles al crear y editar usuarios (/api/admin/users)', () => {
+      let usuarioCreadoId = '';
+
+      test.each([['tutor'], ['empresario']])(
+        'tutor y empresario NO pueden usar /api/admin/users (403) [%s]',
+        async (rol) => {
+          const token = rol === 'tutor' ? tutorToken : empresarioToken;
+          const res = await request(app)
+            .post('/api/admin/users')
+            .set(auth(token))
+            .send({ nombre: 'No Autorizado', email: emailUnico('no-autorizado'), password: passwordGenerada(), rol: 'tutor' });
+
+          expect(res.status).toBe(403);
+        }
+      );
+
+      test.each([['admin'], ['superman'], ['nino'], [''], [123], [{}]])(
+        'POST con rol inválido %p responde 400 INVALID_ROLE y NO crea el usuario',
+        async (rolInvalido) => {
+          const email = emailUnico('admin-post-invalido');
+          const res = await request(app)
+            .post('/api/admin/users')
+            .set(auth(developerToken))
+            .send({ nombre: 'Rol Invalido', email, password: passwordGenerada(), rol: rolInvalido });
+
+          expect(res.status).toBe(400);
+          expect(res.body.errors.code).toBe('INVALID_ROLE');
+          expect(contarUsuarios(email)).toBe(0);
+        }
+      );
+
+      test('POST con rol válido (empresario) crea el usuario; sin rol se crea como tutor', async () => {
+        const conRol = await request(app)
+          .post('/api/admin/users')
+          .set(auth(developerToken))
+          .send({ nombre: 'Empresario Creado', email: emailUnico('admin-post-emp'), password: passwordGenerada(), rol: 'Empresario' });
+        expect(conRol.status).toBe(201);
+        expect(conRol.body.data.rol).toBe('empresario');
+
+        const sinRol = await request(app)
+          .post('/api/admin/users')
+          .set(auth(developerToken))
+          .send({ nombre: 'Tutor Por Defecto', email: emailUnico('admin-post-def'), password: passwordGenerada() });
+        expect(sinRol.status).toBe(201);
+        expect(sinRol.body.data.rol).toBe('tutor');
+        usuarioCreadoId = sinRol.body.data.id;
+      });
+
+      test.each([['admin'], ['superman'], [123]])(
+        'PUT con rol inválido %p responde 400 INVALID_ROLE y NO cambia el rol',
+        async (rolInvalido) => {
+          const res = await request(app)
+            .put(`/api/admin/users/${usuarioCreadoId}`)
+            .set(auth(developerToken))
+            .send({ rol: rolInvalido });
+
+          expect(res.status).toBe(400);
+          expect(res.body.errors.code).toBe('INVALID_ROLE');
+          expect(db.prepare('SELECT rol FROM usuarios WHERE id = ?').get(usuarioCreadoId).rol).toBe('tutor');
+        }
+      );
+
+      test('PUT con rol válido cambia el rol; PUT sin rol lo conserva', async () => {
+        const cambio = await request(app)
+          .put(`/api/admin/users/${usuarioCreadoId}`)
+          .set(auth(developerToken))
+          .send({ rol: 'empresario' });
+        expect(cambio.status).toBe(200);
+        expect(cambio.body.data.rol).toBe('empresario');
+
+        const sinRol = await request(app)
+          .put(`/api/admin/users/${usuarioCreadoId}`)
+          .set(auth(developerToken))
+          .send({ nombre: 'Nombre Actualizado' });
+        expect(sinRol.status).toBe(200);
+        expect(sinRol.body.data.rol).toBe('empresario');
+      });
+    });
+
+    describe('8.4 Cuenta developer inicial (solo si la tabla usuarios está vacía)', () => {
+      const nuevaConexion = () => {
+        const conexion = new DatabaseSync(':memory:');
+        inicializarEsquema(conexion);
+        return conexion;
+      };
+      const consolaFalsa = () => ({ log: jest.fn(), warn: jest.fn() });
+      const insertarUsuario = (conexion, { id, email, rol }) => conexion.prepare(`
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+        VALUES (?, 'Usuario Existente', ?, 'hash', 'salt', ?, NULL, 1, ?)
+      `).run(id, email, rol, new Date().toISOString());
+      const contar = (conexion) => conexion.prepare('SELECT COUNT(*) AS total FROM usuarios').get().total;
+
+      test('tabla vacía + DEV_EMAIL/DEV_PASSWORD/DEV_NAME: crea exactamente un developer con contraseña hasheada', () => {
+        const conexion = nuevaConexion();
+        const consola = consolaFalsa();
+        const password = passwordGenerada();
+
+        const creada = crearDeveloperInicial(
+          conexion,
+          { DEV_EMAIL: 'Dev.Inicial@Example.com', DEV_PASSWORD: password, DEV_NAME: 'Cuenta Inicial' },
+          consola
+        );
+
+        expect(creada).toBe(true);
+        const filas = conexion.prepare('SELECT * FROM usuarios').all();
+        expect(filas).toHaveLength(1);
+        expect(filas[0].rol).toBe('developer');
+        expect(filas[0].email).toBe('dev.inicial@example.com');
+        expect(filas[0].nombre).toBe('Cuenta Inicial');
+        expect(filas[0].organizacionId).toBeNull();
+        expect(filas[0].activo).toBe(1);
+        expect(filas[0].password_hash).not.toBe(password);
+        expect(verifyPassword(password, filas[0].password_salt, filas[0].password_hash)).toBe(true);
+        // La contraseña jamás aparece en consola
+        expect(JSON.stringify([...consola.log.mock.calls, ...consola.warn.mock.calls])).not.toContain(password);
+      });
+
+      test('si ya existen usuarios NO crea ni modifica nada (aunque las variables estén definidas)', () => {
+        const conexion = nuevaConexion();
+        const consola = consolaFalsa();
+        insertarUsuario(conexion, { id: 'usr_existente', email: 'existente@example.com', rol: 'tutor' });
+
+        const creada = crearDeveloperInicial(
+          conexion,
+          { DEV_EMAIL: 'dev@example.com', DEV_PASSWORD: passwordGenerada(), DEV_NAME: 'Dev' },
+          consola
+        );
+
+        expect(creada).toBe(false);
+        expect(contar(conexion)).toBe(1);
+        expect(conexion.prepare('SELECT rol FROM usuarios WHERE id = ?').get('usr_existente').rol).toBe('tutor');
+        expect(consola.warn).not.toHaveBeenCalled();
+      });
+
+      test.each([
+        [{}, ['DEV_EMAIL', 'DEV_PASSWORD', 'DEV_NAME']],
+        [{ DEV_EMAIL: 'dev@example.com' }, ['DEV_PASSWORD', 'DEV_NAME']],
+        [{ DEV_EMAIL: 'dev@example.com', DEV_NAME: 'Dev' }, ['DEV_PASSWORD']],
+      ])('faltan variables %j: no crea nada y avisa con los nombres faltantes', (entorno, faltantes) => {
+        const conexion = nuevaConexion();
+        const consola = consolaFalsa();
+
+        expect(crearDeveloperInicial(conexion, entorno, consola)).toBe(false);
+        expect(contar(conexion)).toBe(0);
+        expect(consola.warn).toHaveBeenCalledTimes(1);
+        const aviso = consola.warn.mock.calls[0][0];
+        faltantes.forEach((nombre) => expect(aviso).toContain(nombre));
+      });
+
+      test('contraseña que no cumple la política: no crea nada y no imprime la contraseña', () => {
+        const conexion = nuevaConexion();
+        const consola = consolaFalsa();
+        const debil = 'sinmayusculas1!';
+
+        expect(crearDeveloperInicial(conexion, { DEV_EMAIL: 'dev@example.com', DEV_PASSWORD: debil, DEV_NAME: 'Dev' }, consola)).toBe(false);
+        expect(contar(conexion)).toBe(0);
+        expect(consola.warn).toHaveBeenCalledTimes(1);
+        expect(consola.warn.mock.calls[0][0]).toContain('PASSWORD_NO_UPPERCASE');
+        expect(consola.warn.mock.calls[0][0]).not.toContain(debil);
+      });
+
+      test('DEV_EMAIL con formato inválido: no crea nada', () => {
+        const conexion = nuevaConexion();
+        const consola = consolaFalsa();
+
+        expect(crearDeveloperInicial(conexion, { DEV_EMAIL: 'no-es-un-correo', DEV_PASSWORD: passwordGenerada(), DEV_NAME: 'Dev' }, consola)).toBe(false);
+        expect(contar(conexion)).toBe(0);
+        expect(consola.warn).toHaveBeenCalledTimes(1);
+      });
+
+      test('es idempotente: una segunda llamada no crea otra cuenta', () => {
+        const conexion = nuevaConexion();
+        const entorno = { DEV_EMAIL: 'dev@example.com', DEV_PASSWORD: passwordGenerada(), DEV_NAME: 'Dev' };
+
+        expect(crearDeveloperInicial(conexion, entorno, consolaFalsa())).toBe(true);
+        expect(crearDeveloperInicial(conexion, entorno, consolaFalsa())).toBe(false);
+        expect(contar(conexion)).toBe(1);
+      });
+    });
+
+    describe('8.5 Migración de usuarios con el rol admin eliminado', () => {
+      test('migra admin -> developer, no toca otros roles y es idempotente', () => {
+        const conexion = new DatabaseSync(':memory:');
+        inicializarEsquema(conexion);
+        const consola = { log: jest.fn(), warn: jest.fn() };
+        const insertar = (id, email, rol) => conexion.prepare(`
+          INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+          VALUES (?, 'Usuario', ?, 'hash', 'salt', ?, NULL, 1, ?)
+        `).run(id, email, rol, new Date().toISOString());
+        insertar('u1', 'antiguo.admin@example.com', 'admin');
+        insertar('u2', 'tutor@example.com', 'tutor');
+
+        expect(migrarRolAdmin(conexion, consola)).toBe(1);
+        expect(conexion.prepare('SELECT rol FROM usuarios WHERE id = ?').get('u1').rol).toBe('developer');
+        expect(conexion.prepare('SELECT rol FROM usuarios WHERE id = ?').get('u2').rol).toBe('tutor');
+        expect(consola.warn).toHaveBeenCalledTimes(1);
+        expect(consola.warn.mock.calls[0][0]).toContain('antiguo.admin@example.com');
+
+        // Segunda ejecución: nada que migrar y sin ruido en consola
+        expect(migrarRolAdmin(conexion, consola)).toBe(0);
+        expect(consola.warn).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });

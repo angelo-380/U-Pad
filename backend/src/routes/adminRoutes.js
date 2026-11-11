@@ -4,12 +4,33 @@ import { db, hashPassword } from '../config/database.js';
 import { authenticate, authorizeRoles } from '../middlewares/authMiddleware.js';
 import { sendSuccess } from '../utils/responseHandler.js';
 import { AppError } from '../utils/AppError.js';
+import { ROLES, ROLES_ASIGNABLES, normalizarRol } from '../utils/roles.js';
 
 const router = Router();
 
-// Todas las rutas de administración requieren autenticación y rol 'developer' o 'admin'
+// Todas las rutas de administración requieren autenticación y rol 'developer'
 router.use(authenticate);
-router.use(authorizeRoles('developer', 'admin'));
+router.use(authorizeRoles('developer'));
+
+/**
+ * Valida (lista blanca) el rol recibido al crear o editar usuarios.
+ * Devuelve el rol normalizado o lanza AppError 400 INVALID_ROLE.
+ */
+const validarRolAsignable = (rol) => {
+  const rolNormalizado = normalizarRol(rol);
+  if (!rolNormalizado || !ROLES_ASIGNABLES.includes(rolNormalizado)) {
+    throw new AppError(
+      `Rol no permitido [${String(rol)}]. Los roles asignables son: ${ROLES_ASIGNABLES.join(', ')}.`,
+      400,
+      {
+        field: 'rol',
+        code: 'INVALID_ROLE',
+        allowedRoles: ROLES_ASIGNABLES,
+      }
+    );
+  }
+  return rolNormalizado;
+};
 
 /**
  * GET /api/admin/users
@@ -32,7 +53,7 @@ router.get('/users', (req, res, next) => {
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    if (roleFilter && ['developer', 'admin', 'empresario', 'tutor'].includes(roleFilter)) {
+    if (roleFilter && ROLES_ASIGNABLES.includes(roleFilter)) {
       whereClause += ' AND u.rol = ?';
       params.push(roleFilter);
     }
@@ -88,11 +109,14 @@ router.get('/users', (req, res, next) => {
  */
 router.post('/users', (req, res, next) => {
   try {
-    const { nombre, email, password, rol = 'tutor', organizacionId = null } = req.body;
+    const { nombre, email, password, rol, organizacionId = null } = req.body;
 
     if (!nombre || !email || !password) {
       throw new AppError('Nombre, email y contraseña son obligatorios', 400);
     }
+
+    // Lista blanca de roles: si no se indica, el usuario se crea como tutor
+    const rolValidado = (rol === undefined || rol === null) ? ROLES.TUTOR : validarRolAsignable(rol);
 
     const cleanEmail = email.trim().toLowerCase();
     const existing = db.prepare('SELECT id FROM usuarios WHERE email = ?').get(cleanEmail);
@@ -107,7 +131,7 @@ router.post('/users', (req, res, next) => {
     db.prepare(`
       INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-    `).run(userId, nombre.trim(), cleanEmail, hash, salt, rol, organizacionId || null, now);
+    `).run(userId, nombre.trim(), cleanEmail, hash, salt, rolValidado, organizacionId || null, now);
 
     const created = db.prepare('SELECT id, nombre, email, rol, organizacionId, activo, creadoEn FROM usuarios WHERE id = ?').get(userId);
 
@@ -146,7 +170,8 @@ router.put('/users/:userId', (req, res, next) => {
     }
 
     const newNombre = nombre ? nombre.trim() : existing.nombre;
-    const newRol = rol ? rol.trim() : existing.rol;
+    // Lista blanca de roles: solo se valida si el cliente envía un rol; si no, se conserva el actual
+    const newRol = (rol === undefined || rol === null) ? existing.rol : validarRolAsignable(rol);
     const newOrg = organizacionId !== undefined ? (organizacionId ? organizacionId.trim() : null) : existing.organizacionId;
     const newActivo = activo !== undefined ? (activo ? 1 : 0) : existing.activo;
 

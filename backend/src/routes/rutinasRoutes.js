@@ -7,8 +7,8 @@ const router = Router();
 // Todas las operaciones sobre rutinas requieren autenticación JWT
 router.use(authenticate);
 
-// Control de roles autorizados: developer, admin, empresario y tutor
-router.use(authorizeRoles('developer', 'admin', 'empresario', 'tutor'));
+// Control de roles autorizados: developer, empresario y tutor
+router.use(authorizeRoles('developer', 'empresario', 'tutor'));
 
 // CRUD de Rutinas
 router.route('/')
