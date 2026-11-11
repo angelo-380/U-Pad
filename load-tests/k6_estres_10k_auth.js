@@ -55,14 +55,14 @@ export default function () {
   } else {
     errorRate.add(true);
     console.error(`Error en registro: ${regRes.status} ${regRes.body}`);
+    return;
   }
   latenciaRegistro.add(regRes.timings.duration);
 
-  // 2. Login inmediato (POST /api/auth/login) vinculando la cookie de afinidad de sesión GAESA de Google Cloud
-  const setCookie = regRes.headers['Set-Cookie'];
+  // 2. Login inmediato (POST /api/auth/login)
   const loginHeaders = { 'Content-Type': 'application/json' };
-  if (setCookie) {
-    loginHeaders['Cookie'] = setCookie.split(';')[0];
+  if (regRes.headers && regRes.headers['Set-Cookie']) {
+    loginHeaders['Cookie'] = regRes.headers['Set-Cookie'].split(';')[0];
   }
 
   const loginRes = http.post(

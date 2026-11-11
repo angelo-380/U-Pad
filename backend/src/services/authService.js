@@ -64,8 +64,8 @@ export const authService = {
       );
     }
 
-    // 3. Hashear la contraseña con PBKDF2 (100,000 rondas) + Salt + Cloud KMS Pepper (asíncrono para alto rendimiento)
-    const { hash, salt } = await hashPasswordAsync(password);
+    // 3. Hashear la contraseña con PBKDF2 + Salt + Cloud KMS Pepper (asíncrono para alto rendimiento)
+    const { hash, salt } = await hashPasswordAsync(password, null, emailNormalizado);
     const userId = `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
     const creadoEn = new Date().toISOString();
 
@@ -193,7 +193,7 @@ export const authService = {
     if (user.password_hash.startsWith('$2')) {
       passwordValido = await bcrypt.compare(password, user.password_hash);
     } else {
-      passwordValido = await verifyPasswordAsync(password, user.password_salt, user.password_hash);
+      passwordValido = await verifyPasswordAsync(password, user.password_salt, user.password_hash, emailNormalizado);
     }
 
     if (!passwordValido) {

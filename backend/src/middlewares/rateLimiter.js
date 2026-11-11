@@ -9,12 +9,13 @@ const MAX_GENERAL = process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT
 const MAX_AUTH = process.env.RATE_LIMIT_AUTH_MAX ? parseInt(process.env.RATE_LIMIT_AUTH_MAX, 10) : 50000;
 
 const windowMs = WINDOW_MIN * 60 * 1000;
+const IS_DISABLED = process.env.RATE_LIMIT_DISABLED === 'true';
 
 /**
  * Limitador general para toda la API:
  * Por defecto: 100 peticiones cada 15 minutos por IP (configurable con RATE_LIMIT_MAX).
  */
-export const generalLimiter = rateLimit({
+export const generalLimiter = IS_DISABLED ? (req, res, next) => next() : rateLimit({
   windowMs,
   max: MAX_GENERAL,
   standardHeaders: true, // Cabeceras estándar RateLimit-*
@@ -35,7 +36,7 @@ export const generalLimiter = rateLimit({
  * Limitador estricto para endpoints de autenticación (/api/auth/login, /api/auth/register):
  * Por defecto: 10 intentos cada 15 minutos por IP contra fuerza bruta (configurable con RATE_LIMIT_AUTH_MAX).
  */
-export const authLimiter = rateLimit({
+export const authLimiter = IS_DISABLED ? (req, res, next) => next() : rateLimit({
   windowMs,
   max: MAX_AUTH,
   standardHeaders: true,
