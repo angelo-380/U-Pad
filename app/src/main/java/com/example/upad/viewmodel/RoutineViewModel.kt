@@ -19,7 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import com.google.firebase.firestore.ListenerRegistration
 import com.example.upad.utils.RoutineProgressCalculator
 import kotlinx.coroutines.tasks.await
-
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.lifecycle.viewModelScope
 data class TaskItem(
     val actividad: String = "",
     val palabraClave: String = "",
@@ -281,6 +283,44 @@ class RoutineViewModel(
     private var pairingCodeListener: ListenerRegistration? = null
     private var codigoGeneradoEnSesion = false
 
+    private val _errorConexionServidor = MutableStateFlow(false)
+    val errorConexionServidor: StateFlow<Boolean> = _errorConexionServidor.asStateFlow()
+
+    private val _nombreTutorVinculado = MutableStateFlow("")
+    val nombreTutorVinculado: StateFlow<String> = _nombreTutorVinculado.asStateFlow()
+
+    fun regenerarCodigoNiño(deviceId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val nuevoCodigo = (100000..999999).random().toString()
+            val registrado = repository.createPairingCode(nuevoCodigo, deviceId)
+
+            if (!registrado) {
+                _errorConexionServidor.value = true
+                _codigoNiño.value = "------"
+                codigoGeneradoEnSesion = false
+                return@launch
+            }
+
+            _errorConexionServidor.value = false
+            _codigoNiño.value = nuevoCodigo
+            codigoGeneradoEnSesion = true
+
+            pairingCodeListener?.remove()
+            pairingCodeListener = repository.listenToPairingCode(nuevoCodigo) { codeEntry ->
+                if (codeEntry != null) {
+                    val estado = codeEntry.estado
+                    val pId = codeEntry.padreId
+                    if (estado == "enlazado" && pId.isNotEmpty()) {
+                        val tutor = com.example.upad.data.LocalDataManager.getAllUsers().values.find { it.uid == pId }?.name ?: "Tutor"
+                        _nombreTutorVinculado.value = tutor
+                        repository.linkDeviceToParent(deviceId, pId)
+                        repository.deletePairingCode(nuevoCodigo)
+                    }
+                }
+            }
+        }
+    }
+
     fun iniciarEscuchaDispositivoNiño(deviceId: String) {
         devicesListener?.remove()
         devicesListener = repository.listenToChildDevice(deviceId) { device ->
@@ -292,25 +332,10 @@ class RoutineViewModel(
                 premiumListener?.remove()
 
                 if (!codigoGeneradoEnSesion) {
-                    codigoGeneradoEnSesion = true
-                    val nuevoCodigo = (100000..999999).random().toString()
-                    _codigoNiño.value = nuevoCodigo
-
-                    repository.createPairingCode(nuevoCodigo, deviceId)
-
-                    pairingCodeListener?.remove()
-                    pairingCodeListener = repository.listenToPairingCode(nuevoCodigo) { codeEntry ->
-                        if (codeEntry != null) {
-                            val estado = codeEntry.estado
-                            val pId = codeEntry.padreId
-                            if (estado == "enlazado" && pId.isNotEmpty()) {
-                                repository.linkDeviceToParent(deviceId, pId)
-                                repository.deletePairingCode(nuevoCodigo)
-                            }
-                        }
-                    }
+                    regenerarCodigoNiño(deviceId)
                 } else if (_codigoNiño.value == "------") {
                     codigoGeneradoEnSesion = false
+                    regenerarCodigoNiño(deviceId)
                 }
 
                 _cargandoChild.value = false

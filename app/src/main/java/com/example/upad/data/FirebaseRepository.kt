@@ -58,8 +58,8 @@ class FirebaseRepository {
         return LocalDataManager.listenChildDevice(deviceId, onDeviceChanged)
     }
 
-    fun createPairingCode(code: String, deviceId: String) {
-        LocalDataManager.createPairingCode(code, deviceId)
+    fun createPairingCode(code: String, deviceId: String): Boolean {
+        return LocalDataManager.createPairingCode(code, deviceId)
     }
 
     fun listenToPairingCode(code: String, onCodeChanged: (LocalPairingCode?) -> Unit): ListenerRegistration {

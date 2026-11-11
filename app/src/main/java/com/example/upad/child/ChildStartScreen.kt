@@ -59,17 +59,31 @@ fun ChildStartScreen(
     val deviceId = remember { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
 
     val codigoNiño by routineViewModel.codigoNiño.collectAsState()
+    val errorConexionServidor by routineViewModel.errorConexionServidor.collectAsState()
     val estaVinculado by routineViewModel.estaVinculado.collectAsState()
+    val nombreTutorVinculado by routineViewModel.nombreTutorVinculado.collectAsState()
     var secondsRemaining by remember { mutableIntStateOf(60) }
+    var codeSeed by remember { mutableIntStateOf(1) }
+    var mostrarConfirmacionVinculado by remember { mutableStateOf(false) }
+
+    // Detección reactiva de vinculación completada
     LaunchedEffect(estaVinculado) {
-        if (!estaVinculado) {
+        if (estaVinculado) {
+            mostrarConfirmacionVinculado = true
+        }
+    }
+
+    // Timer reactivo de 60 s que regenera efectivamente el código al llegar a 0 (solo si no hay error de conexión)
+    LaunchedEffect(estaVinculado, errorConexionServidor, codeSeed) {
+        if (!estaVinculado && !errorConexionServidor) {
             secondsRemaining = 60
             while (secondsRemaining > 0) {
                 kotlinx.coroutines.delay(1000L)
                 secondsRemaining--
             }
-            // Re-generar cdigo al expirar temporizador TOTP
-            routineViewModel.iniciarEscuchaDispositivoNiño(deviceId)
+            // Al llegar a 0, genera un nuevo código cancelando el PENDING anterior
+            routineViewModel.regenerarCodigoNiño(deviceId)
+            codeSeed++
         }
     }
     val cargando by routineViewModel.cargandoChild.collectAsState()
@@ -231,53 +245,155 @@ fun ChildStartScreen(
                 verticalArrangement = Arrangement.Top
             ) {
                 if (!estaVinculado) {
-                    Text(
-                        text = stringResource(R.string.child_pairing_instructions),
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1A1A1A),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 40.dp)
-                    )
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
-                    ) {
-                        val codeStr = codigoNiño
-                        for (i in 0 until 6) {
-                            val digit = codeStr.getOrNull(i)?.toString() ?: "-"
-                            Card(
+                    if (errorConexionServidor) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 40.dp)
+                        ) {
+                            Text(
+                                text = "Sin conexión con el servidor",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFD32F2F),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "No se pudo registrar el código en el backend. Revisa tu conexión o el estado del servidor.",
+                                fontSize = 15.sp,
+                                color = Color(0xFF555555),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp)
+                            )
+                            Spacer(modifier = Modifier.height(32.dp))
+                            Button(
+                                onClick = {
+                                    routineViewModel.regenerarCodigoNiño(deviceId)
+                                    codeSeed++
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1)),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8)),
-                                border = BorderStroke(2.5.dp, Color(0xFF0D47A1)),
-                                modifier = Modifier.size(width = 44.dp, height = 62.dp)
+                                modifier = Modifier.height(50.dp)
                             ) {
-                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                    Text(
-                                        text = digit,
-                                        fontSize = 32.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color(0xFF0D47A1),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                            if (i == 2) {
-                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Reintentar",
+                                    color = Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
+                    } else {
+                        Text(
+                            text = stringResource(R.string.child_pairing_instructions),
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1A1A1A),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 40.dp)
+                        )
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                        ) {
+                            val codeStr = codigoNiño
+                            for (i in 0 until 6) {
+                                val digit = codeStr.getOrNull(i)?.toString() ?: "-"
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8)),
+                                    border = BorderStroke(2.5.dp, Color(0xFF0D47A1)),
+                                    modifier = Modifier.size(width = 44.dp, height = 62.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Text(
+                                            text = digit,
+                                            fontSize = 32.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color(0xFF0D47A1),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                                if (i == 2) {
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(32.dp))
+                        CircularProgressIndicator(color = Color(0xFF0D47A1), strokeWidth = 5.dp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Código temporal: ${secondsRemaining}s (seguridad TOTP)",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (secondsRemaining <= 10) Color(0xFFD32F2F) else Color(0xFF555555)
+                        )
                     }
-                    Spacer(modifier = Modifier.height(32.dp))
-                    CircularProgressIndicator(color = Color(0xFF0D47A1), strokeWidth = 5.dp)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Cdigo temporal: ${secondsRemaining}s (seguridad TOTP)",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (secondsRemaining <= 10) Color(0xFFD32F2F) else Color(0xFF555555)
-                    )
+                } else if (mostrarConfirmacionVinculado) {
+                    // --- PANTALLA DE CONFIRMACIÓN LADO NIÑO TRAS VINCULAR ---
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 40.dp, bottom = 20.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(90.dp),
+                            shape = CircleShape,
+                            color = Color(0xFF2E7D32).copy(alpha = 0.15f)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "✓",
+                                    fontSize = 44.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = "¡Dispositivo vinculado correctamente!",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF1B5E20),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Enlazado con el tutor: ${nombreTutorVinculado.ifEmpty { "Papá / Mamá" }}",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF333333),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Tus rutinas visuales preparadas por tu tutor están listas.",
+                            fontSize = 13.sp,
+                            color = Color(0xFF666666),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = { mostrarConfirmacionVinculado = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1)),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.height(48.dp)
+                        ) {
+                            Text(
+                                text = "VER MIS ACTIVIDADES",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+                        }
+                    }
                 } else {
                     if (esPremiumPorPadre || verTareasModoBasico) {
                         Text(

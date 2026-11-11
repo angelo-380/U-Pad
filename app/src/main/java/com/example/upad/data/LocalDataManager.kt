@@ -503,6 +503,14 @@ object LocalDataManager {
         prefs.edit().putString(KEY_SERVER_IP, ip.trim()).apply()
     }
 
+    // =========================================================================
+    // CONFIGURACIÓN DE RED Y URLS BASE (A)
+    // Para probar en un teléfono físico con IP LAN, cambia DEFAULT_DEV_IP por la IP de tu PC (ej: "192.168.1.50")
+    // =========================================================================
+    const val DEFAULT_DEV_IP = "10.0.2.2" // <-- Cambiar esta línea si pruebas en teléfono físico LAN (ej: "192.168.1.X")
+    private const val DEFAULT_EMULATOR_BASE_URL = "http://$DEFAULT_DEV_IP:3000"
+    private const val CLOUD_RUN_FALLBACK_URL = "https://upad-backend-service-466241893446.us-central1.run.app"
+
     private fun getCloudBaseUrl(): String {
         val ip = getServerIp()
         return "http://$ip:3000"
@@ -510,24 +518,22 @@ object LocalDataManager {
 
     private fun getCandidateBaseUrls(): List<String> {
         val configured = getCloudBaseUrl()
+        // 1. Primero adb reverse (http://127.0.0.1:3000)
+        // 2. IP configurada en SharedPreferences (ej. 10.0.2.2 o LAN)
+        // 3. Fallback emulador estándar si difiere
+        // 4. Último fallback: Cloud Run
         val candidates = mutableListOf(
-            "https://upad-backend-service-466241893446.us-central1.run.app",
-            configured
+            "http://127.0.0.1:3000",
+            configured,
+            DEFAULT_EMULATOR_BASE_URL,
+            CLOUD_RUN_FALLBACK_URL
         )
-        val defaults = listOf(
-            "http://172.22.158.28:3000",
-            "http://192.168.15.12:3000",
-            "http://192.168.15.8:3000",
-            "http://10.0.2.2:3000",
-            "http://127.0.0.1:3000"
-        )
-        for (d in defaults) {
-            if (!candidates.contains(d)) {
-                candidates.add(d)
-            }
-        }
-        return candidates
+        return candidates.distinct()
     }
+
+    private fun connectTimeoutFor(baseUrl: String): Int = 3000
+
+    private fun readTimeoutFor(baseUrl: String, defaultTimeout: Int = 3000): Int = 3000
 
     private fun httpPostSync(path: String, jsonBody: String): String? {
         val urls = getCandidateBaseUrls()
@@ -536,8 +542,8 @@ object LocalDataManager {
                 val url = java.net.URL("$baseUrl$path")
                 val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                     requestMethod = "POST"
-                    connectTimeout = 3000
-                    readTimeout = 4000
+                    connectTimeout = connectTimeoutFor(baseUrl)
+                    readTimeout = readTimeoutFor(baseUrl, 4000)
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json")
                     setRequestProperty("Accept", "application/json")
@@ -550,7 +556,12 @@ object LocalDataManager {
                     }
                 }
                 val responseCode = conn.responseCode
-                val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+                if (responseCode !in 200..299) {
+                    Log.w(TAG, "httpPostSync fallo $baseUrl$path con HTTP $responseCode")
+                    conn.disconnect()
+                    continue
+                }
+                val stream = conn.inputStream
                 if (stream != null) {
                     val reader = java.io.BufferedReader(java.io.InputStreamReader(stream))
                     val sb = StringBuilder()
@@ -584,8 +595,8 @@ object LocalDataManager {
                     val url = java.net.URL("$baseUrl$path")
                     val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                         requestMethod = "POST"
-                        connectTimeout = 3000
-                        readTimeout = 3000
+                        connectTimeout = connectTimeoutFor(baseUrl)
+                        readTimeout = readTimeoutFor(baseUrl, 3000)
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json")
                         setRequestProperty("User-Agent", "UPad-Android-Client/2.0")
@@ -621,8 +632,8 @@ object LocalDataManager {
                     val url = java.net.URL("$baseUrl$path")
                     val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                         requestMethod = "DELETE"
-                        connectTimeout = 3000
-                        readTimeout = 3000
+                        connectTimeout = connectTimeoutFor(baseUrl)
+                        readTimeout = readTimeoutFor(baseUrl, 3000)
                         setRequestProperty("User-Agent", "UPad-Android-Client/2.0")
                     }
                     val code = conn.responseCode
@@ -643,8 +654,8 @@ object LocalDataManager {
                 val url = java.net.URL("$baseUrl$path")
                 val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 3000
-                    readTimeout = 3000
+                    connectTimeout = connectTimeoutFor(baseUrl)
+                    readTimeout = readTimeoutFor(baseUrl, 3000)
                     setRequestProperty("Accept", "application/json")
                     setRequestProperty("User-Agent", "UPad-Android-Client/2.0")
                 }
@@ -687,19 +698,46 @@ object LocalDataManager {
         prefs.edit().putString(KEY_DEVICES_MAP, gson.toJson(map)).apply()
     }
 
-    fun createPairingCode(code: String, deviceId: String) {
+    fun createPairingCode(code: String, deviceId: String, onEffectiveCodeResolved: ((String) -> Unit)? = null): Boolean {
+        // Sincronizar creación de código con el backend primero
+        val body = "{\"code\":\"$code\",\"deviceId\":\"$deviceId\"}"
+        val res = httpPostSync("/api/v1/devices/pairing/create", body)
+        if (res == null) {
+            Log.e(TAG, "Error registrando código de vinculación en el servidor")
+            return false
+        }
+
+        var effectiveCode = code
+        try {
+            val root = gson.fromJson(res, Map::class.java)
+            val status = root["status"] as? String
+            val success = root["success"] as? Boolean
+            if (status == "error" || success == false) {
+                Log.e(TAG, "Servidor rechazó la creación del código: $res")
+                return false
+            }
+            // Si la respuesta incluye el código guardado y es distinto del enviado, usar el código del servidor
+            val dataObj = root["data"] as? Map<*, *>
+            val returnedCode = (dataObj?.get("code") as? String) ?: (root["code"] as? String)
+            if (!returnedCode.isNullOrEmpty() && returnedCode != effectiveCode) {
+                effectiveCode = returnedCode
+                onEffectiveCodeResolved?.invoke(effectiveCode)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error analizando respuesta de pairing/create: ${e.message}")
+        }
+
+        // Si el backend confirmó con éxito, guardar en SharedPreferences localmente
         val map = getPairingCodes().toMutableMap()
-        val entry = LocalPairingCode(code = code, deviceId = deviceId, estado = "esperando", padreId = "")
-        map[code] = entry
+        val entry = LocalPairingCode(code = effectiveCode, deviceId = deviceId, estado = "esperando", padreId = "")
+        map[effectiveCode] = entry
         prefs.edit().putString(KEY_PAIRING_CODES, gson.toJson(map)).apply()
 
         mainHandler.post {
-            pairingListeners[code]?.forEach { it.invoke(entry) }
+            pairingListeners[effectiveCode]?.forEach { it.invoke(entry) }
         }
 
-        // Sincronizar creación de código con Google Cloud Platform (Cloud Run)
-        val body = "{\"code\":\"$code\",\"deviceId\":\"$deviceId\"}"
-        httpPost("/api/v1/devices/pairing/create", body)
+        return true
     }
 
     fun getPairingCodes(): Map<String, LocalPairingCode> {
@@ -712,12 +750,31 @@ object LocalDataManager {
         }
     }
 
-    fun linkDeviceToParent(codeOrDeviceId: String, parentId: String) {
+    fun linkDeviceToParent(codeOrDeviceId: String, parentId: String): Pair<Boolean, String> {
         val devices = getAllDevices().toMutableMap()
         val codes = getPairingCodes().toMutableMap()
 
         val matchingCode = codes[codeOrDeviceId]
         val targetDeviceId = matchingCode?.deviceId ?: codeOrDeviceId
+
+        // Intentar validación síncrona contra backend (local/cloud)
+        val body = "{\"code\":\"$codeOrDeviceId\",\"parentId\":\"$parentId\"}"
+        val res = httpPostSync("/api/v1/devices/pairing/link", body)
+        if (res != null) {
+            try {
+                val root = gson.fromJson(res, Map::class.java)
+                val status = root["status"] as? String
+                val statusCode = (root["statusCode"] as? Number)?.toInt()
+                if (status == "error" || statusCode == 410) {
+                    val errMsg = (root["message"] as? String) 
+                        ?: (root["error"] as? Map<*, *>)?.get("message") as? String 
+                        ?: "El código ha expirado o ya fue utilizado."
+                    return Pair(false, errMsg)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error analizando respuesta de link: ${e.message}")
+            }
+        }
 
         val updatedDevice = devices[targetDeviceId]?.copy(
             padreId = parentId,
@@ -745,9 +802,7 @@ object LocalDataManager {
             }
         }
 
-        // Sincronizar enlace en Google Cloud Platform (Cloud Run)
-        val body = "{\"code\":\"$codeOrDeviceId\",\"parentId\":\"$parentId\"}"
-        httpPost("/api/v1/devices/pairing/link", body)
+        return Pair(true, targetDeviceId)
     }
 
     fun updateDeviceLocation(deviceId: String, lat: Double, lng: Double) {

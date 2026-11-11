@@ -39,9 +39,22 @@ export const deviceController = {
    */
   async generarCodigo(req, res, next) {
     try {
-      const { deviceId } = req.body;
-      const resultado = await deviceService.generarCodigo(deviceId);
+      const { deviceId, code } = req.body || {};
+      const resultado = await deviceService.generarCodigo(deviceId, code);
       return sendCreated(res, 'Código de emparejamiento generado exitosamente', resultado);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * GET /api/devices/pairing/:code - Consulta el estado del código de vinculación
+   */
+  async consultarCodigo(req, res, next) {
+    try {
+      const { code } = req.params;
+      const resultado = await deviceService.consultarCodigo(code);
+      return sendSuccess(res, 200, 'Estado del código obtenido exitosamente', resultado);
     } catch (error) {
       next(error);
     }

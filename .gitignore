@@ -39,3 +39,5 @@ backend/coverage/
 *.pdf
 *.exe
 tools/k6.exe
+backend/backups/
+reports/
