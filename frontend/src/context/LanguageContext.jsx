@@ -134,6 +134,10 @@ export const TRANSLATIONS = {
     role_tutor: 'Tutor / Familiar',
     role_anonymous: 'Anónimo',
 
+    // Botones y Auth
+    btn_login: 'Iniciar Sesión',
+    btn_register: 'Registrarse',
+
     // Rutinas Page
     routines_title: 'Gestión de Rutinas',
     routines_subtitle: 'Estructura secuencias con pictogramas ARASAAC para anticipar actividades y calmar la ansiedad diaria',
@@ -174,7 +178,7 @@ export const TRANSLATIONS = {
     // Drawer / Formulario de creación y edición
     drawer_create_title: 'Crear Nueva Rutina Visual',
     drawer_edit_title: 'Editar Rutina Visual',
-    drawer_subtitle: 'Estructura los pasos con palabras clave para asociar automáticamente pictogramas ARASAAC.',
+    drawer_subtitle: '',
     drawer_field_title: 'Título de la rutina',
     drawer_field_title_placeholder: 'Ej. Rutina de Despertar y Salida',
     drawer_field_shift: 'Turno del día',
@@ -242,6 +246,10 @@ export const TRANSLATIONS = {
     role_tutor: 'Tutor / Guardian',
     role_anonymous: 'Anonymous',
 
+    // Botones y Auth
+    btn_login: 'Sign In',
+    btn_register: 'Register',
+
     // Rutinas Page
     routines_title: 'Routine Management',
     routines_subtitle: 'Structure step sequences with ARASAAC pictograms to anticipate activities and reduce daily anxiety',
@@ -282,7 +290,7 @@ export const TRANSLATIONS = {
     // Drawer / Form
     drawer_create_title: 'Create New Visual Routine',
     drawer_edit_title: 'Edit Visual Routine',
-    drawer_subtitle: 'Structure activities with keywords to automatically bind ARASAAC pictograms.',
+    drawer_subtitle: '',
     drawer_field_title: 'Routine title',
     drawer_field_title_placeholder: 'E.g., Morning Wake-up and Departure',
     drawer_field_shift: 'Shift of the day',
@@ -659,7 +667,7 @@ const LanguageContext = createContext();
 
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguage] = useState(() => {
-    return localStorage.getItem('upad_web_language') || 'en';
+    return localStorage.getItem('upad_web_language') || 'es';
   });
 
   const changeLanguage = (newLang) => {

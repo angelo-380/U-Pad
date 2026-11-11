@@ -243,9 +243,6 @@ export const RutinaDrawer = ({
               >
                 {mode === 'create' ? t('drawer_create_title') : t('drawer_edit_title')}
               </h2>
-              <p className="text-xs text-tea-muted mt-1 leading-relaxed">
-                {t('drawer_subtitle')}
-              </p>
             </div>
 
             <button

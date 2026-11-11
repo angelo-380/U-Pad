@@ -213,7 +213,7 @@ export const RegisterPage = () => {
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" />
-                  <span>{t('btn_register') || 'Complete Registration'}</span>
+                  <span>{t('btn_register') || 'Registrarse'}</span>
                 </>
               )}
             </button>

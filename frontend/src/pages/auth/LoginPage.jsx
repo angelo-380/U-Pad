@@ -202,7 +202,7 @@ export const LoginPage = () => {
               ) : (
                 <>
                   <LogIn className="w-4 h-4" />
-                  <span>{t('btn_login') || 'Sign In to Dashboard'}</span>
+                  <span>{t('btn_login') || 'Iniciar Sesión'}</span>
                 </>
               )}
             </button>

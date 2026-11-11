@@ -50,14 +50,12 @@ export const AppLayout = ({ children }) => {
       { label: 'Rutinas', path: '/rutinas', icon: CalendarCheck },
       { label: 'Desempeño', path: '/desempeno', icon: TrendingUp },
       { label: 'GPS', path: '/gps', icon: Compass },
-      { label: 'IA', path: '/ia', icon: Cpu },
     ];
   } else {
     mainLinks = [
       { label: t('nav_routines'), path: '/rutinas', icon: CalendarCheck },
       { label: 'Análisis de Desempeño', path: '/desempeno', icon: TrendingUp },
       { label: t('nav_gps') || 'GPS & Ubicación', path: '/gps', icon: Compass },
-      { label: t('nav_ai') || 'Asistente IA', path: '/ia', icon: Cpu },
     ];
   }
 
