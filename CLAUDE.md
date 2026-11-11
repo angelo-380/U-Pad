@@ -81,7 +81,16 @@ e) El build del frontend se copia a `backend/public_html` solo cuando el usuario
 - **A2. Organizaciones y KPIs reales:** tabla `organizaciones` con código de unión para tutores; el cliente nunca envía `organizacionId`; `GET /api/organizaciones/mia`; migración única de datos existentes; KPIs de rutinas institucionales y estudiantes (niños vinculados) con datos reales por organización.
 
 ### Pendiente
+Referencia: el listado completo de 22 puntos del docente está en `docs/FEEDBACK_DOCENTE.md` (los números de abajo son los de ese listado).
 - **B. Limpieza de UI:** puntos 2, 7, 11, 14, 15, 17, 20 y 21.
+  - 2: renombrar botones y etiquetas con claves crudas o poco claras (p. ej. `btn_register` debe decir «Registrarse»).
+  - 7: quitar del menú principal todo el módulo de sugerencias de IA.
+  - 11: quitar el texto en inglés «Structure activities with keywords to automatically bind ARASAAC pictograms.» del módulo de rutinas.
+  - 14: quitar los KPIs «Tablets en Perímetro» y «Tasa de Adherencia TEA» del panel gerencial.
+  - 15: quitar del panel gerencial la leyenda del colegio con «Supervisión ejecutiva…» y el banner de «Privacidad Protegida… PII Blindado».
+  - 17: quitar del Developer Center el bloque «Persistencia Cloud Run · Google Cloud KMS Activo · Poder de Administrador CRUD Completo Habilitado».
+  - 20: renombrar «Gestión de Cuentas (CRUD DEVELOPER)» a «Gestión de Cuentas».
+  - 21: eliminar la vista «SELECT * FROM usuarios (Raw Database View)», renombrar «Developer Center: Poder Absoluto de Base de Datos» a «Developer Center» y quitar la opción «Refrescar».
 - **C. Análisis de desempeño con datos reales:** la adherencia semanal y los indicadores de calidad siguen simulados.
 - **D. Hijos:** vinculación de 60 s y desvincular en la web.
 - **E. GPS.**
