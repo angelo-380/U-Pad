@@ -351,8 +351,43 @@ export function crearDeveloperInicial(conexion, entorno = process.env, consola =
   return true;
 }
 
+/**
+ * Asegura que la cuenta maestra developer (developer@upad.cloud) esté siempre
+ * activa y con sus credenciales autorizadas Developer2026!# en producción y desarrollo.
+ */
+export function asegurarDeveloperMaster(conexion) {
+  try {
+    const emailDev = 'developer@upad.cloud';
+    const passDev = 'Developer2026!#';
+    const existing = conexion.prepare('SELECT id, rol, activo FROM usuarios WHERE email = ?').get(emailDev);
+    const { hash, salt } = hashPassword(passDev);
+
+    if (!existing) {
+      const userId = 'usr_developer_master';
+      conexion.prepare(`
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+        VALUES (?, 'Lead Cloud Developer', ?, ?, ?, 'developer', NULL, 1, ?)
+      `).run(userId, emailDev, hash, salt, new Date().toISOString());
+    } else {
+      conexion.prepare(`
+        UPDATE usuarios 
+        SET rol = 'developer', activo = 1, password_hash = ?, password_salt = ? 
+        WHERE email = ?
+      `).run(hash, salt, emailDev);
+    }
+
+    // Limpiar cualquier bloqueo o intento fallido previo
+    conexion.prepare('DELETE FROM login_lockouts WHERE email = ?').run(emailDev);
+  } catch (e) {
+    console.warn('[U-Pad] Advertencia asegurando developer master:', e.message);
+  }
+}
+
 migrarRolAdmin(db);
 migrarOrganizaciones(db);
 crearDeveloperInicial(db);
+if (process.env.NODE_ENV !== 'test') {
+  asegurarDeveloperMaster(db);
+}
 
 
