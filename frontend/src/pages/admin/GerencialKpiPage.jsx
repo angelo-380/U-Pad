@@ -188,7 +188,7 @@ export const GerencialKpiPage = () => {
       </div>
 
       {/* Gráficos y Distribución Agregada */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* Distribución de Rutinas por Horario / Turno */}
         <div className="bg-white rounded-3xl p-6 border border-tea-border shadow-soft-xs space-y-5">
           <div className="flex items-center justify-between">
@@ -201,123 +201,62 @@ export const GerencialKpiPage = () => {
             </span>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-xs font-bold mb-1.5">
-                <span className="text-tea-text">Mañana (Aula, Desayuno y Adaptación)</span>
-                <span className="text-indigo-700 font-mono">
-                  {kpis.distribucionTurnos?.manana ?? 0} rutinas ({kpis.distribucionTurnos?.porcentajes?.manana ?? 0}%)
-                </span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                <div
-                  className="bg-indigo-600 h-3 rounded-full transition-all duration-500"
-                  style={{ width: `${kpis.distribucionTurnos?.porcentajes?.manana ?? 0}%` }}
-                />
-              </div>
+          {kpis.totalRutinasEstructuradas === 0 ? (
+            <div className="py-8 text-center text-slate-400">
+              <Clock className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
+              <p className="text-sm font-semibold text-slate-600">Sin rutinas registradas en la institución aún</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Cuando los docentes o tutores registren rutinas, la distribución horaria se calculará automáticamente.
+              </p>
             </div>
-
-            <div>
-              <div className="flex justify-between text-xs font-bold mb-1.5">
-                <span className="text-tea-text">Tarde (Terapias, Talleres y Almuerzo)</span>
-                <span className="text-purple-700 font-mono">
-                  {kpis.distribucionTurnos?.tarde ?? 0} rutinas ({kpis.distribucionTurnos?.porcentajes?.tarde ?? 0}%)
-                </span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                <div
-                  className="bg-purple-600 h-3 rounded-full transition-all duration-500"
-                  style={{ width: `${kpis.distribucionTurnos?.porcentajes?.tarde ?? 0}%` }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs font-bold mb-1.5">
-                <span className="text-tea-text">Noche (Preparación y Cierre de Jornada)</span>
-                <span className="text-amber-700 font-mono">
-                  {kpis.distribucionTurnos?.noche ?? 0} rutinas ({kpis.distribucionTurnos?.porcentajes?.noche ?? 0}%)
-                </span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                <div
-                  className="bg-amber-500 h-3 rounded-full transition-all duration-500"
-                  style={{ width: `${kpis.distribucionTurnos?.porcentajes?.noche ?? 0}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Adherencia Semanal sin nombres */}
-        <div className="bg-white rounded-3xl p-6 border border-tea-border shadow-soft-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-extrabold text-tea-text flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-indigo-600" />
-              Adherencia Terapéutica Semanal Agregada
-            </h3>
-            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-              Promedio: 94.6%
-            </span>
-          </div>
-
-          <p className="text-xs text-tea-muted">
-            Porcentaje de pasos visuales completados exitosamente por los alumnos en sus tablets U-Pad durante la semana escolar.
-          </p>
-
-          <div className="grid grid-cols-5 gap-2 pt-2">
-            {kpis.adherenciaSemanal?.map((dia, idx) => (
-              <div
-                key={idx}
-                className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-center flex flex-col justify-between"
-              >
-                <span className="text-[11px] font-extrabold text-slate-700 uppercase">
-                  {dia.dia}
-                </span>
-                <div className="my-2">
-                  <span className="text-lg font-black text-indigo-700 block">
-                    {dia.tasa}%
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {dia.sesiones} ses.
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1.5">
+                  <span className="text-tea-text">Mañana (Aula, Desayuno y Adaptación)</span>
+                  <span className="text-indigo-700 font-mono">
+                    {kpis.distribucionTurnos?.manana ?? 0} rutinas ({kpis.distribucionTurnos?.porcentajes?.manana ?? 0}%)
                   </span>
                 </div>
-                <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 py-0.5 rounded">
-                  Óptimo
-                </span>
+                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-indigo-600 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${kpis.distribucionTurnos?.porcentajes?.manana ?? 0}%` }}
+                  />
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
 
-      {/* Indicadores de Calidad del Servicio Institucional */}
-      <div className="bg-white rounded-3xl p-6 border border-tea-border shadow-soft-xs space-y-4">
-        <h3 className="text-base font-extrabold text-tea-text flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-indigo-600" />
-          Indicadores de Calidad & Acreditación Inclusiva TEA
-        </h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {kpis.indicadoresCalidad?.map((ind, idx) => (
-            <div
-              key={idx}
-              className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold text-slate-800">
-                  {ind.titulo}
-                </span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1.5">
+                  <span className="text-tea-text">Tarde (Terapias, Talleres y Almuerzo)</span>
+                  <span className="text-purple-700 font-mono">
+                    {kpis.distribucionTurnos?.tarde ?? 0} rutinas ({kpis.distribucionTurnos?.porcentajes?.tarde ?? 0}%)
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-purple-600 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${kpis.distribucionTurnos?.porcentajes?.tarde ?? 0}%` }}
+                  />
+                </div>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xl font-black text-indigo-700">{ind.valor}</span>
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                  {ind.estado}
-                </span>
+
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1.5">
+                  <span className="text-tea-text">Noche (Preparación y Cierre de Jornada)</span>
+                  <span className="text-amber-700 font-mono">
+                    {kpis.distribucionTurnos?.noche ?? 0} rutinas ({kpis.distribucionTurnos?.porcentajes?.noche ?? 0}%)
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-amber-500 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${kpis.distribucionTurnos?.porcentajes?.noche ?? 0}%` }}
+                  />
+                </div>
               </div>
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>

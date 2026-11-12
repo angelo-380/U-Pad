@@ -68,24 +68,25 @@ export const DesempenoPage = () => {
   }, []);
 
   // Desglose de rutinas por turnos
-  const rutinasManana = rutinas.filter((r) => (r.turno || '').toLowerCase() === 'mañana');
+  const rutinasManana = rutinas.filter((r) => (r.turno || '').toLowerCase() === 'mañana' || (r.turno || '').toLowerCase() === 'manana');
   const rutinasTarde = rutinas.filter((r) => (r.turno || '').toLowerCase() === 'tarde');
   const rutinasNoche = rutinas.filter((r) => (r.turno || '').toLowerCase() === 'noche');
 
-  // Cálculo de cumplimiento general simulado / real
-  const totalActividades = rutinas.length || 6;
-  const completadasHoy = Math.max(1, Math.min(totalActividades, Math.round(totalActividades * 0.85)));
-  const efectividadHoy = totalActividades > 0 ? Math.round((completadasHoy / totalActividades) * 100) : 92;
+  // Cálculo de cumplimiento general real basado en la base de datos (0 si no hay rutinas)
+  const totalActividades = rutinas.length;
+  const rutinasActivas = rutinas.filter((r) => r.activa !== 0 && r.activa !== false).length;
+  const efectividadHoy = totalActividades > 0 ? Math.round((rutinasActivas / totalActividades) * 100) : 0;
+  const completadasHoy = rutinasActivas;
 
-  // Tasas de efectividad por día
-  const cumplimientoPorDia = {
-    LUN: { manana: 92, tarde: 85, noche: 95 },
-    MAR: { manana: 95, tarde: 90, noche: 88 },
-    MIE: { manana: 88, tarde: 92, noche: 96 },
-    JUE: { manana: 94, tarde: 86, noche: 90 },
-    VIE: { manana: 98, tarde: 94, noche: 92 },
-    SAB: { manana: 90, tarde: 88, noche: 85 },
-    DOM: { manana: 85, tarde: 90, noche: 94 },
+  const mananaPct = rutinasManana.length > 0 ? Math.round((rutinasManana.filter(r => r.activa !== 0 && r.activa !== false).length / rutinasManana.length) * 100) : 0;
+  const tardePct = rutinasTarde.length > 0 ? Math.round((rutinasTarde.filter(r => r.activa !== 0 && r.activa !== false).length / rutinasTarde.length) * 100) : 0;
+  const nochePct = rutinasNoche.length > 0 ? Math.round((rutinasNoche.filter(r => r.activa !== 0 && r.activa !== false).length / rutinasNoche.length) * 100) : 0;
+
+  const getCumplimientoDia = (diaId) => {
+    if (totalActividades === 0) {
+      return { manana: 0, tarde: 0, noche: 0 };
+    }
+    return { manana: mananaPct, tarde: tardePct, noche: nochePct };
   };
 
   const handleRunAiAnalysis = () => {
@@ -140,7 +141,7 @@ export const DesempenoPage = () => {
         </div>
       </div>
 
-      {/* Tarjeta Destacada de Eficacia de Hoy (Equivalente al Header Card de la App Móvil) */}
+      {/* Tarjeta Destacada de Eficacia de Hoy */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-white p-6 sm:p-8 shadow-lg">
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="space-y-2">
@@ -156,9 +157,15 @@ export const DesempenoPage = () => {
                 Logrado
               </span>
             </div>
-            <p className="text-xs text-amber-100 max-w-md leading-relaxed">
-              Completaste <strong>{completadasHoy}</strong> de <strong>{totalActividades}</strong> actividades asignadas en la jornada. La consistencia visual fortalece la autonomía del niño.
-            </p>
+            {totalActividades === 0 ? (
+              <p className="text-xs text-amber-100 max-w-md leading-relaxed">
+                Sin rutinas registradas aún. Registra actividades visuales para que el sistema realice el seguimiento de cumplimiento.
+              </p>
+            ) : (
+              <p className="text-xs text-amber-100 max-w-md leading-relaxed">
+                Completaste <strong>{completadasHoy}</strong> de <strong>{totalActividades}</strong> actividades asignadas en la jornada. La consistencia visual fortalece la autonomía del niño.
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20 self-start sm:self-auto">
@@ -170,7 +177,7 @@ export const DesempenoPage = () => {
                 Rango Evaluado
               </span>
               <span className="text-base font-extrabold text-white">
-                Sobresaliente
+                {totalActividades === 0 ? 'Sin Registro' : (efectividadHoy >= 80 ? 'Sobresaliente' : (efectividadHoy >= 50 ? 'Adecuado' : 'Inicial'))}
               </span>
             </div>
           </div>
@@ -231,7 +238,7 @@ export const DesempenoPage = () => {
 
         <div className="space-y-5 divide-y divide-slate-100">
           {diasSemana.map((dia) => {
-            const data = cumplimientoPorDia[dia.id] || { manana: 90, tarde: 85, noche: 88 };
+            const data = getCumplimientoDia(dia.id);
             const esHoy = dia.id === diaActualId;
 
             return (
@@ -327,7 +334,7 @@ export const DesempenoPage = () => {
           <button
             type="button"
             onClick={handleRunAiAnalysis}
-            disabled={aiAnalyzing}
+            disabled={aiAnalyzing || totalActividades === 0}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
           >
             <Sparkles className={`w-3.5 h-3.5 ${aiAnalyzing ? 'animate-spin' : ''}`} />
@@ -335,37 +342,53 @@ export const DesempenoPage = () => {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 rounded-2xl bg-white border border-emerald-100 shadow-xs space-y-2">
-            <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              Consistencia en Mañana
-            </span>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              El niño muestra excelente respuesta anticipatoria en la rutina matutina ({cumplimientoPorDia[diaActualId]?.manana || 94}%). La secuencia visual de higiene y desayuno reduce significativamente las crisis de inicio del día.
+        {totalActividades === 0 ? (
+          <div className="p-6 rounded-2xl bg-white border border-emerald-100 text-center space-y-2">
+            <BrainCircuit className="w-8 h-8 text-emerald-600 mx-auto opacity-60" />
+            <h4 className="text-sm font-bold text-emerald-950">Sin actividades registradas para evaluación</h4>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Crea tu primera rutina estructurada para que el motor clínico U-Pad analice los patrones de desempeño de tu hijo.
             </p>
           </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 rounded-2xl bg-white border border-emerald-100 shadow-xs space-y-2">
+              <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                Consistencia en Mañana
+              </span>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {rutinasManana.length > 0 
+                  ? `El niño cuenta con ${rutinasManana.length} rutina(s) matutina(s) activa(s) (${mananaPct}% de cumplimiento). La anticipación visual refuerza el inicio de jornada.`
+                  : 'Aún no se han configurado rutinas para el turno mañana.'}
+              </p>
+            </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-emerald-100 shadow-xs space-y-2">
-            <span className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
-              <AlertCircle className="w-4 h-4 text-amber-600" />
-              Transición de la Tarde
-            </span>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Se detecta una ligera disminución en el turno tarde ({cumplimientoPorDia[diaActualId]?.tarde || 86}%). Se sugiere introducir un temporizador visual de 5 minutos antes de guardar juguetes para evitar fatiga sensorial.
-            </p>
-          </div>
+            <div className="p-4 rounded-2xl bg-white border border-emerald-100 shadow-xs space-y-2">
+              <span className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-amber-600" />
+                Transición de la Tarde
+              </span>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {rutinasTarde.length > 0
+                  ? `Turno tarde con ${rutinasTarde.length} rutina(s) activa(s) (${tardePct}% de cumplimiento). Se sugiere introducir pausas sensoriales entre tareas.`
+                  : 'Aún no se han configurado rutinas para el turno tarde.'}
+              </p>
+            </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-emerald-100 shadow-xs space-y-2">
-            <span className="text-xs font-bold text-indigo-800 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-indigo-600" />
-              Ritual de Relajación Nocturno
-            </span>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              La rutina de cepillado y lectura antes de dormir alcanza un {cumplimientoPorDia[diaActualId]?.noche || 92}% de adherencia. Mantener baja intensidad lumínica media hora antes del turno noche refuerza la melatonina natural.
-            </p>
+            <div className="p-4 rounded-2xl bg-white border border-emerald-100 shadow-xs space-y-2">
+              <span className="text-xs font-bold text-indigo-800 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                Ritual de Relajación Nocturno
+              </span>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {rutinasNoche.length > 0
+                  ? `Turno noche con ${rutinasNoche.length} rutina(s) activa(s) (${nochePct}% de cumplimiento). Mantener baja intensidad lumínica refuerza el descanso.`
+                  : 'Aún no se han configurado rutinas para el turno noche.'}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

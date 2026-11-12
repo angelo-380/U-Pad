@@ -352,42 +352,98 @@ export function crearDeveloperInicial(conexion, entorno = process.env, consola =
 }
 
 /**
- * Asegura que la cuenta maestra developer (developer@upad.cloud) esté siempre
- * activa y con sus credenciales autorizadas Developer2026!# en producción y desarrollo.
+ * Asegura que las dos únicas cuentas maestras autorizadas del sistema
+ * (developer@upad.cloud y director@colegiosol.edu.pe) estén siempre activas
+ * y con sus credenciales autorizadas en producción y desarrollo,
+ * purgando cualquier tipo de seeder residual no autorizado.
  */
-export function asegurarDeveloperMaster(conexion) {
+export function asegurarCuentasMaestras(conexion) {
   try {
+    // 1. Cuenta Developer Master
     const emailDev = 'developer@upad.cloud';
     const passDev = 'Developer2026!#';
-    const existing = conexion.prepare('SELECT id, rol, activo FROM usuarios WHERE email = ?').get(emailDev);
-    const { hash, salt } = hashPassword(passDev);
+    const { hash: hashDev, salt: saltDev } = hashPassword(passDev);
+    const existingDev = conexion.prepare('SELECT id, rol, activo FROM usuarios WHERE email = ?').get(emailDev);
 
-    if (!existing) {
-      const userId = 'usr_developer_master';
+    if (!existingDev) {
       conexion.prepare(`
         INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
-        VALUES (?, 'Lead Cloud Developer', ?, ?, ?, 'developer', NULL, 1, ?)
-      `).run(userId, emailDev, hash, salt, new Date().toISOString());
+        VALUES ('usr_developer_master', 'Lead Cloud Developer', ?, ?, ?, 'developer', NULL, 1, ?)
+      `).run(emailDev, hashDev, saltDev, new Date().toISOString());
     } else {
       conexion.prepare(`
         UPDATE usuarios 
         SET rol = 'developer', activo = 1, password_hash = ?, password_salt = ? 
         WHERE email = ?
-      `).run(hash, salt, emailDev);
+      `).run(hashDev, saltDev, emailDev);
+    }
+    conexion.prepare('DELETE FROM login_lockouts WHERE email = ?').run(emailDev);
+
+    // 2. Cuenta Empresario Master (Director Colegio Sol)
+    const emailDirector = 'director@colegiosol.edu.pe';
+    const passDirector = 'ColegioSol2026!#';
+    const { hash: hashDir, salt: saltDir } = hashPassword(passDirector);
+
+    // Asegurar la organización org_colegio_sol
+    const existingOrg = conexion.prepare('SELECT id FROM organizaciones WHERE id = ?').get('org_colegio_sol');
+    if (!existingOrg) {
+      conexion.prepare(`
+        INSERT INTO organizaciones (id, nombre, codigo, propietarioId, creadoEn)
+        VALUES ('org_colegio_sol', 'Colegio Sol de Lima', 'HJZU9JRF', 'usr_director_sol', ?)
+      `).run(new Date().toISOString());
     }
 
-    // Limpiar cualquier bloqueo o intento fallido previo
-    conexion.prepare('DELETE FROM login_lockouts WHERE email = ?').run(emailDev);
+    const existingDir = conexion.prepare('SELECT id, rol, activo FROM usuarios WHERE email = ?').get(emailDirector);
+    if (!existingDir) {
+      conexion.prepare(`
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+        VALUES ('usr_director_sol', 'Director Colegio Sol', ?, ?, ?, 'empresario', 'org_colegio_sol', 1, ?)
+      `).run(emailDirector, hashDir, saltDir, new Date().toISOString());
+    } else {
+      conexion.prepare(`
+        UPDATE usuarios 
+        SET rol = 'empresario', organizacionId = 'org_colegio_sol', activo = 1, password_hash = ?, password_salt = ? 
+        WHERE email = ?
+      `).run(hashDir, saltDir, emailDirector);
+    }
+    conexion.prepare('DELETE FROM login_lockouts WHERE email = ?').run(emailDirector);
+
+    // 3. Purga de seeders residuales no autorizados
+    conexion.prepare(`
+      DELETE FROM usuarios 
+      WHERE email LIKE 'test-%' 
+         OR email LIKE 'lockout-test-%' 
+         OR email LIKE 'tutor_%@upad.cloud'
+         OR email LIKE '%@colegioesperanza.edu.pe'
+         OR email LIKE '%@sanjose.edu.pe'
+    `).run();
+
+    // Limpiar child_devices que quedaron huérfanos o eran seeders ficticios
+    conexion.prepare(`
+      DELETE FROM child_devices 
+      WHERE device_id = 'dev_child_849201' 
+         OR parent_id NOT IN (SELECT id FROM usuarios)
+    `).run();
+
+    // Limpiar organizaciones huérfanas de seeders eliminados
+    conexion.prepare(`
+      DELETE FROM organizaciones 
+      WHERE id != 'org_colegio_sol' 
+        AND (propietarioId IS NULL OR propietarioId NOT IN (SELECT id FROM usuarios))
+    `).run();
+
   } catch (e) {
-    console.warn('[U-Pad] Advertencia asegurando developer master:', e.message);
+    console.warn('[U-Pad] Advertencia asegurando cuentas maestras:', e.message);
   }
 }
+
+export const asegurarDeveloperMaster = asegurarCuentasMaestras;
 
 migrarRolAdmin(db);
 migrarOrganizaciones(db);
 crearDeveloperInicial(db);
 if (process.env.NODE_ENV !== 'test') {
-  asegurarDeveloperMaster(db);
+  asegurarCuentasMaestras(db);
 }
 
 

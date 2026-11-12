@@ -45,9 +45,13 @@ router.get('/kpis', (req, res, next) => {
 
     // Alcance de las consultas: una organización concreta, o (solo developer) todas las que existen
     const orgId = organizacion ? organizacion.id : (esDeveloper ? null : req.user.organizacionId);
-    const filtroRutinas = orgId ? 'organizacionId = ?' : 'organizacionId IS NOT NULL';
-    const filtroUsuarios = orgId ? 'organizacionId = ?' : 'organizacionId IS NOT NULL';
-    const params = orgId ? [orgId] : [];
+    const filtroRutinas = orgId
+      ? '(organizacionId = ? OR creadoPor IN (SELECT id FROM usuarios WHERE organizacionId = ?))'
+      : '1=1';
+    const paramsRutinas = orgId ? [orgId, orgId] : [];
+
+    const filtroUsuarios = orgId ? 'organizacionId = ?' : '1=1';
+    const paramsUsuarios = orgId ? [orgId] : [];
 
     // Rutinas institucionales: las creadas por cualquier miembro de la organización (empresario y tutores)
     const rutinasStats = db.prepare(`
@@ -58,7 +62,7 @@ router.get('/kpis', (req, res, next) => {
         SUM(CASE WHEN LOWER(turno) = 'noche' THEN 1 ELSE 0 END) as noche
       FROM rutinas
       WHERE ${filtroRutinas}
-    `).get(...params);
+    `).get(...paramsRutinas);
 
     const totalRutinas = Number(rutinasStats?.total || 0);
     const mananaCount = Number(rutinasStats?.manana || 0);
@@ -68,11 +72,11 @@ router.get('/kpis', (req, res, next) => {
     // Niños vinculados (dispositivos) por los usuarios de la organización, y cuántos tienen el modo kiosco activo
     const dispositivos = db.prepare(`
       SELECT
-        COUNT(*) as total,
+        COUNT(DISTINCT device_id) as total,
         SUM(CASE WHEN is_kiosk_active = 1 THEN 1 ELSE 0 END) as kiosco
       FROM child_devices
       WHERE parent_id IN (SELECT id FROM usuarios WHERE ${filtroUsuarios})
-    `).get(...params);
+    `).get(...paramsUsuarios);
 
     const totalEstudiantes = Number(dispositivos?.total || 0);
     const dispositivosKiosco = Number(dispositivos?.kiosco || 0);
@@ -95,33 +99,20 @@ router.get('/kpis', (req, res, next) => {
       kpis: {
         totalEstudiantesInstitucion: totalEstudiantes,
         totalRutinasEstructuradas: totalRutinas,
-        tasaCumplimientoAdherencia: 94.6, // SIMULADO: % de adherencia semanal agregada
+        tasaCumplimientoAdherencia: 0,
         dispositivosKioskEnPerimetro: dispositivosKiosco,
         distribucionTurnos: {
           manana: mananaCount,
           tarde: tardeCount,
           noche: nocheCount,
           porcentajes: {
-            manana: Math.round((mananaCount / Math.max(1, totalRutinas)) * 100),
-            tarde: Math.round((tardeCount / Math.max(1, totalRutinas)) * 100),
-            noche: Math.round((nocheCount / Math.max(1, totalRutinas)) * 100),
+            manana: totalRutinas > 0 ? Math.round((mananaCount / totalRutinas) * 100) : 0,
+            tarde: totalRutinas > 0 ? Math.round((tardeCount / totalRutinas) * 100) : 0,
+            noche: totalRutinas > 0 ? Math.round((nocheCount / totalRutinas) * 100) : 0,
           },
         },
-        // SIMULADO: aún no existen datos reales de sesiones ni adherencia
-        adherenciaSemanal: [
-          { dia: 'Lunes', tasa: 92.4, sesiones: 135 },
-          { dia: 'Martes', tasa: 94.1, sesiones: 138 },
-          { dia: 'Miércoles', tasa: 95.8, sesiones: 140 },
-          { dia: 'Jueves', tasa: 93.6, sesiones: 137 },
-          { dia: 'Viernes', tasa: 96.5, sesiones: 141 },
-        ],
-        // SIMULADO
-        indicadoresCalidad: [
-          { titulo: 'Predictibilidad Visual Escolar', valor: '98%', estado: 'Excelente' },
-          { titulo: 'Reducción de Ansiedad en Transición', valor: '89%', estado: 'Óptimo' },
-          { titulo: 'Adherencia a Pictogramas ARASAAC', valor: '96%', estado: 'Sobresaliente' },
-          { titulo: 'Disponibilidad de Servidor en la Nube', valor: '99.9%', estado: 'Alta Disponibilidad' },
-        ],
+        adherenciaSemanal: [],
+        indicadoresCalidad: [],
       },
       politicaPrivacidad: {
         cumplimiento: 'Estricto cumplimiento de anonimización de datos de menores TEA',

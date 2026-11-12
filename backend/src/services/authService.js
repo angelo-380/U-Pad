@@ -105,6 +105,13 @@ export const authService = {
     let organizacionId = organizacionUnida ? organizacionUnida.id : null;
     let organizacionPropia = null;
 
+    if (rolNormalizado === ROLES.TUTOR && !organizacionUnida) {
+      const defaultOrg = db.prepare("SELECT id FROM organizaciones WHERE id = 'org_colegio_sol' LIMIT 1").get();
+      if (defaultOrg) {
+        organizacionId = defaultOrg.id;
+      }
+    }
+
     db.exec('BEGIN');
     try {
       if (rolNormalizado === ROLES.EMPRESARIO) {
