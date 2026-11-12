@@ -45,7 +45,7 @@ export const AppLayout = ({ children }) => {
     ];
   } else if (isDeveloper) {
     mainLinks = [
-      { label: 'Developer Center & BD', path: '/admin/usuarios', icon: Users },
+      { label: 'Developer Center', path: '/admin/usuarios', icon: Users },
       { label: 'Panel Gerencial', path: '/gerencial', icon: Building2 },
       { label: 'Rutinas', path: '/rutinas', icon: CalendarCheck },
       { label: 'Desempeño', path: '/desempeno', icon: TrendingUp },
