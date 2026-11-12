@@ -59,6 +59,21 @@ export const adminService = {
     return res?.data || { user: null, rutinas: [] };
   },
 
+  /** Lista global de rutinas para el panel Developer, de más reciente a más antigua. */
+  async listarRutinas(filtros = {}) {
+    const params = new URLSearchParams();
+    if (filtros.page) params.append('page', filtros.page);
+    if (filtros.limit) params.append('limit', filtros.limit);
+    if (filtros.search) params.append('search', filtros.search);
+    if (filtros.turno) params.append('turno', filtros.turno);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const res = await api.get(`/api/admin/routines${query}`);
+    return {
+      routines: res?.data || [],
+      pagination: res?.pagination || { page: 1, limit: 25, total: 0, totalPages: 1 },
+    };
+  },
+
   /**
    * Obtiene los KPIs e indicadores gerenciales para el rol Empresario / Colegio
    */

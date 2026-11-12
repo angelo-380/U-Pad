@@ -44,6 +44,27 @@ export const RutinasPage = () => {
     hasNext: false,
     hasPrev: false,
   });
+  const [jumpPageInput, setJumpPageInput] = useState('1');
+
+  const getPaginationItems = (currentPage, totalPages) => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const items = [1];
+    if (currentPage > 3) {
+      items.push('ellipsis-start');
+    }
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    for (let i = start; i <= end; i++) {
+      items.push(i);
+    }
+    if (currentPage < totalPages - 2) {
+      items.push('ellipsis-end');
+    }
+    items.push(totalPages);
+    return items;
+  };
 
   // Dispositivos y Sincronización Móvil
   const [devices, setDevices] = useState([]);
@@ -369,21 +390,30 @@ export const RutinasPage = () => {
             </button>
 
             <div className="flex items-center gap-1">
-              {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => setPage(num)}
-                  disabled={loading}
-                  className={`w-8 h-8 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                    num === pagination.page
-                      ? 'bg-brand-600 text-white shadow-soft-xs'
-                      : 'text-tea-muted hover:bg-tea-cardSubtle'
-                  }`}
-                >
-                  {num}
-                </button>
-              ))}
+              {getPaginationItems(pagination.page, pagination.totalPages).map((item, idx) => {
+                if (typeof item === 'string') {
+                  return (
+                    <span key={`ell-${idx}`} className="px-1.5 text-xs text-tea-muted font-bold select-none">
+                      …
+                    </span>
+                  );
+                }
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setPage(item)}
+                    disabled={loading}
+                    className={`w-8 h-8 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                      item === pagination.page
+                        ? 'bg-brand-600 text-white shadow-soft-xs'
+                        : 'text-tea-muted hover:bg-tea-cardSubtle'
+                    }`}
+                  >
+                    {item}
+                  </button>
+                );
+              })}
             </div>
 
             <button
@@ -395,6 +425,34 @@ export const RutinasPage = () => {
               <span>Siguiente</span>
               <ChevronRight className="w-4 h-4" />
             </button>
+
+            {pagination.totalPages > 5 && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const target = parseInt(jumpPageInput, 10);
+                  if (target >= 1 && target <= pagination.totalPages) {
+                    setPage(target);
+                  }
+                }}
+                className="hidden sm:flex items-center gap-1 pl-2 border-l border-tea-border"
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={pagination.totalPages}
+                  value={jumpPageInput}
+                  onChange={(e) => setJumpPageInput(e.target.value)}
+                  className="w-12 text-xs font-bold text-center bg-slate-50 border border-tea-border rounded-lg py-1 text-tea-text"
+                />
+                <button
+                  type="submit"
+                  className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-tea-text text-[11px] font-bold transition-colors cursor-pointer"
+                >
+                  Ir
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}

@@ -149,7 +149,7 @@ export function inicializarEsquema(conexion) {
   CREATE TABLE IF NOT EXISTS child_devices (
     device_id VARCHAR(128) PRIMARY KEY,
     parent_id VARCHAR(64),
-    child_name VARCHAR(128) DEFAULT 'Diego',
+    child_name VARCHAR(128) DEFAULT 'Hijo',
     device_model VARCHAR(128) NOT NULL DEFAULT 'Android Tablet (Samsung Galaxy Tab A8)',
     is_kiosk_active INTEGER NOT NULL DEFAULT 1,
     last_latitude REAL DEFAULT -12.0431,
@@ -187,7 +187,16 @@ inicializarEsquema(db);
 try {
   const cols = db.pragma('table_info(child_devices)');
   if (!cols.some(c => c.name === 'child_name')) {
-    db.exec("ALTER TABLE child_devices ADD COLUMN child_name VARCHAR(128) DEFAULT 'Diego'");
+    db.exec("ALTER TABLE child_devices ADD COLUMN child_name VARCHAR(128) DEFAULT 'Hijo'");
+  }
+} catch (e) {
+  // column check/add completed
+}
+
+try {
+  const pairingCols = db.pragma('table_info(pairing_codes)');
+  if (!pairingCols.some(c => c.name === 'expires_at')) {
+    db.exec('ALTER TABLE pairing_codes ADD COLUMN expires_at INTEGER');
   }
 } catch (e) {
   // column check/add completed

@@ -291,8 +291,9 @@ class RoutineViewModel(
 
     fun regenerarCodigoNiño(deviceId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val nuevoCodigo = (100000..999999).random().toString()
-            val registrado = repository.createPairingCode(nuevoCodigo, deviceId)
+            val nuevoCodigo = java.security.SecureRandom().nextInt(900000) + 100000
+            val nuevoCodigoTexto = nuevoCodigo.toString()
+            val registrado = repository.createPairingCode(nuevoCodigoTexto, deviceId)
 
             if (!registrado) {
                 _errorConexionServidor.value = true
@@ -302,19 +303,22 @@ class RoutineViewModel(
             }
 
             _errorConexionServidor.value = false
-            _codigoNiño.value = nuevoCodigo
+            _codigoNiño.value = nuevoCodigoTexto
             codigoGeneradoEnSesion = true
 
             pairingCodeListener?.remove()
-            pairingCodeListener = repository.listenToPairingCode(nuevoCodigo) { codeEntry ->
+            pairingCodeListener = repository.listenToPairingCode(nuevoCodigoTexto) { codeEntry ->
                 if (codeEntry != null) {
                     val estado = codeEntry.estado
                     val pId = codeEntry.padreId
                     if (estado == "enlazado" && pId.isNotEmpty()) {
                         val tutor = com.example.upad.data.LocalDataManager.getAllUsers().values.find { it.uid == pId }?.name ?: "Tutor"
                         _nombreTutorVinculado.value = tutor
-                        repository.linkDeviceToParent(deviceId, pId)
-                        repository.deletePairingCode(nuevoCodigo)
+                        // La web ya consumió el código y creó el vínculo en
+                        // Cloud Run. Aquí solo sincronizamos el estado local;
+                        // no volvemos a consumir el código ni lo regeneramos.
+                        repository.markDeviceLinkedLocally(deviceId, pId)
+                        repository.deletePairingCode(nuevoCodigoTexto)
                     }
                 }
             }
@@ -327,9 +331,19 @@ class RoutineViewModel(
             val padreId = device?.padreId ?: ""
 
             if (device == null || padreId.isEmpty()) {
+                val estabaVinculado = _estaVinculado.value
                 _estaVinculado.value = false
                 _padreIdAsociado.value = ""
+                _nombreTutorVinculado.value = ""
                 premiumListener?.remove()
+
+                // Si el padre eliminó el dispositivo desde la web (o desde su
+                // teléfono), el siguiente código debe ser uno nuevo, nunca el
+                // código que ya fue usado para el vínculo anterior.
+                if (estabaVinculado) {
+                    codigoGeneradoEnSesion = false
+                    _codigoNiño.value = "------"
+                }
 
                 if (!codigoGeneradoEnSesion) {
                     regenerarCodigoNiño(deviceId)
@@ -396,7 +410,7 @@ class RoutineViewModel(
                     if (padreIdLogueado == _padreIdAsociado.value) {
                         viewModelScope.launch {
                             try {
-                                repository.deleteDeviceDoc(deviceId)
+                                repository.deleteDeviceDoc(deviceId, padreIdLogueado ?: "")
                                 auth.signOut()
                                 _cargandoDesvinculacion.value = false
                                 _errorDesvinculacion.value = ""

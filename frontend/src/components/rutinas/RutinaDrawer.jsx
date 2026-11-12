@@ -340,14 +340,15 @@ export const RutinaDrawer = ({
                   value={ninoId}
                   onChange={(e) => setNinoId(e.target.value)}
                   disabled={loading}
-                  className="w-full px-3 py-2 rounded-xl text-xs font-semibold border border-tea-border bg-white text-tea-text focus:ring-2 focus:ring-brand-600 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl text-xs font-semibold border border-tea-border bg-white text-tea-text focus:ring-2 focus:ring-brand-600 focus:outline-none cursor-pointer"
                 >
+                  <option value="Todos mis hijos">🧒 Todos mis hijos ({devices.length})</option>
                   {devices.map((d) => {
                     const dName = d.childName || d.child_name || 'Hijo';
                     const dId = d.deviceId || d.device_id;
                     const dModel = d.deviceModel || d.device_model || 'Tablet';
                     return (
-                      <option key={dId} value={dName || dId}>
+                      <option key={dId} value={dName}>
                         🧒 {dName} · {dModel}
                       </option>
                     );
@@ -367,17 +368,15 @@ export const RutinaDrawer = ({
                     </div>
                   </div>
                   <span className="text-[10px] font-mono text-tea-muted">
-                    ID: {(devices[0].deviceId || devices[0].device_id || '').substring(0, 10)}...
+                    {(devices[0].deviceId || devices[0].device_id || '').substring(0, 10)}
                   </span>
                 </div>
               ) : (
-                <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-tea-border text-xs">
-                  <div className="flex items-center gap-2">
-                    <Tablet className="w-4 h-4 text-slate-400" />
-                    <p className="text-tea-text font-medium text-xs">
-                      🧒 Perfil de tu hijo(a) · Sincronización automática con la app
-                    </p>
-                  </div>
+                <div className="p-2.5 bg-white rounded-xl border border-dashed border-tea-border text-xs text-tea-muted">
+                  <p className="font-semibold text-slate-700">Sin tablets o teléfonos vinculados</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Puedes crear la rutina para uso general o vincular un hijo en la app.
+                  </p>
                 </div>
               )}
             </div>

@@ -18,8 +18,11 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Star,
+  User,
+  Tablet,
 } from 'lucide-react';
 import { rutinasService } from '../../services/rutinasService.js';
+import { devicesService } from '../../services/devicesService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 
@@ -27,6 +30,8 @@ export const DesempenoPage = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
   const [rutinas, setRutinas] = useState([]);
+  const [devices, setDevices] = useState([]);
+  const [selectedChild, setSelectedChild] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [aiLastUpdate, setAiLastUpdate] = useState(new Date().toLocaleTimeString());
@@ -43,7 +48,6 @@ export const DesempenoPage = () => {
 
   const getDiaActualId = () => {
     const day = new Date().getDay();
-    // 0: Domingo, 1: Lunes, etc.
     const map = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
     return map[day];
   };
@@ -54,10 +58,20 @@ export const DesempenoPage = () => {
   const cargarDatos = async () => {
     try {
       setLoading(true);
-      const res = await rutinasService.listar();
-      setRutinas(Array.isArray(res) ? res : res?.rutinas || []);
+      const [rutinasRes, devicesRes] = await Promise.all([
+        rutinasService.listar(),
+        devicesService.listar().catch(() => []),
+      ]);
+      const listRutinas = Array.isArray(rutinasRes) ? rutinasRes : rutinasRes?.rutinas || [];
+      const listDevices = Array.isArray(devicesRes) ? devicesRes : [];
+      setRutinas(listRutinas);
+      setDevices(listDevices);
+
+      if (listDevices.length === 1) {
+        setSelectedChild(listDevices[0].childName || listDevices[0].child_name || 'Hijo');
+      }
     } catch (e) {
-      console.warn('Error cargando rutinas para desempeño:', e);
+      console.warn('Error cargando datos para desempeño:', e);
     } finally {
       setLoading(false);
     }
@@ -67,14 +81,38 @@ export const DesempenoPage = () => {
     cargarDatos();
   }, []);
 
-  // Desglose de rutinas por turnos
-  const rutinasManana = rutinas.filter((r) => (r.turno || '').toLowerCase() === 'mañana' || (r.turno || '').toLowerCase() === 'manana');
-  const rutinasTarde = rutinas.filter((r) => (r.turno || '').toLowerCase() === 'tarde');
-  const rutinasNoche = rutinas.filter((r) => (r.turno || '').toLowerCase() === 'noche');
+  // Si no es tutor, el módulo no está disponible
+  if (user?.rol && user.rol !== 'tutor') {
+    return (
+      <div className="py-16 text-center space-y-3">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800">Módulo exclusivo para Padres y Tutores</h2>
+        <p className="text-xs text-slate-500 max-w-md mx-auto">
+          El análisis de desempeño individual mide el cumplimiento de las rutinas por cada niño y está reservado para cuentas de tutor.
+        </p>
+      </div>
+    );
+  }
+
+  // Filtrado de rutinas por hijo seleccionado
+  const rutinasFiltradas = selectedChild === 'ALL'
+    ? rutinas
+    : rutinas.filter((r) => {
+        const rName = (r.ninoId || '').trim().toLowerCase();
+        const sName = selectedChild.trim().toLowerCase();
+        return rName === sName || rName === 'todos mis hijos' || !rName;
+      });
+
+  // Desglose de rutinas por turnos del hijo seleccionado
+  const rutinasManana = rutinasFiltradas.filter((r) => (r.turno || '').toLowerCase() === 'mañana' || (r.turno || '').toLowerCase() === 'manana');
+  const rutinasTarde = rutinasFiltradas.filter((r) => (r.turno || '').toLowerCase() === 'tarde');
+  const rutinasNoche = rutinasFiltradas.filter((r) => (r.turno || '').toLowerCase() === 'noche');
 
   // Cálculo de cumplimiento general real basado en la base de datos (0 si no hay rutinas)
-  const totalActividades = rutinas.length;
-  const rutinasActivas = rutinas.filter((r) => r.activa !== 0 && r.activa !== false).length;
+  const totalActividades = rutinasFiltradas.length;
+  const rutinasActivas = rutinasFiltradas.filter((r) => r.activa !== 0 && r.activa !== false).length;
   const efectividadHoy = totalActividades > 0 ? Math.round((rutinasActivas / totalActividades) * 100) : 0;
   const completadasHoy = rutinasActivas;
 
@@ -97,6 +135,10 @@ export const DesempenoPage = () => {
     }, 900);
   };
 
+  const nombreHijoActivo = selectedChild === 'ALL'
+    ? (devices.length > 0 ? `Todos mis hijos (${devices.length})` : 'Mi Hijo')
+    : selectedChild;
+
   return (
     <div className="space-y-6 pb-12">
       {/* Encabezado Principal */}
@@ -110,11 +152,11 @@ export const DesempenoPage = () => {
               <h1 className="text-2xl font-black text-tea-text tracking-tight flex items-center gap-2">
                 Análisis de Desempeño
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase tracking-wider">
-                  Clínico TEA
+                  Tutor / Familia
                 </span>
               </h1>
               <p className="text-xs text-tea-muted mt-0.5">
-                Seguimiento de cumplimiento semanal por turnos y recomendaciones neurocognitivas con IA.
+                Seguimiento de cumplimiento semanal por cada niño y recomendaciones neurocognitivas con IA.
               </p>
             </div>
           </div>
@@ -141,13 +183,61 @@ export const DesempenoPage = () => {
         </div>
       </div>
 
+      {/* Selector de Hijo / Paciente */}
+      <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
+            🧒
+          </div>
+          <div>
+            <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
+              Hijo Seleccionado
+            </span>
+            <span className="text-sm font-extrabold text-tea-text">
+              {nombreHijoActivo}
+            </span>
+          </div>
+        </div>
+
+        {devices.length > 0 ? (
+          <div className="flex items-center gap-2">
+            <label htmlFor="child-select" className="text-xs font-bold text-tea-muted hidden sm:inline">
+              Ver desempeño de:
+            </label>
+            <select
+              id="child-select"
+              value={selectedChild}
+              onChange={(e) => setSelectedChild(e.target.value)}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold border border-tea-border bg-slate-50 text-tea-text focus:ring-2 focus:ring-amber-500 focus:outline-none cursor-pointer"
+            >
+              {devices.length > 1 && (
+                <option value="ALL">🧒 Todos mis hijos ({devices.length})</option>
+              )}
+              {devices.map((d) => {
+                const dName = d.childName || d.child_name || 'Hijo';
+                const dModel = d.deviceModel || d.device_model || 'Tablet';
+                return (
+                  <option key={d.deviceId || d.device_id || dName} value={dName}>
+                    🧒 {dName} ({dModel})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-400 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+            Sin hijos/tablets vinculados aún
+          </div>
+        )}
+      </div>
+
       {/* Tarjeta Destacada de Eficacia de Hoy */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-white p-6 sm:p-8 shadow-lg">
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="space-y-2">
             <span className="text-xs font-bold uppercase tracking-wider text-amber-100 flex items-center gap-1.5">
               <Calendar className="w-4 h-4" />
-              Eficacia de Hoy ({diaActualObj.nombre})
+              Eficacia de Hoy ({diaActualObj.nombre}) · {nombreHijoActivo}
             </span>
             <div className="flex items-baseline gap-3">
               <span className="text-4xl sm:text-5xl font-black tracking-tight">
@@ -159,7 +249,7 @@ export const DesempenoPage = () => {
             </div>
             {totalActividades === 0 ? (
               <p className="text-xs text-amber-100 max-w-md leading-relaxed">
-                Sin rutinas registradas aún. Registra actividades visuales para que el sistema realice el seguimiento de cumplimiento.
+                Sin rutinas registradas para {nombreHijoActivo} aún. Registra actividades visuales para que el sistema realice el seguimiento de cumplimiento.
               </p>
             ) : (
               <p className="text-xs text-amber-100 max-w-md leading-relaxed">
@@ -220,7 +310,7 @@ export const DesempenoPage = () => {
         </div>
       </div>
 
-      {/* Cumplimiento Semanal por Turnos (Idéntico a la cuadrícula de la app móvil) */}
+      {/* Cumplimiento Semanal por Turnos */}
       <div className="bg-white rounded-3xl p-6 sm:p-7 border border-tea-border shadow-soft-xs space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -228,7 +318,7 @@ export const DesempenoPage = () => {
               Cumplimiento Semanal por Turnos
             </h2>
             <p className="text-xs text-tea-muted mt-0.5">
-              Porcentaje de ejecución de actividades por cada turno del día (Lunes a Domingo)
+              Porcentaje de ejecución de actividades de {nombreHijoActivo} por cada turno (Lunes a Domingo)
             </p>
           </div>
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -326,7 +416,7 @@ export const DesempenoPage = () => {
                 </span>
               </div>
               <p className="text-xs text-emerald-800 mt-0.5">
-                Evaluación adaptativa generada a las {aiLastUpdate}
+                Evaluación adaptativa generada a las {aiLastUpdate} para {nombreHijoActivo}
               </p>
             </div>
           </div>
@@ -347,7 +437,7 @@ export const DesempenoPage = () => {
             <BrainCircuit className="w-8 h-8 text-emerald-600 mx-auto opacity-60" />
             <h4 className="text-sm font-bold text-emerald-950">Sin actividades registradas para evaluación</h4>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Crea tu primera rutina estructurada para que el motor clínico U-Pad analice los patrones de desempeño de tu hijo.
+              Crea la primera rutina estructurada para {nombreHijoActivo} para que el motor clínico U-Pad analice sus patrones de desempeño.
             </p>
           </div>
         ) : (
@@ -359,8 +449,8 @@ export const DesempenoPage = () => {
               </span>
               <p className="text-xs text-slate-600 leading-relaxed">
                 {rutinasManana.length > 0 
-                  ? `El niño cuenta con ${rutinasManana.length} rutina(s) matutina(s) activa(s) (${mananaPct}% de cumplimiento). La anticipación visual refuerza el inicio de jornada.`
-                  : 'Aún no se han configurado rutinas para el turno mañana.'}
+                  ? `${nombreHijoActivo} cuenta con ${rutinasManana.length} rutina(s) matutina(s) activa(s) (${mananaPct}% de cumplimiento). La anticipación visual refuerza el inicio de jornada.`
+                  : `Aún no se han configurado rutinas matutinas para ${nombreHijoActivo}.`}
               </p>
             </div>
 
@@ -372,7 +462,7 @@ export const DesempenoPage = () => {
               <p className="text-xs text-slate-600 leading-relaxed">
                 {rutinasTarde.length > 0
                   ? `Turno tarde con ${rutinasTarde.length} rutina(s) activa(s) (${tardePct}% de cumplimiento). Se sugiere introducir pausas sensoriales entre tareas.`
-                  : 'Aún no se han configurado rutinas para el turno tarde.'}
+                  : `Aún no se han configurado rutinas de tarde para ${nombreHijoActivo}.`}
               </p>
             </div>
 
@@ -384,7 +474,7 @@ export const DesempenoPage = () => {
               <p className="text-xs text-slate-600 leading-relaxed">
                 {rutinasNoche.length > 0
                   ? `Turno noche con ${rutinasNoche.length} rutina(s) activa(s) (${nochePct}% de cumplimiento). Mantener baja intensidad lumínica refuerza el descanso.`
-                  : 'Aún no se han configurado rutinas para el turno noche.'}
+                  : `Aún no se han configurado rutinas nocturnas para ${nombreHijoActivo}.`}
               </p>
             </div>
           </div>

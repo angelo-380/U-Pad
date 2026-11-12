@@ -35,7 +35,7 @@ export const deviceController = {
   },
 
   /**
-   * POST /api/devices/pairing/create - Genera un código de vinculación para una tablet
+   * POST /api/devices/pairing/create - Genera un código de vinculación para la app infantil
    */
   async generarCodigo(req, res, next) {
     try {
@@ -55,6 +55,19 @@ export const deviceController = {
       const { code } = req.params;
       const resultado = await deviceService.consultarCodigo(code);
       return sendSuccess(res, 200, 'Estado del código obtenido exitosamente', resultado);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * GET /api/devices/status/:deviceId - Estado mínimo para que la app infantil
+   * detecte una desvinculación remota sin exponer datos personales.
+   */
+  async estado(req, res, next) {
+    try {
+      const estado = await deviceService.estadoDispositivo(req.params.deviceId);
+      return sendSuccess(res, 200, 'Estado del dispositivo obtenido exitosamente', estado);
     } catch (error) {
       next(error);
     }

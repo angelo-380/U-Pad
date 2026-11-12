@@ -43,10 +43,24 @@ export const AuthProvider = ({ children }) => {
     };
 
     window.addEventListener('upad:unauthorized', handleUnauthorized);
+    window.addEventListener('focus', initAuth);
     return () => {
       window.removeEventListener('upad:unauthorized', handleUnauthorized);
+      window.removeEventListener('focus', initAuth);
     };
   }, []);
+
+  const refreshUser = async () => {
+    try {
+      const storedToken = api.getToken();
+      if (!storedToken) return null;
+      const usuarioActual = await authService.getMe();
+      setUser(usuarioActual);
+      return usuarioActual;
+    } catch (e) {
+      return null;
+    }
+  };
 
   const login = async (email, password) => {
     const result = await authService.login({ email, password });
@@ -84,6 +98,7 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        refreshUser,
       }}
     >
       {children}

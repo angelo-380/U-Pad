@@ -81,6 +81,19 @@ router.get('/kpis', (req, res, next) => {
     const totalEstudiantes = Number(dispositivos?.total || 0);
     const dispositivosKiosco = Number(dispositivos?.kiosco || 0);
 
+    // Nómina de tutores vinculados a la institución y cantidad de niños vinculados por cada uno
+    const tutoresLista = db.prepare(`
+      SELECT
+        u.id,
+        u.nombre,
+        (SELECT COUNT(DISTINCT cd.device_id) FROM child_devices cd WHERE cd.parent_id = u.id) AS cantidadNinos
+      FROM usuarios u
+      WHERE u.rol = 'tutor' AND ${filtroUsuarios}
+      ORDER BY u.nombre ASC
+    `).all(...paramsUsuarios);
+
+    const totalTutores = tutoresLista.length;
+
     // El código de la organización solo se muestra a su propietario
     const esPropietario = Boolean(organizacion && organizacion.propietarioId === req.user.id);
     const organizacionPublica = organizacion
@@ -99,6 +112,12 @@ router.get('/kpis', (req, res, next) => {
       kpis: {
         totalEstudiantesInstitucion: totalEstudiantes,
         totalRutinasEstructuradas: totalRutinas,
+        totalTutoresInstitucion: totalTutores,
+        tutoresDetalle: tutoresLista.map((t) => ({
+          id: t.id,
+          nombre: t.nombre,
+          cantidadNinos: Number(t.cantidadNinos || 0),
+        })),
         tasaCumplimientoAdherencia: 0,
         dispositivosKioskEnPerimetro: dispositivosKiosco,
         distribucionTurnos: {

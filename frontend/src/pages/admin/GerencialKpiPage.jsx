@@ -18,6 +18,9 @@ import {
   KeyRound,
   Copy,
   Check,
+  UserCheck,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 import { adminService } from '../../services/adminService.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
@@ -26,6 +29,8 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 const KPIS_VACIOS = {
   totalEstudiantesInstitucion: 0,
   totalRutinasEstructuradas: 0,
+  totalTutoresInstitucion: 0,
+  tutoresDetalle: [],
   tasaCumplimientoAdherencia: 0,
   dispositivosKioskEnPerimetro: 0,
   distribucionTurnos: {
@@ -44,6 +49,7 @@ export const GerencialKpiPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [codigoCopiado, setCodigoCopiado] = useState(false);
+  const [modalTutoresOpen, setModalTutoresOpen] = useState(false);
 
   const fetchKpis = async () => {
     setLoading(true);
@@ -62,6 +68,12 @@ export const GerencialKpiPage = () => {
 
   useEffect(() => {
     fetchKpis();
+  }, []);
+
+  useEffect(() => {
+    const handleDeviceChanged = () => fetchKpis();
+    window.addEventListener('upad:device_changed', handleDeviceChanged);
+    return () => window.removeEventListener('upad:device_changed', handleDeviceChanged);
   }, []);
 
   const copiarCodigo = async () => {
@@ -149,8 +161,8 @@ export const GerencialKpiPage = () => {
       )}
 
       {/* Tarjetas de KPIs Principales */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Total Estudiantes / Usuarios de la Institución */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Total Estudiantes / Menores de la Institución */}
         <div className="bg-white rounded-2xl p-5 border border-tea-border shadow-soft-xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider">
@@ -183,6 +195,38 @@ export const GerencialKpiPage = () => {
           </p>
           <p className="text-[11px] text-tea-muted">
             Secuencias visuales adaptadas
+          </p>
+        </div>
+
+        {/* Total Padres y Tutores de la Institución */}
+        <div
+          onClick={() => setModalTutoresOpen(true)}
+          className="bg-white rounded-2xl p-5 border border-tea-border shadow-soft-xs space-y-2 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer group"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') setModalTutoresOpen(true);
+          }}
+          title="Ver nómina de padres y tutores de la institución"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider group-hover:text-emerald-700 transition-colors">
+              Padres y Tutores Institucionales
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
+              <UserCheck className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <p className="text-2xl font-black text-tea-text">
+              {kpis.totalTutoresInstitucion ?? 0}
+            </p>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 group-hover:bg-emerald-100 px-2 py-0.5 rounded-full transition-colors flex items-center gap-1">
+              Ver lista <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
+          <p className="text-[11px] text-tea-muted">
+            Familias vinculadas · Clic para ver lista
           </p>
         </div>
       </div>
@@ -259,6 +303,83 @@ export const GerencialKpiPage = () => {
           )}
         </div>
       </div>
+
+      {/* Modal de Nómina de Tutores */}
+      {modalTutoresOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fadeIn"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-tea-border relative animate-scaleIn flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900">
+                    Padres y Tutores Institucionales
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {kpis.totalTutoresInstitucion || 0} familias registradas en {institucionNombre}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalTutoresOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Cerrar modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2.5 my-4 pr-1">
+              {(!kpis.tutoresDetalle || kpis.tutoresDetalle.length === 0) ? (
+                <div className="py-10 text-center text-slate-400">
+                  <Users className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
+                  <p className="text-sm font-semibold text-slate-600">No hay padres o tutores vinculados aún</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                    Los tutores que ingresen el código institucional al registrarse aparecerán en esta lista.
+                  </p>
+                </div>
+              ) : (
+                kpis.tutoresDetalle.map((tutor) => (
+                  <div
+                    key={tutor.id}
+                    className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-700 font-bold text-sm shadow-2xs">
+                        {tutor.nombre ? tutor.nombre.charAt(0).toUpperCase() : 'T'}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">{tutor.nombre}</h4>
+                        <span className="text-[11px] text-slate-400">Tutor de la institución</span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
+                      🧒 {tutor.cantidadNinos} {tutor.cantidadNinos === 1 ? 'hijo' : 'hijos'}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setModalTutoresOpen(false)}
+                className="px-5 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

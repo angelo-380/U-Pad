@@ -45,20 +45,8 @@ export const rutinasService = {
     }
 
     const rutinaId = `rut_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
-    // La organización siempre es la del usuario autenticado (o la del colegio activo si es tutor)
-    let orgId = usuarioActual.organizacionId || null;
-    if (!orgId) {
-      const defaultOrg = db.prepare("SELECT id FROM organizaciones WHERE id = 'org_colegio_sol' LIMIT 1").get();
-      if (defaultOrg) {
-        orgId = defaultOrg.id;
-        if (usuarioActual.rol === 'tutor') {
-          try {
-            db.prepare('UPDATE usuarios SET organizacionId = ? WHERE id = ?').run(orgId, usuarioActual.id);
-            usuarioActual.organizacionId = orgId;
-          } catch (e) {}
-        }
-      }
-    }
+    // La organización es la del usuario autenticado (null si es tutor doméstico independiente)
+    const orgId = usuarioActual.organizacionId || null;
     const ahora = new Date().toISOString();
     const pasosJson = JSON.stringify(Array.isArray(pasos) ? pasos : []);
 

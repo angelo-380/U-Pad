@@ -1,23 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { devicesService } from '../../services/devicesService.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { X, Tablet, KeyRound, CheckCircle2, Loader2, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, Tablet, KeyRound, CheckCircle2, Loader2, Trash2, AlertCircle } from 'lucide-react';
 
 export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
   const [code, setCode] = useState('');
-  const [childName, setChildName] = useState('Diego');
+  const [childName, setChildName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [existingDevices, setExistingDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState(null);
+
   const toast = useToast();
 
   const cargarDispositivos = async () => {
     try {
       setLoadingDevices(true);
       const devs = await devicesService.listar();
-      setExistingDevices(Array.isArray(devs) ? devs : []);
+      const lista = Array.isArray(devs) ? devs : [];
+      setExistingDevices(lista);
     } catch (e) {
       console.warn('Error al cargar dispositivos existentes:', e);
     } finally {
@@ -29,6 +31,7 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
     if (isOpen) {
       cargarDispositivos();
       setCode('');
+      setChildName('');
       setError(null);
     }
   }, [isOpen]);
@@ -37,23 +40,29 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!childName.trim()) {
+      setError('Por favor indica el nombre de tu hijo(a) para identificarlo.');
+      return;
+    }
+
     const cleanCode = code.trim().toUpperCase();
     if (cleanCode.length !== 6) {
-      setError('El código de vinculación debe tener 6 caracteres alfanuméricos.');
+      setError('El código de vinculación debe tener exactamente 6 dígitos.');
       return;
     }
 
     try {
       setLoading(true);
       setError(null);
-      const res = await devicesService.vincularConCodigo(cleanCode, childName.trim() || 'Diego');
+      const res = await devicesService.vincularConCodigo(cleanCode, childName.trim());
       toast.success(
-        `¡Dispositivo de ${childName} vinculado exitosamente!`,
+        `¡Dispositivo de ${childName.trim()} vinculado exitosamente!`,
         'Tablet Sincronizada'
       );
       if (onLinked) onLinked(res.device);
       await cargarDispositivos();
       setCode('');
+      setChildName('');
       onClose();
     } catch (err) {
       setError(err.message || 'Código inválido o expirado. Genera uno nuevo en la tablet del niño.');
@@ -71,6 +80,7 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
       await devicesService.desvincular(deviceId);
       toast.success('Dispositivo eliminado y desvinculado exitosamente.', 'Dispositivo Eliminado');
       await cargarDispositivos();
+      window.dispatchEvent(new CustomEvent('upad:device_changed'));
       if (onLinked) onLinked(null);
     } catch (err) {
       toast.error(err.message || 'Error al desvincular dispositivo');
@@ -102,7 +112,7 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
           </div>
           <div>
             <h3 className="text-lg font-extrabold text-tea-text">
-              Conectar con el Niño (Código)
+              Vincular Tablet
             </h3>
             <p className="text-xs text-tea-muted">
               Vincula o elimina tablets y dispositivos infantiles
@@ -113,24 +123,14 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
         {/* Sección de Dispositivos ya Vinculados con opción de Eliminar */}
         {existingDevices.length > 0 && (
           <div className="mb-5 p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                Dispositivo(s) Vinculado(s) Actualmente
-              </span>
-              <button
-                type="button"
-                onClick={cargarDispositivos}
-                className="text-xs text-emerald-700 hover:underline flex items-center gap-1"
-              >
-                <RefreshCw className={`w-3 h-3 ${loadingDevices ? 'animate-spin' : ''}`} />
-                Actualizar
-              </button>
-            </div>
+            <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              Dispositivo(s) Vinculado(s) Actualmente
+            </span>
             <div className="space-y-2 mt-2">
               {existingDevices.map((dev) => {
                 const devId = dev.device_id || dev.id || 'dev_unknown';
-                const dName = dev.child_name || dev.childName || 'Diego';
+                const dName = dev.child_name || dev.childName || 'Hijo';
                 const dModel = dev.device_model || dev.model || 'Android Tablet';
                 const isDeleting = unlinkingId === devId;
 
@@ -173,7 +173,7 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
         )}
 
         <p className="text-xs text-slate-600 leading-relaxed bg-brand-50/50 p-3.5 rounded-2xl border border-brand-100 mb-5">
-          Abre la aplicación móvil <strong>U-Pad</strong> en la tablet o teléfono de tu hijo e introduce el código de emparejamiento de <strong>6 dígitos</strong> para asociar las rutinas y sincronizar en tiempo real.
+          Abre la aplicación móvil <strong>U-Pad</strong> en la tablet o teléfono de tu hijo. El código de emparejamiento de <strong>6 dígitos</strong> que aparece allí se escribe en este formulario para asociar las rutinas y sincronizar en tiempo real.
         </p>
 
         {error && (
@@ -192,7 +192,7 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
               type="text"
               value={childName}
               onChange={(e) => setChildName(e.target.value)}
-              placeholder="Ej. Diego"
+              placeholder="Escribe el nombre de tu hijo(a)"
               disabled={loading}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-brand-600 focus:outline-none"
             />
@@ -200,22 +200,25 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Código de 6 dígitos de la Tablet / Móvil
+              Código de 6 dígitos generado en el teléfono del niño
             </label>
             <div className="relative">
               <input
                 type="text"
                 maxLength={6}
                 value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="Ej. AB12CD"
+              onChange={(e) => {
+                const next = e.target.value.replace(/\D/g, '').slice(0, 6);
+                setCode(next);
+              }}
+              placeholder="Ej. 123456"
                 disabled={loading}
                 className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 text-lg font-mono font-bold tracking-widest text-center uppercase focus:ring-2 focus:ring-brand-600 focus:outline-none"
               />
               <KeyRound className="w-5 h-5 text-slate-400 absolute left-3.5 top-3.5" />
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              Código temporal de 6 caracteres visible en la pantalla del dispositivo
+              El código solo aparece en la pantalla del teléfono/tablet del niño y vence en 60 segundos.
             </p>
           </div>
 

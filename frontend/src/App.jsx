@@ -50,11 +50,11 @@ export default function App() {
               }
             />
 
-            {/* Módulo de Análisis de Desempeño Clínico TEA */}
+            {/* Módulo de Análisis de Desempeño Clínico TEA (Exclusivo para Tutor) */}
             <Route
               path="/desempeno"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['tutor']}>
                   <AppLayout>
                     <DesempenoPage />
                   </AppLayout>

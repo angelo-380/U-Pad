@@ -518,15 +518,14 @@ object LocalDataManager {
 
     private fun getCandidateBaseUrls(): List<String> {
         val configured = getCloudBaseUrl()
-        // 1. Primero adb reverse (http://127.0.0.1:3000)
-        // 2. IP configurada en SharedPreferences (ej. 10.0.2.2 o LAN)
-        // 3. Fallback emulador estándar si difiere
-        // 4. Último fallback: Cloud Run
+        // En la entrega del curso la fuente de verdad es Cloud Run. Se prueba
+        // primero para que la pantalla infantil no espere los timeouts de las
+        // direcciones locales antes de mostrar su código.
         val candidates = mutableListOf(
+            CLOUD_RUN_FALLBACK_URL,
             "http://127.0.0.1:3000",
             configured,
-            DEFAULT_EMULATOR_BASE_URL,
-            CLOUD_RUN_FALLBACK_URL
+            DEFAULT_EMULATOR_BASE_URL
         )
         return candidates.distinct()
     }
@@ -805,6 +804,28 @@ object LocalDataManager {
         return Pair(true, targetDeviceId)
     }
 
+    /**
+     * Sincroniza localmente un vínculo que ya fue confirmado por Cloud Run.
+     * Se usa cuando el padre introduce en la web el código que aparece en el
+     * teléfono del niño; el dispositivo no debe volver a consumir ese código.
+     */
+    fun markDeviceLinkedLocally(deviceId: String, parentId: String) {
+        val devices = getAllDevices().toMutableMap()
+        val updated = (devices[deviceId] ?: LocalChildDevice(
+            deviceId = deviceId,
+            modelo = android.os.Build.MODEL
+        )).copy(padreId = parentId, ultimaActualizacion = System.currentTimeMillis())
+        devices[deviceId] = updated
+        saveDevicesMap(devices)
+
+        mainHandler.post {
+            deviceListeners[deviceId]?.forEach { it.invoke(updated) }
+            parentDeviceListListeners[parentId]?.forEach { listener ->
+                listener.invoke(devices.values.filter { it.padreId == parentId })
+            }
+        }
+    }
+
     fun updateDeviceLocation(deviceId: String, lat: Double, lng: Double) {
         val devices = getAllDevices().toMutableMap()
         val current = devices[deviceId] ?: LocalChildDevice(deviceId = deviceId)
@@ -836,7 +857,54 @@ object LocalDataManager {
         onDeviceChanged(getAllDevices()[deviceId])
         val list = deviceListeners.getOrPut(deviceId) { CopyOnWriteArrayList() }
         list.add(onDeviceChanged)
-        return ListenerRegistration { list.remove(onDeviceChanged) }
+
+        // La web puede desvincular el dispositivo en cualquier momento. Como
+        // el niño no tiene sesión web, consulta un endpoint de estado mínimo y
+        // vuelve a la pantalla inicial cuando el vínculo desaparece.
+        var pollingActive = true
+        kotlin.concurrent.thread {
+            while (pollingActive) {
+                try {
+                    Thread.sleep(2000)
+                    if (!pollingActive) break
+
+                    val json = httpGet("/api/v1/devices/status/$deviceId") ?: continue
+                    val root = gson.fromJson(json, Map::class.java)
+                    val data = root["data"] as? Map<*, *> ?: continue
+                    val linked = data["linked"] as? Boolean ?: false
+                    val parentId = data["parentId"] as? String ?: ""
+                    val local = getAllDevices()[deviceId]
+
+                    if (!linked) {
+                        // Un dispositivo nuevo puede no existir todavía en
+                        // child_devices mientras espera su primer vínculo.
+                        // Solo se limpia cuando ya estaba asociado a un padre
+                        // y ese vínculo desapareció remotamente.
+                        if (local?.padreId?.isNotEmpty() == true) {
+                            deleteDevice(deviceId)
+                        }
+                    } else if (local?.padreId != parentId) {
+                        val synced = (local ?: LocalChildDevice(
+                            deviceId = deviceId,
+                            modelo = android.os.Build.MODEL
+                        )).copy(padreId = parentId, ultimaActualizacion = System.currentTimeMillis())
+                        val devices = getAllDevices().toMutableMap()
+                        devices[deviceId] = synced
+                        saveDevicesMap(devices)
+                        mainHandler.post {
+                            deviceListeners[deviceId]?.forEach { it.invoke(synced) }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error consultando estado remoto del dispositivo: ${e.message}")
+                }
+            }
+        }
+
+        return ListenerRegistration {
+            pollingActive = false
+            list.remove(onDeviceChanged)
+        }
     }
 
     fun listenPairingCode(code: String, onCodeChanged: (LocalPairingCode?) -> Unit): ListenerRegistration {

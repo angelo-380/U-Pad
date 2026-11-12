@@ -416,18 +416,24 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     });
 
     test('Dispositivos: POST /api/devices/pairing/link vincula una tablet con código', async () => {
+      const generado = await request(app)
+        .post('/api/devices/pairing/create')
+        .send({ deviceId: `dev-test-${TIMESTAMP}` });
+      expect(generado.status).toBe(201);
+      const code = generado.body.data.code;
+
       const res = await request(app)
         .post('/api/devices/pairing/link')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          code: '849201',
+          code,
           childName: 'Diego',
           deviceModel: 'Android Tablet Kiosk v14',
         });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.pairingCode).toBe('849201');
+      expect(res.body.data.pairingCode).toBe(code);
       expect(res.body.data.childName).toBe('Diego');
     });
 
@@ -955,10 +961,15 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       });
 
       test('los niños vinculados por los tutores de la organización cuentan como estudiantes y kioscos', async () => {
+        const generado = await request(app)
+          .post('/api/devices/pairing/create')
+          .send({ deviceId: `dev-kpi-${TIMESTAMP}` });
+        expect(generado.status).toBe(201);
+
         const vincular = await request(app)
           .post('/api/devices/pairing/link')
           .set(auth(tutorDeA.token))
-          .send({ code: String(100000 + crypto.randomInt(900000)), childName: 'Niño de Prueba', deviceModel: 'Tablet de Prueba' });
+          .send({ code: generado.body.data.code, childName: 'Niño de Prueba', deviceModel: 'Tablet de Prueba' });
         expect(vincular.status).toBe(201);
 
         const res = await kpis(a.token);

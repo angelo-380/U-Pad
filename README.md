@@ -82,3 +82,17 @@ Para compilar y desplegar el proyecto con éxito, se requieren las siguientes AP
 2. Abre el proyecto en **Android Studio**.
 3. Sincroniza los archivos de Gradle.
 4. Despliega la aplicación en un dispositivo emulador o físico con **API level 24 (Android 7.0) o superior**.
+
+## 🚀 Comandos rápidos de entrega
+
+Desde la raíz del proyecto:
+
+```bash
+# Solo compilar y actualizar el APK entregable
+./build-apk.sh
+
+# Compilar la web, copiarla al backend y desplegar Cloud Run
+./deploy-cloud.sh
+```
+
+`deploy-cloud.sh` usa el proyecto `project-e287e159-4fc1-4b7f-bf9`, la región `us-central1` y el servicio `upad-backend-service`. Requiere tener una cuenta activa en `gcloud`.

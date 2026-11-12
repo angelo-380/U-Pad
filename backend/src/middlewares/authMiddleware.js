@@ -1,5 +1,6 @@
 import { verifyToken } from '../utils/jwt.js';
 import { AppError } from '../utils/AppError.js';
+import { db } from '../config/database.js';
 
 /**
  * Middleware estricto de autenticación JWT:
@@ -32,8 +33,35 @@ export const authenticate = (req, res, next) => {
     // Decodifica y verifica criptográficamente la firma del token
     const decoded = verifyToken(token);
 
-    // Inyecta el usuario autenticado en la petición
-    req.user = decoded;
+    // Consulta los datos en tiempo real de la base de datos para reflejar cambios inmediatos de rol, nombre u organización
+    let liveUser = null;
+    try {
+      if (decoded && decoded.id) {
+        liveUser = db.prepare(`
+          SELECT u.id, u.nombre, u.email, u.rol, u.organizacionId, u.activo, o.nombre as organizacionNombre
+          FROM usuarios u
+          LEFT JOIN organizaciones o ON u.organizacionId = o.id
+          WHERE u.id = ?
+        `).get(decoded.id);
+      }
+    } catch (e) {
+      // Ignorar fallo de consulta en entornos de pruebas aislados
+    }
+
+    if (liveUser) {
+      req.user = {
+        ...decoded,
+        nombre: liveUser.nombre,
+        email: liveUser.email,
+        rol: liveUser.rol,
+        organizacionId: liveUser.organizacionId,
+        organizacionNombre: liveUser.organizacionNombre,
+        activo: Boolean(liveUser.activo),
+      };
+    } else {
+      req.user = decoded;
+    }
+
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {

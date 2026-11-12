@@ -53,21 +53,10 @@ export const GpsPage = () => {
           }));
         }
       } else {
-        // Fallback representativo para visualización cuando aún no se vincula
-        setDevice({
-          childName: 'Diego',
-          deviceModel: 'Samsung Galaxy Tab A8 (Kiosk U-Pad)',
-          isKioskActive: true,
-          deviceId: 'dev_child_cloud_1',
-        });
+        setDevice(null);
       }
     } catch (e) {
-      setDevice({
-        childName: 'Diego',
-        deviceModel: 'Samsung Galaxy Tab A8 (Kiosk U-Pad)',
-        isKioskActive: true,
-        deviceId: 'dev_child_cloud_1',
-      });
+      setDevice(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -113,8 +102,8 @@ export const GpsPage = () => {
     setTimeout(() => setRefreshing(false), 600);
   };
 
-  const childName = device?.childName || device?.child_name || 'Diego';
-  const deviceModel = device?.deviceModel || device?.device_model || 'Samsung Galaxy Tab A8 (U-Pad)';
+  const childName = device?.childName || device?.child_name || 'Hijo';
+  const deviceModel = device?.deviceModel || device?.device_model || 'Dispositivo infantil';
 
   // URL del iframe OpenStreetMap centrado en las coordenadas
   const delta = 0.004;

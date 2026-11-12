@@ -105,7 +105,7 @@ class ApiClient {
       case 503:
       case 504:
         userMessage =
-          'Error interno en el servidor de U-Pad. Nuestro equipo técnico ha sido notificado.';
+          'No se pudo completar la operación en U-Pad. Verifica tu conexión e inténtalo nuevamente.';
         window.dispatchEvent(
           new CustomEvent('upad:server_error', {
             detail: { status: response.status, message: serverMessage || userMessage },

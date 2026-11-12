@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { db } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
 
@@ -11,6 +12,13 @@ export function estaCodigoExpirado(pairing, maxSeconds = 60) {
   }
   if (!pairing.created_at) {
     return false;
+  }
+
+  if (pairing.expires_at) {
+    const expiresAtMs = typeof pairing.expires_at === 'number' || /^\d+$/.test(String(pairing.expires_at))
+      ? Number(pairing.expires_at)
+      : new Date(String(pairing.expires_at).trim().replace(' ', 'T') + 'Z').getTime();
+    if (Number.isFinite(expiresAtMs)) return Date.now() >= expiresAtMs;
   }
 
   let createdAtMs;
@@ -59,7 +67,7 @@ export const deviceService = {
   },
 
   /**
-   * Vincula un dispositivo mediante el código de 6 caracteres generado por la tablet o app móvil.
+   * Vincula un dispositivo mediante el código de 6 dígitos generado por la app móvil.
    */
   async vincularConCodigo({ code, childName, deviceModel }, parentId) {
     if (!code) {
@@ -71,19 +79,15 @@ export const deviceService = {
     const cleanModel = deviceModel ? deviceModel.trim() : 'Android Tablet (U-Pad Child Edition)';
 
     // Buscar si el código existe en pairing_codes
-    let pairing = db.prepare('SELECT * FROM pairing_codes WHERE UPPER(code) = ?').get(cleanCode);
+    if (!/^\d{6}$/.test(cleanCode)) {
+      throw new AppError('El código de vinculación debe tener exactamente 6 dígitos.', 400, { code: 'CODE_INVALID_FORMAT' });
+    }
 
+    // La web nunca crea códigos: solo consume uno que ya fue generado por la
+    // app del niño. Esto evita que cualquier visitante fabrique un código válido.
+    const pairing = db.prepare('SELECT * FROM pairing_codes WHERE UPPER(code) = ?').get(cleanCode);
     if (!pairing) {
-      if (process.env.NODE_ENV === 'test' || /^\d{6}$/.test(cleanCode)) {
-        const devId = `dev_child_${cleanCode.toLowerCase()}`;
-        db.prepare(`
-          INSERT INTO pairing_codes (code, device_id, pairing_status, created_at)
-          VALUES (?, ?, 'PENDING', CURRENT_TIMESTAMP)
-        `).run(cleanCode, devId);
-        pairing = db.prepare('SELECT * FROM pairing_codes WHERE UPPER(code) = ?').get(cleanCode);
-      } else {
-        throw new AppError('El código de vinculación no existe o es inválido.', 404, { code: 'CODE_NOT_FOUND' });
-      }
+      throw new AppError('El código de vinculación no existe o es inválido.', 404, { code: 'CODE_NOT_FOUND' });
     }
 
     // Validación B: Rechazar con 410 si ya fue usado (pairing_status !== 'PENDING')
@@ -93,7 +97,7 @@ export const deviceService = {
 
     // Validación B: Rechazar con 410 si created_at tiene más de 60 segundos
     if (estaCodigoExpirado(pairing, 60)) {
-      throw new AppError('El código de vinculación ha expirado (validez máxima de 60 segundos). Genera uno nuevo en la tablet.', 410, { code: 'CODE_EXPIRED' });
+      throw new AppError('El código de vinculación ha expirado (validez máxima de 60 segundos). Genera uno nuevo en la app del niño.', 410, { code: 'CODE_EXPIRED' });
     }
 
     let deviceId = pairing.device_id || `dev_child_${cleanCode.toLowerCase()}`;
@@ -137,23 +141,40 @@ export const deviceService = {
    * Desvincula y elimina un dispositivo vinculado a la cuenta del padre.
    */
   async desvincular(deviceId, parentId = null) {
+    if (!deviceId) {
+      throw new AppError('El dispositivo es obligatorio.', 400, { code: 'DEVICE_ID_REQUIRED' });
+    }
+
+    const device = parentId
+      ? db.prepare('SELECT device_id FROM child_devices WHERE device_id = ? AND parent_id = ?').get(deviceId, parentId)
+      : db.prepare('SELECT device_id FROM child_devices WHERE device_id = ?').get(deviceId);
+
+    // El padre solo puede borrar el dispositivo concreto seleccionado. Nunca
+    // se usa parent_id como condición de borrado global.
+    if (parentId && !device) {
+      throw new AppError('El dispositivo no pertenece a esta cuenta.', 403, { code: 'DEVICE_FORBIDDEN' });
+    }
+
+    db.exec('BEGIN');
     try {
       if (parentId) {
-        db.prepare('DELETE FROM child_devices WHERE (device_id = ? OR id = ? OR parent_id = ?)').run(deviceId, deviceId, parentId);
-        db.prepare('DELETE FROM pairing_codes WHERE (device_id = ? OR parent_id = ? OR code = ?)').run(deviceId, parentId, deviceId);
+        db.prepare('DELETE FROM child_devices WHERE device_id = ? AND parent_id = ?').run(deviceId, parentId);
+        db.prepare('DELETE FROM pairing_codes WHERE device_id = ? AND (parent_id = ? OR parent_id IS NULL)').run(deviceId, parentId);
       } else {
-        db.prepare('DELETE FROM child_devices WHERE device_id = ? OR id = ?').run(deviceId, deviceId);
-        db.prepare('DELETE FROM pairing_codes WHERE device_id = ? OR code = ?').run(deviceId, deviceId);
+        db.prepare('DELETE FROM child_devices WHERE device_id = ?').run(deviceId);
+        db.prepare('DELETE FROM pairing_codes WHERE device_id = ?').run(deviceId);
       }
-    } catch (e) {
-      console.error('Error desvinculando dispositivo en DB:', e);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
     }
 
     return { deviceId, desvinculado: true };
   },
 
   /**
-   * Genera un código temporal de vinculación de 6 caracteres (para la tablet).
+   * Genera un código temporal de vinculación de 6 dígitos (solo para la app infantil).
    * Invalida los PENDING anteriores de ese dispositivo.
    */
   async generarCodigo(deviceId = null, requestedCode = null) {
@@ -171,7 +192,7 @@ export const deviceService = {
       }
       code = cleanRequested;
     } else {
-      code = Math.floor(100000 + Math.random() * 900000).toString();
+      code = crypto.randomInt(100000, 1000000).toString();
     }
 
     const devId = deviceId || `dev_tablet_${code}`;
@@ -197,17 +218,38 @@ export const deviceService = {
       WHERE device_id = ? AND pairing_status = 'PENDING'
     `).run(devId);
 
+    const createdAt = Date.now();
+    const expiresAt = createdAt + 60_000;
     db.prepare(`
-      INSERT INTO pairing_codes (code, device_id, pairing_status, created_at)
-      VALUES (?, ?, 'PENDING', ?)
+      INSERT INTO pairing_codes (code, device_id, pairing_status, created_at, expires_at)
+      VALUES (?, ?, 'PENDING', ?, ?)
       ON CONFLICT(code) DO UPDATE SET 
         device_id = excluded.device_id, 
         pairing_status = 'PENDING', 
         parent_id = NULL, 
-        created_at = excluded.created_at
-    `).run(code, devId, Date.now());
+        created_at = excluded.created_at,
+        expires_at = excluded.expires_at
+    `).run(code, devId, createdAt, expiresAt);
 
     return { code, deviceId: devId, status: 'PENDING', expiresInSeconds: 60 };
+  },
+
+  /**
+   * Devuelve solo el estado de vinculación. La app infantil consulta este
+   * recurso para resetearse cuando el padre elimina el dispositivo desde web.
+   */
+  async estadoDispositivo(deviceId) {
+    const row = db.prepare(`
+      SELECT device_id, parent_id, child_name, device_model
+      FROM child_devices
+      WHERE device_id = ?
+    `).get(deviceId);
+
+    return {
+      deviceId,
+      linked: Boolean(row?.parent_id),
+      parentId: row?.parent_id || '',
+    };
   },
 
   /**
@@ -220,7 +262,7 @@ export const deviceService = {
     }
 
     const cleanCode = rawCode.trim().toUpperCase();
-    const pairingInfo = db.prepare('SELECT code, device_id, parent_id, pairing_status, created_at FROM pairing_codes WHERE UPPER(code) = ?').get(cleanCode);
+    const pairingInfo = db.prepare('SELECT code, device_id, parent_id, pairing_status, created_at, expires_at FROM pairing_codes WHERE UPPER(code) = ?').get(cleanCode);
 
     if (!pairingInfo || pairingInfo.pairing_status === 'EXPIRED') {
       throw new AppError('Pairing code not found or expired.', 404, { code: 'CODE_NOT_FOUND' });

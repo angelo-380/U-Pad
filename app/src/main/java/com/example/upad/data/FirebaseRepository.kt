@@ -70,6 +70,10 @@ class FirebaseRepository {
         LocalDataManager.linkDeviceToParent(deviceId, parentId)
     }
 
+    fun markDeviceLinkedLocally(deviceId: String, parentId: String) {
+        LocalDataManager.markDeviceLinkedLocally(deviceId, parentId)
+    }
+
     fun deletePairingCode(code: String) {
         LocalDataManager.deletePairingCode(code)
     }
@@ -82,8 +86,10 @@ class FirebaseRepository {
         LocalDataManager.updateDeviceLocation(deviceId, latitude, longitude)
     }
 
-    suspend fun deleteDeviceDoc(deviceId: String) {
-        LocalDataManager.deleteDevice(deviceId)
+    suspend fun deleteDeviceDoc(deviceId: String, parentId: String = "") {
+        // La desvinculación iniciada desde la tuerca del kiosco también debe
+        // borrar el vínculo en Cloud Run, no solo en la memoria local.
+        LocalDataManager.unlinkChildDevice(deviceId, parentId)
     }
 
     suspend fun guardarMensajesRefuerzo(userId: String, turn: String, mensajes: List<String>) {

@@ -66,7 +66,7 @@ fun DevicePairingScreen(
             }
             // Expired: reset code to enforce MFA time-based security
             pairingCode = ""
-            mensajeError = "El cdigo expir por seguridad. Ingrese el nuevo cdigo generado."
+            mensajeError = "El código expiró por seguridad. Ingresa el nuevo código generado."
             codeSeed++
         }
     }
@@ -224,7 +224,7 @@ fun DevicePairingScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Cdigo vlido por: ${secondsRemaining}s (seguridad TOTP)",
+                            text = "Código válido por: ${secondsRemaining}s (seguridad TOTP)",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (secondsRemaining <= 10) Color(0xFFEF4444) else colorTextoSecundario

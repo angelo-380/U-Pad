@@ -96,11 +96,13 @@ router.get('/users', (req, res, next) => {
         u.email,
         u.rol,
         u.organizacionId,
+        o.nombre as organizacionNombre,
         u.activo,
         u.creadoEn,
         u.password_salt as saltPreview,
         (SELECT COUNT(*) FROM rutinas r WHERE r.creadoPor = u.id) as rutinasCount
       FROM usuarios u
+      LEFT JOIN organizaciones o ON u.organizacionId = o.id
       ${whereClause}
       ORDER BY u.creadoEn DESC
       LIMIT ? OFFSET ?
@@ -121,6 +123,69 @@ router.get('/users', (req, res, next) => {
         hasNext: page < totalPages,
         hasPrev: page > 1,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/routines
+ * Auditoría global de rutinas para Developer, ordenadas de la más reciente a
+ * la más antigua y con paginación estable.
+ */
+router.get('/routines', (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
+    const offset = (page - 1) * limit;
+    const search = (req.query.search || '').trim();
+    const turno = (req.query.turno || '').trim().toUpperCase();
+
+    let whereClause = ' WHERE 1=1';
+    const params = [];
+    if (search) {
+      whereClause += ' AND (r.titulo LIKE ? OR r.id LIKE ? OR u.nombre LIKE ? OR u.email LIKE ?)';
+      const value = `%${search}%`;
+      params.push(value, value, value, value);
+    }
+    if (['MANANA', 'TARDE', 'NOCHE'].includes(turno)) {
+      whereClause += ' AND r.turno = ?';
+      params.push(turno);
+    }
+
+    const total = db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM rutinas r
+      LEFT JOIN usuarios u ON u.id = r.creadoPor
+      ${whereClause}
+    `).get(...params)?.total || 0;
+
+    const rows = db.prepare(`
+      SELECT
+        r.id, r.titulo, r.turno, r.ninoId, r.organizacionId,
+        r.pasos, r.activa, r.creadoPor, r.creadoEn, r.actualizadoEn,
+        u.nombre AS creadorNombre, u.email AS creadorEmail,
+        o.nombre AS organizacionNombre
+      FROM rutinas r
+      LEFT JOIN usuarios u ON u.id = r.creadoPor
+      LEFT JOIN organizaciones o ON o.id = r.organizacionId
+      ${whereClause}
+      ORDER BY datetime(r.creadoEn) DESC, r.creadoEn DESC, r.id DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset).map((r) => {
+      let pasos = [];
+      try { pasos = JSON.parse(r.pasos || '[]'); } catch { pasos = []; }
+      return { ...r, pasos, activa: Boolean(r.activa) };
+    });
+
+    const totalPages = Math.ceil(total / limit) || 1;
+    return res.status(200).json({
+      status: 'success',
+      statusCode: 200,
+      message: 'Rutinas obtenidas exitosamente para auditoría',
+      data: rows,
+      pagination: { page, limit, total, totalPages, hasNext: page < totalPages, hasPrev: page > 1 },
     });
   } catch (error) {
     next(error);
@@ -193,7 +258,7 @@ router.post('/users', (req, res, next) => {
 router.put('/users/:userId', (req, res, next) => {
   try {
     const { userId } = req.params;
-    const { nombre, email, rol, organizacionId, activo, password } = req.body;
+    const { nombre, email, rol, organizacionId, organizacionNombre, activo, password } = req.body;
 
     const existing = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(userId);
     if (!existing) {
@@ -220,7 +285,12 @@ router.put('/users/:userId', (req, res, next) => {
     try {
       // Todo empresario es propietario de una organización: si queda sin una, se le crea
       if (newRol === ROLES.EMPRESARIO && !newOrg) {
-        newOrg = crearOrganizacion(db, { nombre: newNombre, propietarioId: userId }).id;
+        newOrg = crearOrganizacion(db, { nombre: organizacionNombre?.trim() || newNombre, propietarioId: userId }).id;
+      }
+
+      // Si el developer especificó un nuevo nombre para la organización, actualizar la tabla organizaciones
+      if (organizacionNombre && organizacionNombre.trim() && newOrg) {
+        db.prepare('UPDATE organizaciones SET nombre = ? WHERE id = ?').run(organizacionNombre.trim(), newOrg);
       }
 
       if (password && password.trim().length >= 6) {
@@ -249,7 +319,12 @@ router.put('/users/:userId', (req, res, next) => {
       throw error;
     }
 
-    const updated = db.prepare('SELECT id, nombre, email, rol, organizacionId, activo, creadoEn FROM usuarios WHERE id = ?').get(userId);
+    const updated = db.prepare(`
+      SELECT u.id, u.nombre, u.email, u.rol, u.organizacionId, o.nombre as organizacionNombre, u.activo, u.creadoEn
+      FROM usuarios u
+      LEFT JOIN organizaciones o ON u.organizacionId = o.id
+      WHERE u.id = ?
+    `).get(userId);
 
     return res.status(200).json({
       status: 'success',
@@ -333,6 +408,7 @@ router.get('/users/:userId/routines', (req, res, next) => {
       }
       return {
         ...r,
+        nombre: r.titulo,
         activa: Boolean(r.activa),
         pasos: parsedPasos,
       };

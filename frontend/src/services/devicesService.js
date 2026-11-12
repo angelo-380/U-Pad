@@ -10,26 +10,16 @@ export const devicesService = {
   },
 
   /**
-   * Generar código de vinculación de 6 dígitos (modo tablet)
-   */
-  async generarCodigo(deviceId, deviceModel) {
-    const res = await api.post('/api/devices/pairing/create', {
-      deviceId,
-      deviceModel,
-    });
-    return res?.data;
-  },
-
-  /**
    * Vincular dispositivo desde la web/app mediante código de 6 dígitos
    */
-  async vincularConCodigo(pairingCode, childName = 'Diego') {
+  async vincularConCodigo(pairingCode, childName = '') {
     const cleanCode = (pairingCode || '').trim().toUpperCase();
+    const cleanName = (childName || '').trim() || 'Hijo';
     const res = await api.post('/api/devices/pairing/link', {
       code: cleanCode,
       pairing_code: cleanCode,
-      childName: childName,
-      child_name: childName,
+      childName: cleanName,
+      child_name: cleanName,
     });
     return res?.data || res;
   },

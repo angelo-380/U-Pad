@@ -5,6 +5,7 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 import { RoleBadge } from '../common/RoleBadge.jsx';
 import { LanguageSelector } from '../common/LanguageSelector.jsx';
 import { BackupsModal } from '../admin/BackupsModal.jsx';
+import { ConfiguracionUsuarioModal } from './ConfiguracionUsuarioModal.jsx';
 import {
   LogOut,
   CalendarCheck,
@@ -20,12 +21,13 @@ import {
 } from 'lucide-react';
 
 export const AppLayout = ({ children }) => {
-  const { user, logout, sessionExpiredNotice, clearSessionNotice } = useAuth();
+  const { user, logout, sessionExpiredNotice, clearSessionNotice, refreshUser } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backupsModalOpen, setBackupsModalOpen] = useState(false);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
 
   const isDeveloper = user?.rol === 'developer';
 
@@ -41,14 +43,12 @@ export const AppLayout = ({ children }) => {
   if (isEmpresario) {
     mainLinks = [
       { label: 'Panel Gerencial', path: '/gerencial', icon: Building2 },
-      { label: 'Análisis de Desempeño', path: '/desempeno', icon: TrendingUp },
     ];
   } else if (isDeveloper) {
     mainLinks = [
       { label: 'Developer Center', path: '/admin/usuarios', icon: Users },
       { label: 'Panel Gerencial', path: '/gerencial', icon: Building2 },
       { label: 'Rutinas', path: '/rutinas', icon: CalendarCheck },
-      { label: 'Desempeño', path: '/desempeno', icon: TrendingUp },
       { label: 'GPS', path: '/gps', icon: Compass },
     ];
   } else {
@@ -159,7 +159,12 @@ export const AppLayout = ({ children }) => {
               {/* Selector de Idioma */}
               <LanguageSelector />
 
-              <div className="flex items-center gap-2.5 pl-3 border-l border-tea-border">
+              <button
+                type="button"
+                onClick={async () => { await refreshUser(); setConfigModalOpen(true); }}
+                className="flex items-center gap-2.5 pl-3 border-l border-tea-border hover:bg-slate-50 p-1.5 rounded-2xl transition-colors cursor-pointer text-left"
+                title="Abrir Configuración de Usuario"
+              >
                 <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-xs">
                   {displayName.charAt(0).toUpperCase()}
                 </div>
@@ -172,7 +177,7 @@ export const AppLayout = ({ children }) => {
                   </span>
                 </div>
                 <RoleBadge role={user?.rol} />
-              </div>
+              </button>
 
               <button
                 type="button"
@@ -203,7 +208,16 @@ export const AppLayout = ({ children }) => {
 
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-tea-border bg-white px-4 pt-4 pb-5 space-y-4 animate-fadeIn">
-            <div className="flex items-center justify-between pb-3 border-b border-tea-border">
+            <button
+              type="button"
+              onClick={async () => {
+                setMobileMenuOpen(false);
+                await refreshUser();
+                setConfigModalOpen(true);
+              }}
+              className="w-full flex items-center justify-between pb-3 border-b border-tea-border text-left hover:bg-slate-50 p-2 rounded-2xl transition-colors cursor-pointer"
+              title="Abrir Configuración de Usuario"
+            >
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-sm">
                   {displayName.charAt(0).toUpperCase()}
@@ -214,7 +228,7 @@ export const AppLayout = ({ children }) => {
                 </div>
               </div>
               <RoleBadge role={user?.rol} />
-            </div>
+            </button>
 
             <div className="space-y-1">
               {mainLinks.map((link) => {
@@ -292,6 +306,12 @@ export const AppLayout = ({ children }) => {
           onClose={() => setBackupsModalOpen(false)}
         />
       )}
+
+      <ConfiguracionUsuarioModal
+        isOpen={configModalOpen}
+        onClose={() => setConfigModalOpen(false)}
+        user={user}
+      />
     </div>
   );
 };

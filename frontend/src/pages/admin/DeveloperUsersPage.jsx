@@ -34,7 +34,7 @@ export const DeveloperUsersPage = () => {
   const { t } = useLanguage();
   const toast = useToast();
 
-  const [activeTab, setActiveTab] = useState('users_table'); // 'users_table' | 'sql_console'
+  const [activeTab, setActiveTab] = useState('users_table'); // 'users_table' | 'routines_table' | 'sql_console'
   const [users, setUsers] = useState([]);
   const [pageSize, setPageSize] = useState(25);
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
@@ -42,6 +42,13 @@ export const DeveloperUsersPage = () => {
   const [search, setSearch] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [jumpPageInput, setJumpPageInput] = useState('');
+
+  const [routines, setRoutines] = useState([]);
+  const [routinesPagination, setRoutinesPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
+  const [routinesLoading, setRoutinesLoading] = useState(false);
+  const [routineSearch, setRoutineSearch] = useState('');
+  const [routineTurno, setRoutineTurno] = useState('');
+  const [routinePageInput, setRoutinePageInput] = useState('1');
 
   // Modales
   const [selectedUserForRoutines, setSelectedUserForRoutines] = useState(null);
@@ -88,6 +95,25 @@ export const DeveloperUsersPage = () => {
     }
   };
 
+  const fetchRoutines = async (page = 1, currentLimit = pageSize, overrides = {}) => {
+    setRoutinesLoading(true);
+    try {
+      const res = await adminService.listarRutinas({
+        page,
+        limit: currentLimit,
+        search: overrides.search ?? routineSearch,
+        turno: overrides.turno ?? routineTurno,
+      });
+      setRoutines(res.routines);
+      setRoutinesPagination(res.pagination);
+      setRoutinePageInput(String(res.pagination.page || page));
+    } catch (e) {
+      toast.error('Error al consultar rutinas desde la base de datos');
+    } finally {
+      setRoutinesLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchUsers(1, pageSize);
   }, [selectedRole, pageSize]);
@@ -95,6 +121,11 @@ export const DeveloperUsersPage = () => {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     fetchUsers(1);
+  };
+
+  const handleRoutineSearchSubmit = (e) => {
+    e.preventDefault();
+    fetchRoutines(1);
   };
 
   const handleInspectUserRoutines = async (user) => {
@@ -139,10 +170,26 @@ export const DeveloperUsersPage = () => {
       email: user.email,
       rol: user.rol,
       organizacionId: user.organizacionId || '',
-      activo: user.activo === 1,
+      organizacionNombre: user.organizacionNombre || '',
       password: '',
+      generatedPassword: '',
     });
     setEditUserModalOpen(true);
+  };
+
+  const handleGeneratePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!#';
+    let newPass = 'UPad';
+    for (let i = 0; i < 6; i++) {
+      newPass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    newPass += '!#';
+    setEditUserData((prev) => ({
+      ...prev,
+      password: newPass,
+      generatedPassword: newPass,
+    }));
+    toast.info(`Nueva contraseña generada: ${newPass}`);
   };
 
   const handleEditUserSubmit = async (e) => {
@@ -278,6 +325,22 @@ export const DeveloperUsersPage = () => {
           <Terminal className="w-4 h-4" />
           <span>Consola SQL Directa</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('routines_table');
+            fetchRoutines(1);
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-colors ${
+            activeTab === 'routines_table'
+              ? 'bg-white border-t border-x border-tea-border text-purple-700 -mb-px'
+              : 'text-tea-muted hover:text-tea-text'
+          }`}
+        >
+          <CalendarCheck className="w-4 h-4" />
+          <span>Gestión de Rutinas</span>
+        </button>
       </div>
 
       {/* PESTAÑA 1: TABLA DE USUARIOS Y GESTIÓN CRUD */}
@@ -376,10 +439,17 @@ export const DeveloperUsersPage = () => {
                         </td>
                         <td className="py-3.5 px-4">{getRoleBadge(u.rol)}</td>
                         <td className="py-3.5 px-4">
-                          {u.organizacionId ? (
-                            <span className="font-mono text-[11px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
-                              {u.organizacionId}
-                            </span>
+                          {u.organizacionNombre || u.organizacionId ? (
+                            <div className="flex flex-col">
+                              <span className="font-bold text-xs text-indigo-900">
+                                {u.organizacionNombre || u.organizacionId}
+                              </span>
+                              {u.organizacionNombre && u.organizacionId && (
+                                <span className="font-mono text-[9px] text-slate-400">
+                                  ID: {u.organizacionId}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-tea-subtle italic text-[11px]">- Ninguna -</span>
                           )}
@@ -531,7 +601,85 @@ export const DeveloperUsersPage = () => {
         </div>
       )}
 
-      {/* PESTAÑA 2: CONSOLA SQL DIRECTA */}
+      {/* PESTAÑA 2: TODAS LAS RUTINAS, DE MÁS RECIENTE A MÁS ANTIGUA */}
+      {activeTab === 'routines_table' && (
+        <div className="space-y-5">
+          <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex flex-col sm:flex-row gap-3 items-center justify-between">
+            <form onSubmit={handleRoutineSearchSubmit} className="flex-1 w-full flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-tea-subtle absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  value={routineSearch}
+                  onChange={(e) => setRoutineSearch(e.target.value)}
+                  placeholder="Buscar rutina, usuario o ID..."
+                  className="w-full text-xs bg-slate-50 border border-tea-border rounded-xl pl-9 pr-3 py-2 text-tea-text focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+              <button type="submit" className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700">
+                Buscar
+              </button>
+            </form>
+            <select
+              value={routineTurno}
+              onChange={(e) => { const value = e.target.value; setRoutineTurno(value); fetchRoutines(1, pageSize, { turno: value }); }}
+              className="text-xs font-medium bg-slate-50 border border-tea-border rounded-xl px-3 py-2 text-tea-text"
+            >
+              <option value="">Todos los turnos</option>
+              <option value="MANANA">Mañana</option>
+              <option value="TARDE">Tarde</option>
+              <option value="NOCHE">Noche</option>
+            </select>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-tea-border shadow-soft-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-tea-border text-tea-subtle font-extrabold uppercase tracking-wider text-[11px]">
+                    <th className="py-3.5 px-4">Rutina</th>
+                    <th className="py-3.5 px-4">Turno</th>
+                    <th className="py-3.5 px-4">Usuario</th>
+                    <th className="py-3.5 px-4">Pictogramas</th>
+                    <th className="py-3.5 px-4">Creada</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-tea-border text-tea-text">
+                  {routinesLoading ? (
+                    <tr><td colSpan={5} className="py-10 text-center text-tea-muted"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-purple-600 mb-2" />Consultando rutinas...</td></tr>
+                  ) : routines.length === 0 ? (
+                    <tr><td colSpan={5} className="py-10 text-center text-tea-muted">No hay rutinas registradas.</td></tr>
+                  ) : routines.map((r) => {
+                    const turnoLabel = r.turno === 'MANANA' ? 'Mañana' : r.turno === 'TARDE' ? 'Tarde' : r.turno === 'NOCHE' ? 'Noche' : r.turno;
+                    const pasos = Array.isArray(r.pasos) ? r.pasos : [];
+                    return (
+                      <tr key={r.id} className="hover:bg-purple-50/40">
+                        <td className="py-3.5 px-4"><div className="font-extrabold">{r.titulo}</div><div className="text-[10px] font-mono text-slate-400">{r.id}</div></td>
+                        <td className="py-3.5 px-4"><span className="px-2 py-1 rounded-full bg-slate-100 font-bold">{turnoLabel}</span></td>
+                        <td className="py-3.5 px-4"><div className="font-bold">{r.creadorNombre || 'Usuario eliminado'}</div><div className="text-[10px] text-slate-400">{r.creadorEmail || '—'}</div></td>
+                        <td className="py-3.5 px-4"><div className="flex flex-wrap gap-1.5">{pasos.length ? pasos.map((p, i) => <ArasaacPictogram key={i} keyword={p.palabraClave || p.texto || p.nombre || 'tarea'} alt={p.texto || p.nombre || 'Pictograma'} size="sm" />) : <span className="text-slate-400">Sin pasos</span>}</div></td>
+                        <td className="py-3.5 px-4 text-[11px] text-tea-muted">{r.creadoEn ? new Date(r.creadoEn).toLocaleString() : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 border-t border-tea-border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-tea-muted">
+              <span>Página <strong className="text-tea-text">{routinesPagination.page}</strong> de <strong className="text-tea-text">{routinesPagination.totalPages}</strong> ({routinesPagination.total.toLocaleString()} rutinas)</span>
+              <div className="flex items-center gap-2">
+                <form onSubmit={(e) => { e.preventDefault(); const p = Number(routinePageInput); if (p >= 1 && p <= routinesPagination.totalPages) fetchRoutines(p); }} className="flex items-center gap-1">
+                  <input type="number" min={1} max={routinesPagination.totalPages} value={routinePageInput} onChange={(e) => setRoutinePageInput(e.target.value)} className="w-14 text-xs text-center bg-slate-50 border border-tea-border rounded-lg py-1" />
+                  <button type="submit" className="px-2 py-1 rounded-lg bg-slate-100 font-bold">Ir</button>
+                </form>
+                <button type="button" onClick={() => fetchRoutines(routinesPagination.page - 1)} disabled={!routinesPagination.hasPrev || routinesLoading} className="p-1.5 rounded-lg border border-tea-border disabled:opacity-30">‹</button>
+                <button type="button" onClick={() => fetchRoutines(routinesPagination.page + 1)} disabled={!routinesPagination.hasNext || routinesLoading} className="p-1.5 rounded-lg border border-tea-border disabled:opacity-30">›</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PESTAÑA 3: CONSOLA SQL DIRECTA */}
       {activeTab === 'sql_console' && (
         <div className="space-y-4">
           <div className="bg-white rounded-3xl p-6 border border-tea-border shadow-soft-xs space-y-4">
@@ -548,13 +696,6 @@ export const DeveloperUsersPage = () => {
 
               {/* Botones de plantillas rápidas */}
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSqlQuery('SELECT * FROM usuarios LIMIT 10;')}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono font-bold"
-                >
-                  SELECT usuarios
-                </button>
                 <button
                   type="button"
                   onClick={() => setSqlQuery('SELECT * FROM rutinas LIMIT 10;')}
@@ -577,14 +718,14 @@ export const DeveloperUsersPage = () => {
                 rows={4}
                 value={sqlQuery}
                 onChange={(e) => setSqlQuery(e.target.value)}
-                placeholder="Escribe tu consulta SQL aquí (ej. SELECT * FROM usuarios;)..."
+                placeholder="Escribe tu consulta SQL aquí (ej. SELECT id, nombre, email FROM usuarios;)..."
                 className="w-full p-4 rounded-2xl bg-slate-900 text-emerald-400 font-mono text-xs border border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-[11px] text-slate-400 font-mono">
-                Motor: SQLite3 WAL con Google Cloud KMS Encryption
+                Motor: SQLite3 WAL
               </span>
               <button
                 type="button"
@@ -770,15 +911,43 @@ export const DeveloperUsersPage = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Resetear Contraseña (Opcional)</label>
-                <input
-                  type="password"
-                  value={editUserData.password}
-                  onChange={(e) => setEditUserData({ ...editUserData, password: e.target.value })}
-                  placeholder="Dejar en blanco para mantener la actual"
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                />
+              {/* Sección Contraseña con Generador Automático */}
+              <div className="p-3.5 rounded-2xl bg-purple-50/60 border border-purple-200">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-purple-600" />
+                    Contraseña de Acceso
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGeneratePassword}
+                    className="text-xs font-bold text-purple-700 hover:text-purple-900 bg-purple-100 hover:bg-purple-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <span>+ Generar Nueva Contraseña</span>
+                  </button>
+                </div>
+
+                {editUserData.generatedPassword ? (
+                  <div className="p-2.5 rounded-xl bg-white border border-purple-300 flex items-center justify-between shadow-xs">
+                    <span className="font-mono font-bold text-xs text-purple-900 tracking-wider">
+                      {editUserData.generatedPassword}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(editUserData.generatedPassword);
+                        toast.success('Contraseña copiada al portapapeles');
+                      }}
+                      className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500">
+                    Se mantiene la contraseña actual. Si generas una nueva, se actualizará al guardar.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -796,27 +965,29 @@ export const DeveloperUsersPage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Organización</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">ID de Organización</label>
                   <input
                     type="text"
                     value={editUserData.organizacionId}
                     onChange={(e) => setEditUserData({ ...editUserData, organizacionId: e.target.value })}
-                    placeholder="Id de una organización existente (org_…)"
+                    placeholder="org_…"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div className="pt-1">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editUserData.activo}
-                    onChange={(e) => setEditUserData({ ...editUserData, activo: e.target.checked })}
-                    className="rounded text-purple-600 focus:ring-purple-500"
-                  />
-                  <span className="text-xs font-bold text-slate-700">Cuenta activa</span>
-                </label>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nombre de la Organización</label>
+                <input
+                  type="text"
+                  value={editUserData.organizacionNombre}
+                  onChange={(e) => setEditUserData({ ...editUserData, organizacionNombre: e.target.value })}
+                  placeholder="Ej. Colegio Sol de Lima"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Al editar el nombre, todos los usuarios pertenecientes a esta organización verán el cambio.
+                </p>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2">
@@ -874,30 +1045,59 @@ export const DeveloperUsersPage = () => {
                 Este usuario aún no tiene rutinas registradas.
               </div>
             ) : (
-              <div className="space-y-3">
-                {userRoutines.map((r) => (
-                  <div key={r.id} className="p-4 rounded-2xl bg-slate-50 border border-tea-border flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center flex-shrink-0">
-                        {r.pictogramaUrl ? (
-                          <img src={r.pictogramaUrl} alt={r.nombre} className="w-full h-full object-contain p-1" />
-                        ) : (
-                          <CalendarCheck className="w-6 h-6 text-purple-600" />
-                        )}
+              <div className="space-y-5">
+                {['MANANA', 'TARDE', 'NOCHE'].map((turno) => {
+                  const turnLabel = turno === 'MANANA' ? 'Mañana' : turno === 'TARDE' ? 'Tarde' : 'Noche';
+                  const turnBadgeClass = turno === 'MANANA'
+                    ? 'bg-amber-100 text-amber-800 border-amber-200'
+                    : turno === 'TARDE'
+                    ? 'bg-sky-100 text-sky-800 border-sky-200'
+                    : 'bg-indigo-100 text-indigo-800 border-indigo-200';
+                  const rutinasTurno = userRoutines.filter((r) => {
+                    const normalized = String(r.turno || '').toUpperCase().replace('Ñ', 'N');
+                    return normalized === turno;
+                  });
+
+                  return (
+                    <section key={turno} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${turnBadgeClass}`}>{turnLabel}</span>
+                        <span className="text-[11px] text-slate-400">{rutinasTurno.length} rutina(s)</span>
                       </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-tea-text">{r.nombre}</h4>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                            {r.turno || 'General'}
-                          </span>
-                          <span className="text-[11px] text-tea-muted font-mono">{r.horaInicio || '08:00'}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[11px] text-slate-400 font-mono">ID: {r.id.substring(0, 8)}...</span>
-                  </div>
-                ))}
+                      {rutinasTurno.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic px-2">Sin rutinas configuradas para este turno.</p>
+                      ) : rutinasTurno.map((r) => {
+                        const pasosLista = Array.isArray(r.pasos) ? r.pasos : [];
+                        return (
+                          <div key={r.id} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
+                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2.5">
+                              <h4 className="text-sm font-extrabold text-slate-900">{r.titulo || r.nombre || 'Rutina sin título'}</h4>
+                              <span className="text-[11px] text-slate-400 font-mono">ID: {String(r.id).substring(0, 10)}...</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Secuencia de pasos y pictogramas ({pasosLista.length})</span>
+                              {pasosLista.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {pasosLista.map((paso, pIdx) => {
+                                    const stepKeyword = paso.palabraClave || paso.texto || paso.nombre || 'tarea';
+                                    const stepText = paso.texto || paso.nombre || `Paso ${pIdx + 1}`;
+                                    return (
+                                      <div key={pIdx} className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-200">
+                                        <span className="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 font-black text-xs flex items-center justify-center flex-shrink-0">{paso.orden || pIdx + 1}</span>
+                                        <ArasaacPictogram keyword={stepKeyword} alt={stepText} size="sm" />
+                                        <div className="flex-1 min-w-0"><p className="text-xs font-bold text-slate-800 truncate">{stepText}</p>{paso.palabraClave && <p className="text-[10px] text-slate-400 truncate font-mono">ARASAAC: {paso.palabraClave}</p>}</div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : <p className="text-xs text-slate-400 italic">Sin pasos configurados en esta rutina.</p>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </section>
+                  );
+                })}
               </div>
             )}
           </div>
