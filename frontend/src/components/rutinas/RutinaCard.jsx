@@ -64,6 +64,10 @@ export const RutinaCard = ({
     : null;
 
   const totalPasos = rutina.pasos?.length || 0;
+  const duracionTotal = Number.isFinite(rutina.duracionTotalMinutos)
+    ? rutina.duracionTotalMinutos
+    : (rutina.pasos || []).reduce((t, p) => t + (Number(p.duracionMinutos) || 0), 0);
+  const hayHijos = Object.keys(nombresHijos || {}).length > 0;
   const visiblePasos = expandSteps ? rutina.pasos : rutina.pasos?.slice(0, 3) || [];
   const hiddenCount = totalPasos - 3;
 
@@ -103,6 +107,13 @@ export const RutinaCard = ({
             <span>{totalPasos} {totalPasos === 1 ? t('visual_step_single') : t('visual_step_plural')}</span>
           </span>
 
+          {duracionTotal > 0 && (
+            <span className="inline-flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-brand-600" aria-hidden="true" />
+              <span>{t('routine_duration_minutes', { minutos: duracionTotal })}</span>
+            </span>
+          )}
+
           {rutina.organizacionId && (
             <span className="inline-flex items-center gap-1 text-xs bg-brand-50 text-brand-800 px-2.5 py-0.5 rounded-full font-semibold border border-brand-200/70">
               {t('org_label')} {rutina.organizacionId}
@@ -114,6 +125,12 @@ export const RutinaCard = ({
             <span className="inline-flex items-center gap-1 ml-auto text-xs bg-tea-cardSubtle text-tea-text px-2.5 py-0.5 rounded-full font-semibold border border-tea-border">
               <User className="w-3.5 h-3.5 text-tea-subtle" aria-hidden="true" />
               {nombresHijos[rutina.ninoId]}
+            </span>
+          )}
+          {!rutina.ninoId && hayHijos && (
+            <span className="inline-flex items-center gap-1 ml-auto text-xs bg-tea-cardSubtle text-tea-text px-2.5 py-0.5 rounded-full font-semibold border border-tea-border">
+              <User className="w-3.5 h-3.5 text-tea-subtle" aria-hidden="true" />
+              {t('drawer_child_all')}
             </span>
           )}
         </div>

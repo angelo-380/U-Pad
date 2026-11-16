@@ -16,7 +16,16 @@ import {
   Check,
   Tablet,
   User,
+  Clock,
 } from 'lucide-react';
+
+// Límites de los pasos (los mismos que valida el backend en utils/pasosRutina.js)
+const PASOS_MAX = 20;
+const MINUTOS_MIN = 1;
+const MINUTOS_MAX = 120;
+const MINUTOS_POR_DEFECTO = 5;
+const pasoVacio = (orden) => ({ orden, texto: '', palabraClave: '', duracionMinutos: MINUTOS_POR_DEFECTO });
+const minutosValidos = (valor) => Number.isInteger(Number(valor)) && Number(valor) >= MINUTOS_MIN && Number(valor) <= MINUTOS_MAX;
 
 export const RutinaDrawer = ({
   isOpen,
@@ -34,9 +43,7 @@ export const RutinaDrawer = ({
   const [ninoId, setNinoId] = useState('');
   // Niño asignado al abrir en modo edición: si no cambia, no se reenvía (datos antiguos o rutinas de un tutor)
   const [ninoIdInicial, setNinoIdInicial] = useState('');
-  const [pasos, setPasos] = useState([
-    { orden: 1, texto: '', palabraClave: '' },
-  ]);
+  const [pasos, setPasos] = useState([pasoVacio(1)]);
 
   // Estados de validación
   const [errors, setErrors] = useState({});
@@ -59,17 +66,18 @@ export const RutinaDrawer = ({
               orden: p.orden || idx + 1,
               texto: p.texto || '',
               palabraClave: p.palabraClave || '',
+              duracionMinutos: minutosValidos(p.duracionMinutos) ? Number(p.duracionMinutos) : MINUTOS_POR_DEFECTO,
             }))
           );
         } else {
-          setPasos([{ orden: 1, texto: '', palabraClave: '' }]);
+          setPasos([pasoVacio(1)]);
         }
       } else {
         setTitulo('');
         setTurno(initialData?.turno || 'MANANA');
         setNinoId('');
         setNinoIdInicial('');
-        setPasos([{ orden: 1, texto: '', palabraClave: '' }]);
+        setPasos([pasoVacio(1)]);
       }
       setErrors({});
       setTouched({});
@@ -81,13 +89,6 @@ export const RutinaDrawer = ({
       return () => clearTimeout(timeout);
     }
   }, [isOpen, mode, initialData]);
-
-  // Con un solo hijo, al crear queda elegido por defecto; con varios hay que elegir uno
-  useEffect(() => {
-    if (isOpen && mode !== 'edit' && devices.length === 1) {
-      setNinoId(devices[0].deviceId || devices[0].device_id);
-    }
-  }, [isOpen, mode, devices]);
 
   // Manejo de ESC para cerrar drawer de forma accesible
   useEffect(() => {
@@ -121,6 +122,9 @@ export const RutinaDrawer = ({
       if (!paso.texto.trim()) {
         pError.texto = t('drawer_error_step_required');
       }
+      if (!minutosValidos(paso.duracionMinutos)) {
+        pError.duracionMinutos = t('drawer_error_step_minutes', { min: MINUTOS_MIN, max: MINUTOS_MAX });
+      }
       if (Object.keys(pError).length > 0) {
         pasosErrors[idx] = pError;
       }
@@ -130,8 +134,9 @@ export const RutinaDrawer = ({
       newErrors.pasos = pasosErrors;
     }
 
+    // ninoId vacío = «Todos mis hijos»; si no, debe ser uno de los hijos vinculados (o el valor inicial al editar)
     const idsHijos = devices.map((d) => d.deviceId || d.device_id);
-    if (devices.length > 1 && !idsHijos.includes(ninoId)) {
+    if (ninoId && ninoId !== ninoIdInicial && !idsHijos.includes(ninoId)) {
       newErrors.ninoId = t('drawer_child_required');
     }
 
@@ -160,6 +165,7 @@ export const RutinaDrawer = ({
         orden: idx + 1,
         texto: p.texto.trim(),
         palabraClave: (p.palabraClave || p.texto).trim().toLowerCase(),
+        duracionMinutos: Number(p.duracionMinutos),
       })),
     };
 
@@ -190,7 +196,8 @@ export const RutinaDrawer = ({
   };
 
   const handleAddPaso = () => {
-    setPasos([...pasos, { orden: pasos.length + 1, texto: '', palabraClave: '' }]);
+    if (pasos.length >= PASOS_MAX) return;
+    setPasos([...pasos, pasoVacio(pasos.length + 1)]);
   };
 
   const handleRemovePaso = (index) => {
@@ -211,6 +218,8 @@ export const RutinaDrawer = ({
     const reordered = updated.map((p, idx) => ({ ...p, orden: idx + 1 }));
     setPasos(reordered);
   };
+
+  const duracionTotal = pasos.reduce((total, p) => total + (minutosValidos(p.duracionMinutos) ? Number(p.duracionMinutos) : 0), 0);
 
   if (!isOpen) return null;
 
@@ -326,7 +335,7 @@ export const RutinaDrawer = ({
                 <span>{t('drawer_child_label')}</span>
               </label>
 
-              {devices.length > 1 ? (
+              {devices.length > 0 ? (
                 <>
                   <select
                     id="drawer-nino"
@@ -338,9 +347,7 @@ export const RutinaDrawer = ({
                       errors.ninoId ? 'border-rose-400' : 'border-tea-border'
                     }`}
                   >
-                    <option value="" disabled>
-                      {t('drawer_child_select_placeholder')}
-                    </option>
+                    <option value="">{t('drawer_child_all')}</option>
                     {devices.map((d) => {
                       const dId = d.deviceId || d.device_id;
                       return (
@@ -349,7 +356,11 @@ export const RutinaDrawer = ({
                         </option>
                       );
                     })}
+                    {ninoIdInicial && !devices.some((d) => (d.deviceId || d.device_id) === ninoIdInicial) && (
+                      <option value={ninoIdInicial}>{t('child_unnamed')}</option>
+                    )}
                   </select>
+                  <p className="text-[11px] text-tea-muted">{t('drawer_child_hint')}</p>
                   {errors.ninoId && (
                     <p className="text-xs text-rose-600 flex items-center gap-1" role="alert">
                       <AlertCircle className="w-3.5 h-3.5" />
@@ -357,13 +368,6 @@ export const RutinaDrawer = ({
                     </p>
                   )}
                 </>
-              ) : devices.length === 1 ? (
-                <div className="flex items-center gap-2 p-2.5 bg-white rounded-xl border border-tea-border text-xs">
-                  <Tablet className="w-4 h-4 text-brand-600" />
-                  <p className="font-bold text-tea-text">
-                    {devices[0].childName || devices[0].child_name || t('child_unnamed')}
-                  </p>
-                </div>
               ) : (
                 <div className="flex items-center justify-between gap-3 p-2.5 bg-white rounded-xl border border-tea-border text-xs">
                   <p className="text-tea-muted">{t('drawer_child_none')}</p>
@@ -393,9 +397,15 @@ export const RutinaDrawer = ({
                   </p>
                 </div>
 
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">
-                  {pasos.length} {pasos.length === 1 ? t('visual_step_single') : t('visual_step_plural')}
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">
+                    {pasos.length} {pasos.length === 1 ? t('visual_step_single') : t('visual_step_plural')}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-tea-text" aria-live="polite">
+                    <Clock className="w-3.5 h-3.5 text-brand-600" aria-hidden="true" />
+                    {t('drawer_total_duration', { minutos: duracionTotal })}
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -493,6 +503,33 @@ export const RutinaDrawer = ({
                               className="w-full px-2.5 py-1 text-xs rounded-lg border border-tea-border bg-white font-mono text-tea-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
                             />
                           </div>
+
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <label htmlFor={`paso-minutos-${index}`} className="text-[11px] font-semibold text-tea-subtle flex-shrink-0 inline-flex items-center gap-1">
+                                <Clock className="w-3 h-3" aria-hidden="true" />
+                                {t('drawer_step_minutes_label')}
+                              </label>
+                              <input
+                                id={`paso-minutos-${index}`}
+                                type="number"
+                                inputMode="numeric"
+                                min={MINUTOS_MIN}
+                                max={MINUTOS_MAX}
+                                step={1}
+                                value={paso.duracionMinutos}
+                                onChange={(e) => handlePasoChange(index, 'duracionMinutos', e.target.value === '' ? '' : Number(e.target.value))}
+                                disabled={loading}
+                                className={`w-20 px-2.5 py-1 text-xs rounded-lg border bg-white text-tea-text font-bold ${
+                                  stepError?.duracionMinutos ? 'border-rose-400' : 'border-tea-border'
+                                } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600`}
+                              />
+                              <span className="text-[11px] text-tea-muted">{t('drawer_minutes_unit')}</span>
+                            </div>
+                            {stepError?.duracionMinutos && (
+                              <p className="text-[11px] text-rose-600 font-medium mt-0.5">{stepError.duracionMinutos}</p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -503,7 +540,7 @@ export const RutinaDrawer = ({
               <button
                 type="button"
                 onClick={handleAddPaso}
-                disabled={loading}
+                disabled={loading || pasos.length >= PASOS_MAX}
                 className="w-full py-3 min-h-[44px] rounded-2xl border-2 border-dashed border-tea-border hover:border-brand-500 hover:bg-brand-50/50 text-xs font-bold text-tea-muted hover:text-brand-700 transition-tea flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
               >
                 <Plus className="w-4 h-4" />

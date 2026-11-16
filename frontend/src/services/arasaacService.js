@@ -14,6 +14,22 @@ const ARASAAC_STATIC_BASE = 'https://static.arasaac.org/pictograms';
 const pictogramCache = new Map();
 const searchCache = new Map();
 
+// Palabras sin contenido que no se buscan solas
+const PALABRAS_VACIAS = new Set(['el', 'la', 'los', 'las', 'lo', 'de', 'del', 'al', 'a', 'y', 'e', 'o', 'en', 'con', 'por', 'para', 'un', 'una', 'unos', 'unas', 'mi', 'mis', 'tu', 'su', 'sus', 'se', 'me', 'te']);
+
+// «lavarse» → «lavar», «ponerse» → «poner», «vestirse» → «vestir»
+const sinReflexivo = (texto) => texto.replace(/(ar|er|ir)se\b/g, '$1');
+
+/** Candidatos de búsqueda en orden de preferencia, sin repetidos (ver getPictogramByKeyword). */
+export const candidatosPictograma = (term) => {
+  const lista = [term, sinReflexivo(term)];
+  const palabras = term.split(/[\s,.;:_-]+/).filter((p) => p.length > 2 && !PALABRAS_VACIAS.has(p));
+  for (const palabra of [...palabras].reverse()) {
+    lista.push(palabra, sinReflexivo(palabra));
+  }
+  return [...new Set(lista.filter(Boolean))];
+};
+
 export const arasaacService = {
   /**
    * Obtiene la URL completa del pictograma en tamaño 300 o 500 px.
@@ -69,12 +85,39 @@ export const arasaacService = {
   },
 
   /**
-   * Obtiene el pictograma más representativo para una palabra clave (español por defecto).
+   * bestsearch de ARASAAC: devuelve SOLO coincidencias buenas (404 si no hay). Con caché, incluida la vacía.
+   */
+  async bestSearch(term, locale = 'es') {
+    const cacheKey = `best:${locale}:${term}`;
+    if (searchCache.has(cacheKey)) return searchCache.get(cacheKey);
+    let resultado = null;
+    try {
+      const res = await fetch(`${ARASAAC_API_BASE}/pictograms/${locale}/bestsearch/${encodeURIComponent(term)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) resultado = data[0]._id;
+      }
+    } catch (err) {
+      resultado = null;
+    }
+    searchCache.set(cacheKey, resultado);
+    return resultado;
+  },
+
+  /**
+   * Obtiene el pictograma más representativo para una palabra clave o frase (español por defecto).
    * Retorna { id, url, keyword } o null si no se encuentra.
+   *
+   * Orden de búsqueda (probado contra la API; el mismo algoritmo usa la app Android):
+   *   1. bestsearch de la frase completa («cepillar los dientes»);
+   *   2. la frase sin el «se» de los verbos («lavarse las manos» → «lavar las manos»): ARASAAC no los indexa;
+   *   3. cada palabra con contenido, de la ÚLTIMA a la primera (el sustantivo suele ir al final:
+   *      «tomar desayuno» → «desayuno»), también sin el «se»;
+   *   4. como último recurso, la búsqueda aproximada de la frase.
    */
   async getPictogramByKeyword(keyword, locale = 'es') {
     if (!keyword || typeof keyword !== 'string') return null;
-    const term = keyword.trim().toLowerCase();
+    const term = keyword.trim().toLowerCase().replace(/\s+/g, ' ');
     if (!term) return null;
 
     const cacheKey = `${locale}:${term}`;
@@ -82,36 +125,18 @@ export const arasaacService = {
       return pictogramCache.get(cacheKey);
     }
 
-    const results = await this.searchPictograms(term, locale);
-    if (results && results.length > 0) {
-      const best = results[0];
-      const match = {
-        id: best.id,
-        url: best.url,
-        keyword: term,
-      };
-      pictogramCache.set(cacheKey, match);
-      return match;
-    }
-
-    // Si no encontró la frase completa, probamos con una palabra limpia
-    // (por ejemplo si contiene guiones o múltiples palabras, tomamos la primera)
-    const firstWord = term.split(/[\s_-]+/)[0];
-    if (firstWord && firstWord !== term) {
-      const fallbackResults = await this.searchPictograms(firstWord, locale);
-      if (fallbackResults && fallbackResults.length > 0) {
-        const best = fallbackResults[0];
-        const match = {
-          id: best.id,
-          url: best.url,
-          keyword: firstWord,
-        };
-        pictogramCache.set(cacheKey, match);
-        return match;
+    const match = async () => {
+      for (const candidato of candidatosPictograma(term)) {
+        const id = await this.bestSearch(candidato, locale);
+        if (id) return { id, url: this.getPictogramUrl(id, 300), keyword: candidato };
       }
-    }
+      const aproximados = await this.searchPictograms(term, locale);
+      if (aproximados.length > 0) return { id: aproximados[0].id, url: aproximados[0].url, keyword: term };
+      return null;
+    };
 
-    pictogramCache.set(cacheKey, null);
-    return null;
+    const resultado = await match();
+    pictogramCache.set(cacheKey, resultado);
+    return resultado;
   },
 };

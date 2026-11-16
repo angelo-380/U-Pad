@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { X, UserRound, Building2, KeyRound, Copy, Check, Loader2, RefreshCw } from 'lucide-react';
+import { X, UserRound, Building2, KeyRound, Copy, Check, Loader2, RefreshCw, LogIn, LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { organizacionesService } from '../../services/organizacionesService.js';
 import { RoleBadge } from '../common/RoleBadge.jsx';
+import { mensajeDeError } from '../../utils/erroresApi.js';
 
 /**
- * «Mi perfil» (solo lectura): nombre, correo, rol y organización del usuario.
- * El director (propietario) ve además el código para que sus tutores se unan al registrarse.
+ * «Mi perfil»: nombre, correo, rol y organización del usuario.
+ * El director (propietario) ve además el código para que sus tutores se unan.
+ * El tutor puede unirse a una institución con ese código (o cambiar de institución) y salir de ella.
  * Datos actualizados al abrir: GET /api/auth/me y GET /api/organizaciones/mia.
  */
 export const ConfiguracionUsuarioModal = ({ isOpen, onClose }) => {
@@ -17,6 +19,9 @@ export const ConfiguracionUsuarioModal = ({ isOpen, onClose }) => {
   const [cargandoOrg, setCargandoOrg] = useState(false);
   const [errorOrg, setErrorOrg] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [codigo, setCodigo] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState(null); // { tipo: 'ok' | 'error', texto }
 
   const cargarOrganizacion = async () => {
     setCargandoOrg(true);
@@ -34,6 +39,8 @@ export const ConfiguracionUsuarioModal = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (!isOpen) return undefined;
     setCopiado(false);
+    setCodigo('');
+    setMensaje(null);
     refreshUser().catch(() => {});
     cargarOrganizacion();
 
@@ -49,6 +56,89 @@ export const ConfiguracionUsuarioModal = ({ isOpen, onClose }) => {
 
   const nombre = user.nombre || user.email || t('user_fallback');
   const esDeveloper = user.rol === 'developer';
+  const esTutor = user.rol === 'tutor';
+
+  const unirse = async (e) => {
+    e.preventDefault();
+    if (!codigo.trim() || guardando) return;
+    setGuardando(true);
+    setMensaje(null);
+    try {
+      const org = await organizacionesService.unirse(codigo.trim());
+      setOrganizacion(org);
+      setCodigo('');
+      setMensaje({ tipo: 'ok', texto: t('profile_join_ok', { nombre: org?.nombre || '' }) });
+      refreshUser().catch(() => {});
+    } catch (err) {
+      setMensaje({ tipo: 'error', texto: mensajeDeError(err, t, t('profile_join_error')) });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const salir = async () => {
+    if (guardando || !window.confirm(t('profile_leave_confirm', { nombre: organizacion?.nombre || '' }))) return;
+    setGuardando(true);
+    setMensaje(null);
+    try {
+      await organizacionesService.salir();
+      setOrganizacion(null);
+      setMensaje({ tipo: 'ok', texto: t('profile_leave_ok') });
+      refreshUser().catch(() => {});
+    } catch (err) {
+      setMensaje({ tipo: 'error', texto: mensajeDeError(err, t, t('profile_join_error')) });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // Formulario del tutor: unirse con el código de su institución (o cambiar a otra) y salir
+  const renderUnirse = () => (
+    <div className="mt-3 pt-3 border-t border-tea-border space-y-2">
+      <form onSubmit={unirse} className="space-y-2">
+        <label htmlFor="perfil-codigo" className="block text-[11px] font-bold text-tea-subtle uppercase tracking-wider">
+          {organizacion ? t('profile_join_change_label') : t('profile_join_label')}
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="perfil-codigo"
+            type="text"
+            value={codigo}
+            onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+            placeholder="K7M2-Q9XD"
+            maxLength={12}
+            autoComplete="off"
+            className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-tea-border bg-white text-sm font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <button
+            type="submit"
+            disabled={!codigo.trim() || guardando}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-tea cursor-pointer"
+          >
+            {guardando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
+            {t('profile_join_button')}
+          </button>
+        </div>
+        <p className="text-[11px] text-tea-muted">{t('profile_join_hint')}</p>
+      </form>
+      {organizacion && (
+        <button
+          type="button"
+          onClick={salir}
+          disabled={guardando}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-700 hover:underline disabled:opacity-50 cursor-pointer"
+        >
+          <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+          {t('profile_leave_button')}
+        </button>
+      )}
+      {mensaje && (
+        <p role="status" className={`text-xs ${mensaje.tipo === 'ok' ? 'text-emerald-700' : 'text-rose-700'}`}>
+          {mensaje.texto}
+        </p>
+      )}
+    </div>
+  );
 
   const copiarCodigo = async () => {
     if (!organizacion?.codigo) return;
@@ -180,6 +270,7 @@ export const ConfiguracionUsuarioModal = ({ isOpen, onClose }) => {
             {t('profile_org_title')}
           </h4>
           {renderOrganizacion()}
+          {esTutor && !cargandoOrg && !errorOrg && renderUnirse()}
         </section>
       </div>
     </div>

@@ -88,6 +88,10 @@ class ApiClient {
         break;
       case 403:
         userMessage = serverMessage || 'No tienes permisos suficientes para acceder a este recurso.';
+        // Rol sin permiso para la sección: la app muestra la página 403 (ver RedirigirSiProhibido en App.jsx)
+        if (data?.errors?.code === 'FORBIDDEN_ROLE') {
+          window.dispatchEvent(new CustomEvent('upad:forbidden'));
+        }
         break;
       case 404:
         userMessage = serverMessage || 'El recurso o página solicitada no existe.';

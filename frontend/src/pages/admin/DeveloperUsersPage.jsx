@@ -642,6 +642,11 @@ export const DeveloperUsersPage = () => {
                             <span className="ml-1 font-bold">
                               {r.pasosCount > PICTOGRAMAS_EN_TABLA ? `+${r.pasosCount - PICTOGRAMAS_EN_TABLA}` : r.pasosCount}
                             </span>
+                            {r.duracionTotalMinutos > 0 && (
+                              <span className="ml-1 text-[11px] text-tea-muted whitespace-nowrap">
+                                · {t('routine_duration_minutes', { minutos: r.duracionTotalMinutos })}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-tea-muted whitespace-nowrap">
@@ -1061,6 +1066,11 @@ export const DeveloperUsersPage = () => {
                                       <span className="mt-1 text-[10px] text-center text-tea-text leading-tight line-clamp-2">
                                         {paso.orden || i + 1}. {paso.texto}
                                       </span>
+                                      {Number(paso.duracionMinutos) > 0 && (
+                                        <span className="text-[10px] text-tea-muted">
+                                          {t('routine_duration_minutes', { minutos: Number(paso.duracionMinutos) })}
+                                        </span>
+                                      )}
                                     </li>
                                   ))}
                                 </ol>

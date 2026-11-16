@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import { LanguageProvider } from './context/LanguageContext.jsx';
@@ -18,6 +18,20 @@ import { NotFoundPage } from './pages/errors/NotFoundPage.jsx';
 import { ServerErrorPage } from './pages/errors/ServerErrorPage.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 
+// Roles con acceso a la app (las rutas por rol se protegen también en el backend, que es la autoridad)
+const ROLES_APP = ['tutor', 'empresario', 'developer'];
+
+// Si la API responde 403 por rol (FORBIDDEN_ROLE), se muestra la página 403 en lugar del mensaje del servidor
+const RedirigirSiProhibido = () => {
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    const irA403 = () => navigate('/403', { replace: true });
+    window.addEventListener('upad:forbidden', irA403);
+    return () => window.removeEventListener('upad:forbidden', irA403);
+  }, [navigate]);
+  return null;
+};
+
 const HomeRedirect = () => {
   const { user, isAuthenticated, loading } = useAuth();
   if (loading) return null;
@@ -33,6 +47,7 @@ export default function App() {
       <LanguageProvider>
         <AuthProvider>
           <ToastProvider>
+          <RedirigirSiProhibido />
           <Routes>
             {/* Rutas Públicas de Autenticación */}
             <Route path="/login" element={<LoginPage />} />
@@ -42,7 +57,7 @@ export default function App() {
             <Route
               path="/rutinas"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={ROLES_APP}>
                   <AppLayout>
                     <RutinasPage />
                   </AppLayout>
@@ -54,7 +69,7 @@ export default function App() {
             <Route
               path="/desempeno"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={ROLES_APP}>
                   <AppLayout>
                     <DesempenoPage />
                   </AppLayout>
@@ -66,7 +81,7 @@ export default function App() {
             <Route
               path="/gps"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['tutor', 'developer']}>
                   <AppLayout>
                     <GpsPage />
                   </AppLayout>
@@ -88,7 +103,7 @@ export default function App() {
             <Route
               path="/admin/usuarios"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['developer']}>
                   <AppLayout>
                     <DeveloperUsersPage />
                   </AppLayout>
@@ -100,7 +115,7 @@ export default function App() {
             <Route
               path="/gerencial"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['empresario', 'developer']}>
                   <AppLayout>
                     <GerencialKpiPage />
                   </AppLayout>
