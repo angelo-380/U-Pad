@@ -6,6 +6,7 @@ import { sendSuccess } from '../utils/responseHandler.js';
 import { AppError } from '../utils/AppError.js';
 import { ROLES, ROLES_ASIGNABLES, normalizarRol } from '../utils/roles.js';
 import { crearOrganizacion, obtenerOrganizacionPorId } from '../utils/organizaciones.js';
+import { leerPasos, duracionTotal } from '../utils/pasosRutina.js';
 
 const router = Router();
 
@@ -356,14 +357,14 @@ router.get('/rutinas', (req, res, next) => {
     `).all(...params, limit, offset);
 
     const rutinas = filas.map(({ pasos, ...r }) => {
-      let lista = [];
-      try {
-        lista = JSON.parse(pasos || '[]');
-      } catch (e) {
-        lista = [];
-      }
-      const pasosLista = Array.isArray(lista) ? lista : [];
-      return { ...r, activa: Boolean(r.activa), pasos: pasosLista, pasosCount: pasosLista.length };
+      const pasosLista = leerPasos(pasos, r.titulo);
+      return {
+        ...r,
+        activa: Boolean(r.activa),
+        pasos: pasosLista,
+        pasosCount: pasosLista.length,
+        duracionTotalMinutos: duracionTotal(pasosLista),
+      };
     });
 
     return res.status(200).json({

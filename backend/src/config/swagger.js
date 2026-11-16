@@ -47,8 +47,10 @@ export const swaggerSpec = {
         required: ['orden', 'texto'],
         properties: {
           orden: { type: 'integer', example: 1 },
-          texto: { type: 'string', example: 'Lavarse las manos' },
-          palabraClave: { type: 'string', example: 'lavar' },
+          texto: { type: 'string', example: 'Lavarse las manos', description: '1 a 120 caracteres' },
+          palabraClave: { type: 'string', example: 'lavar', description: 'Palabra para buscar el pictograma (por defecto, el texto)' },
+          duracionMinutos: { type: 'integer', minimum: 1, maximum: 120, example: 5, description: 'Minutos del paso (por defecto 5)' },
+          pictogramaId: { type: 'integer', example: 8975, description: 'Opcional: pictograma de ARASAAC elegido' },
         },
       },
       RutinaInput: {
@@ -57,10 +59,16 @@ export const swaggerSpec = {
         properties: {
           titulo: { type: 'string', example: 'Rutina de Mañana - Escuela' },
           turno: { type: 'string', enum: ['MANANA', 'TARDE', 'NOCHE'], example: 'MANANA' },
-          ninoId: { type: 'string', example: 'nino_mateo_01' },
-          organizacionId: { type: 'string', example: 'org_colegio_01' },
+          ninoId: {
+            type: 'string',
+            nullable: true,
+            example: 'device_id del hijo',
+            description: 'device_id de un hijo vinculado; null = para todos los hijos',
+          },
           pasos: {
             type: 'array',
+            maxItems: 20,
+            description: 'Hasta 20 pasos; sin pasos, la rutina tiene un único paso con su título. La respuesta incluye duracionTotalMinutos (suma). Inválidos → 400 PASOS_INVALIDOS.',
             items: { $ref: '#/components/schemas/PasoRutina' },
           },
         },
@@ -261,6 +269,58 @@ export const swaggerSpec = {
           200: { description: 'Rutina eliminada exitosamente' },
           404: { description: 'Rutina no encontrada' },
         },
+      },
+    },
+    '/api/organizaciones/unirse': {
+      post: {
+        summary: 'Un tutor se une (o cambia) a una institución con su código',
+        description: 'Sus rutinas y cumplimientos pasan a la institución y cuentan en los KPIs del director.',
+        tags: ['Organizaciones'],
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['codigo'], properties: { codigo: { type: 'string', example: 'K7M2-Q9XD' } } } } },
+        },
+        responses: {
+          200: { description: 'Unido: { organizacion: { id, nombre } }' },
+          400: { description: 'Código inválido (ORGANIZACION_CODIGO_INVALIDO)' },
+          403: { description: 'Solo tutores (FORBIDDEN_ROLE)' },
+        },
+      },
+    },
+    '/api/organizaciones/membresia': {
+      delete: {
+        summary: 'Un tutor deja su institución',
+        tags: ['Organizaciones'],
+        security: [{ bearerAuth: [] }],
+        responses: { 200: { description: 'Sin institución' }, 403: { description: 'Solo tutores' } },
+      },
+    },
+    '/api/v1/devices/{deviceId}/cumplimiento': {
+      get: {
+        summary: 'Lo que el teléfono del niño completó en una fecha (sin token; solo vinculados)',
+        tags: ['Dispositivos'],
+        parameters: [
+          { name: 'deviceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'fecha', in: 'query', required: true, schema: { type: 'string', example: '2026-11-16' }, description: 'Fecha local, ±1 día' },
+        ],
+        responses: {
+          200: { description: '{ fecha, completadas: [{ rutinaId, actividad, turno }] }' },
+          400: { description: 'FECHA_INVALIDA' },
+          404: { description: 'Dispositivo no vinculado' },
+          429: { description: 'CUMPLIMIENTO_RATE_LIMIT (60 por minuto)' },
+        },
+      },
+    },
+    '/api/v1/mobile/sync-routines': {
+      get: {
+        summary: 'Rutinas para la app (en orden de creación); con ?deviceId= solo las de ese hijo y las «para todos»',
+        tags: ['App móvil'],
+        parameters: [
+          { name: 'userId', in: 'query', schema: { type: 'string' }, description: 'Sin token (modo de compatibilidad)' },
+          { name: 'deviceId', in: 'query', schema: { type: 'string' }, description: 'Teléfono del niño' },
+        ],
+        responses: { 200: { description: 'Lista con id, actividad, turno, ninoId, pasos y duracionTotalMinutos' } },
       },
     },
     '/api/test-status/{code}': {

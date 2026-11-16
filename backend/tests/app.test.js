@@ -10,7 +10,7 @@ import request from 'supertest';
 import app from '../src/app.js';
 import { signToken } from '../src/utils/jwt.js';
 import { secretosFaltantes, SECRETOS_OBLIGATORIOS } from '../src/config/secretos.js';
-import { limitePairingLink, limiteTelemetria, limiteEstadoDispositivo, limiteNotificaciones, limiteCumplimiento, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
+import { limitePairingLink, limiteTelemetria, limiteEstadoDispositivo, limiteNotificaciones, limiteCumplimiento, limiteCumplimientoDia, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
 import { TIPOS_NOTIFICACION, MAX_LISTADO, DIAS_RETENCION } from '../src/services/notificacionesService.js';
 import { establecerVerificadorGoogle } from '../src/utils/googleVerifier.js';
 import { limiteBorrarCuenta } from '../src/routes/authRoutes.js';
@@ -68,6 +68,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     limiteEstadoDispositivo.reiniciar();
     limiteNotificaciones.reiniciar();
     limiteCumplimiento.reiniciar();
+    limiteCumplimientoDia.reiniciar();
     limiteBorrarCuenta.reiniciar();
   });
 
@@ -1583,14 +1584,17 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     });
 
     describe('10.4 Hijo asignado a una rutina', () => {
-      test('con un solo hijo, la rutina se le asigna sola', async () => {
+      test('con un solo hijo y sin elegir, la rutina es «para todos mis hijos» (ninoId null); elegida, se asigna', async () => {
         const tutor = await registrarTutor();
         const hijo = await vincularHijo(tutor.token, 'Hijo Único');
 
         const res = await crearRutina(tutor.token);
-
         expect(res.status).toBe(201);
-        expect(res.body.data.ninoId).toBe(hijo);
+        expect(res.body.data.ninoId).toBeNull();
+
+        const elegida = await crearRutina(tutor.token, { titulo: 'Rutina elegida', ninoId: hijo });
+        expect(elegida.status).toBe(201);
+        expect(elegida.body.data.ninoId).toBe(hijo);
       });
 
       test('sin hijos, la rutina queda sin asignar (sin un niño "por defecto")', async () => {
@@ -3515,6 +3519,313 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       const res = await request(app).delete('/api/v1/auth/me').set(auth(tutor.token)).send({ password: tutor.password });
       expect(res.status).toBe(200);
       expect(existe(tutor.usuario.id)).toBe(false);
+    });
+  });
+
+  describe('27. Tutores que se unen a una institución después de registrarse (puntos 6 y 9)', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const correo = (etiqueta) => `test-${TIMESTAMP}-p-${etiqueta}-${crypto.randomUUID().slice(0, 8)}@upad.test`;
+
+    const registrar = async (rol = 'tutor', extra = {}) => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: `Cuenta P ${rol}`,
+        email: correo(rol),
+        password: passwordGenerada(),
+        rol,
+        ...extra,
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+    const kpis = async (token) => (await request(app).get('/api/empresario/kpis').set(auth(token))).body.data.kpis;
+    const vincularHijo = async (token) => {
+      const code = String(crypto.randomInt(100000, 1000000));
+      const deviceId = `dev_p_${crypto.randomUUID().slice(0, 8)}`;
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+      expect((await request(app).post('/api/devices/pairing/link').set(auth(token)).send({ code, childName: 'Hijo P' })).status).toBe(201);
+      return deviceId;
+    };
+
+    test('al unirse con el código, sus rutinas y sus hijos suben en los KPIs del director; al salir, bajan', async () => {
+      const director = await registrar('empresario');
+      const tutor = await registrar('tutor');
+      expect(tutor.usuario.organizacionId).toBeNull();
+
+      const rutina = await request(app).post('/api/rutinas').set(auth(tutor.token)).send({ titulo: 'Tomar desayuno', turno: 'MANANA', pasos: [] });
+      expect(rutina.status).toBe(201);
+      const deviceId = await vincularHijo(tutor.token);
+      const hoy = new Date().toISOString().slice(0, 10);
+      expect((await request(app).post(`/api/v1/devices/${deviceId}/cumplimiento`).send({ actividad: 'Tomar desayuno', turno: 'MANANA', fecha: hoy })).status).toBe(201);
+
+      const antes = await kpis(director.token);
+      expect(antes.totalRutinasEstructuradas).toBe(0);
+      expect(antes.totalEstudiantesInstitucion).toBe(0);
+
+      // El código se acepta sin guion y en minúsculas
+      const codigo = director.organizacion.codigo.replace('-', '').toLowerCase();
+      const unirse = await request(app).post('/api/organizaciones/unirse').set(auth(tutor.token)).send({ codigo });
+      expect(unirse.status).toBe(200);
+      expect(unirse.body.data.organizacion).toEqual({ id: director.organizacion.id, nombre: director.organizacion.nombre });
+
+      const mia = await request(app).get('/api/organizaciones/mia').set(auth(tutor.token));
+      expect(mia.body.data.organizacion.id).toBe(director.organizacion.id);
+      expect(mia.body.data.organizacion.codigo).toBeUndefined();
+
+      const despues = await kpis(director.token);
+      expect(despues.totalRutinasEstructuradas).toBe(1);
+      expect(despues.totalEstudiantesInstitucion).toBe(1);
+      expect(despues.totalTutoresInstitucion).toBe(1);
+      expect(db.prepare('SELECT organizacionId FROM cumplimientos WHERE deviceId = ?').get(deviceId).organizacionId).toBe(director.organizacion.id);
+
+      // Una rutina nueva del tutor también suma
+      await request(app).post('/api/rutinas').set(auth(tutor.token)).send({ titulo: 'Cepillarse los dientes', turno: 'MANANA', pasos: [] });
+      expect((await kpis(director.token)).totalRutinasEstructuradas).toBe(2);
+
+      const salir = await request(app).delete('/api/organizaciones/membresia').set(auth(tutor.token));
+      expect(salir.status).toBe(200);
+      expect(salir.body.data.organizacion).toBeNull();
+      const finales = await kpis(director.token);
+      expect(finales.totalRutinasEstructuradas).toBe(0);
+      expect(finales.totalEstudiantesInstitucion).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM rutinas WHERE creadoPor = ? AND organizacionId IS NOT NULL').get(tutor.usuario.id).n).toBe(0);
+    });
+
+    test('un tutor puede cambiar de institución', async () => {
+      const director1 = await registrar('empresario');
+      const director2 = await registrar('empresario');
+      const tutor = await registrar('tutor', { codigoOrganizacion: director1.organizacion.codigo });
+      await request(app).post('/api/rutinas').set(auth(tutor.token)).send({ titulo: 'Rutina P', turno: 'TARDE', pasos: [] });
+      expect((await kpis(director1.token)).totalRutinasEstructuradas).toBe(1);
+
+      const res = await request(app).post('/api/organizaciones/unirse').set(auth(tutor.token)).send({ codigo: director2.organizacion.codigo });
+      expect(res.status).toBe(200);
+      expect((await kpis(director1.token)).totalRutinasEstructuradas).toBe(0);
+      expect((await kpis(director2.token)).totalRutinasEstructuradas).toBe(1);
+    });
+
+    test('código inválido → 400 ORGANIZACION_CODIGO_INVALIDO sin cambiar nada; solo tutores; requiere sesión', async () => {
+      const director = await registrar('empresario');
+      const tutor = await registrar('tutor', { codigoOrganizacion: director.organizacion.codigo });
+
+      for (const codigo of ['ZZZZ-ZZZZ', '', undefined, 123]) {
+        const res = await request(app).post('/api/organizaciones/unirse').set(auth(tutor.token)).send({ codigo });
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('ORGANIZACION_CODIGO_INVALIDO');
+      }
+      expect(db.prepare('SELECT organizacionId FROM usuarios WHERE id = ?').get(tutor.usuario.id).organizacionId).toBe(director.organizacion.id);
+
+      const otroDirector = await registrar('empresario');
+      const comoDirector = await request(app).post('/api/organizaciones/unirse').set(auth(otroDirector.token)).send({ codigo: director.organizacion.codigo });
+      expect(comoDirector.status).toBe(403);
+      expect(comoDirector.body.errors.code).toBe('FORBIDDEN_ROLE');
+      expect((await request(app).delete('/api/organizaciones/membresia').set(auth(otroDirector.token))).status).toBe(403);
+      expect(db.prepare('SELECT organizacionId FROM usuarios WHERE id = ?').get(otroDirector.usuario.id).organizacionId).toBe(otroDirector.organizacion.id);
+
+      expect((await request(app).post('/api/organizaciones/unirse').send({ codigo: director.organizacion.codigo })).status).toBe(401);
+      expect((await request(app).post('/api/v1/organizaciones/unirse').set(auth(tutor.token)).send({ codigo: director.organizacion.codigo })).status).toBe(200);
+    });
+  });
+
+  describe('28. Rutinas con varios pasos y minutos, rutinas por hijo y avance del niño (puntos 5 y 10-14)', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const SYNC = '/api/v1/mobile/sync-routines';
+    const hoy = () => new Date().toISOString().slice(0, 10);
+
+    const registrarTutor = async () => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: 'Tutor Q',
+        email: `test-${TIMESTAMP}-q-${crypto.randomUUID().slice(0, 8)}@upad.test`,
+        password: passwordGenerada(),
+        rol: 'tutor',
+      });
+      expect(res.status).toBe(201);
+      return { token: res.body.data.token, id: res.body.data.usuario.id };
+    };
+    const vincularHijo = async (token, nombre = 'Hijo Q') => {
+      const code = String(crypto.randomInt(100000, 1000000));
+      const deviceId = `dev_q_${crypto.randomUUID().slice(0, 8)}`;
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+      expect((await request(app).post('/api/devices/pairing/link').set(auth(token)).send({ code, childName: nombre })).status).toBe(201);
+      return deviceId;
+    };
+    const crear = (token, cuerpo) => request(app).post('/api/rutinas').set(auth(token)).send({ turno: 'MANANA', ...cuerpo });
+
+    test('cada paso guarda sus minutos y la rutina devuelve la duración total', async () => {
+      const tutor = await registrarTutor();
+      const res = await crear(tutor.token, {
+        titulo: 'Tomar desayuno',
+        pasos: [
+          { texto: 'Lavarse las manos', duracionMinutos: 3 },
+          { texto: '  Sentarse   a la mesa ', palabraClave: 'mesa', duracionMinutos: '10' },
+          { texto: 'Comer', pictogramaId: 4626 },
+        ],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data.pasos).toEqual([
+        { orden: 1, texto: 'Lavarse las manos', palabraClave: 'lavarse las manos', duracionMinutos: 3 },
+        { orden: 2, texto: 'Sentarse a la mesa', palabraClave: 'mesa', duracionMinutos: 10 },
+        { orden: 3, texto: 'Comer', palabraClave: 'comer', duracionMinutos: 5, pictogramaId: 4626 },
+      ]);
+      expect(res.body.data.duracionTotalMinutos).toBe(18);
+
+      const leida = await request(app).get(`/api/rutinas/${res.body.data.id}`).set(auth(tutor.token));
+      expect(leida.body.data.duracionTotalMinutos).toBe(18);
+      expect(leida.body.data.pasos).toHaveLength(3);
+
+      const editada = await request(app).put(`/api/rutinas/${res.body.data.id}`).set(auth(tutor.token))
+        .send({ pasos: [{ texto: 'Comer', duracionMinutos: 20 }] });
+      expect(editada.status).toBe(200);
+      expect(editada.body.data.duracionTotalMinutos).toBe(20);
+    });
+
+    test('sin pasos, la rutina tiene un paso con su título (5 min); las antiguas guardadas sin pasos también', async () => {
+      const tutor = await registrarTutor();
+      const res = await crear(tutor.token, { titulo: 'Cepillarse los dientes', pasos: [] });
+      expect(res.body.data.pasos).toEqual([{ orden: 1, texto: 'Cepillarse los dientes', palabraClave: 'cepillarse los dientes', duracionMinutos: 5 }]);
+
+      db.prepare("UPDATE rutinas SET pasos = '[]' WHERE id = ?").run(res.body.data.id);
+      const leida = await request(app).get(`/api/rutinas/${res.body.data.id}`).set(auth(tutor.token));
+      expect(leida.body.data.pasos).toHaveLength(1);
+      expect(leida.body.data.duracionTotalMinutos).toBe(5);
+    });
+
+    test('pasos inválidos → 400 PASOS_INVALIDOS sin crear la rutina', async () => {
+      const tutor = await registrarTutor();
+      const casos = [
+        [{ texto: '' }],
+        [{ texto: 'x'.repeat(121) }],
+        [{ texto: 'Paso', duracionMinutos: 0 }],
+        [{ texto: 'Paso', duracionMinutos: 121 }],
+        [{ texto: 'Paso', duracionMinutos: 2.5 }],
+        [{ texto: 'Paso', duracionMinutos: 'diez' }],
+        Array.from({ length: 21 }, (_, i) => ({ texto: `Paso ${i}` })),
+        'no es una lista',
+      ];
+      for (const pasos of casos) {
+        const res = await crear(tutor.token, { titulo: `Inválida ${crypto.randomUUID().slice(0, 6)}`, pasos });
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('PASOS_INVALIDOS');
+      }
+      expect(db.prepare('SELECT COUNT(*) AS n FROM rutinas WHERE creadoPor = ?').get(tutor.id).n).toBe(0);
+    });
+
+    test('el niño recibe sus rutinas y las «para todos», en orden de creación, con pasos y minutos', async () => {
+      const tutor = await registrarTutor();
+      const hijoA = await vincularHijo(tutor.token, 'Ana');
+      const hijoB = await vincularHijo(tutor.token, 'Beto');
+
+      await crear(tutor.token, { titulo: 'Tomar desayuno', pasos: [{ texto: 'Lavarse las manos', duracionMinutos: 2 }, { texto: 'Comer', duracionMinutos: 15 }] });
+      await crear(tutor.token, { titulo: 'Solo para Ana', ninoId: hijoA });
+      await crear(tutor.token, { titulo: 'Solo para Beto', ninoId: hijoB });
+      await crear(tutor.token, { titulo: 'Cepillarse los dientes' });
+
+      const ana = await request(app).get(SYNC).query({ userId: tutor.id, deviceId: hijoA });
+      expect(ana.status).toBe(200);
+      expect(ana.body.data.map((r) => r.actividad)).toEqual(['TOMAR DESAYUNO', 'SOLO PARA ANA', 'CEPILLARSE LOS DIENTES']);
+      expect(ana.body.data[0]).toMatchObject({ duracionTotalMinutos: 17, duration: 17, ninoId: null });
+      expect(ana.body.data[0].pasos.map((p) => [p.texto, p.duracionMinutos])).toEqual([['Lavarse las manos', 2], ['Comer', 15]]);
+      expect(ana.body.data[1].ninoId).toBe(hijoA);
+
+      const beto = await request(app).get(SYNC).query({ userId: tutor.id, deviceId: hijoB });
+      expect(beto.body.data.map((r) => r.actividad)).toEqual(['TOMAR DESAYUNO', 'SOLO PARA BETO', 'CEPILLARSE LOS DIENTES']);
+
+      // El padre (sin deviceId) ve todas, también en orden de creación
+      const padre = await request(app).get(SYNC).set(auth(tutor.token));
+      expect(padre.body.data).toHaveLength(4);
+      expect(padre.body.data[0].actividad).toBe('TOMAR DESAYUNO');
+
+      // Un dispositivo que no es hijo de ese usuario no recibe nada
+      const ajeno = await request(app).get(SYNC).query({ userId: tutor.id, deviceId: 'dev_ajeno_q' });
+      expect(ajeno.body.data).toEqual([]);
+    });
+
+    test('la app crea y edita rutinas con pasos[] y ninoId; el formato antiguo sigue funcionando', async () => {
+      const tutor = await registrarTutor();
+      const hijo = await vincularHijo(tutor.token);
+
+      const nueva = await request(app).post(SYNC).set(auth(tutor.token)).send({
+        actividad: 'Ponerse los zapatos',
+        turno: 'MAÑANA',
+        ninoId: hijo,
+        pasos: [{ texto: 'Ponerse los calcetines', duracionMinutos: 3 }, { texto: 'Ponerse los zapatos', duracionMinutos: 4 }],
+      });
+      expect(nueva.status).toBe(201);
+      expect(nueva.body).toMatchObject({ ninoId: hijo, duracionTotalMinutos: 7 });
+      const guardada = db.prepare('SELECT ninoId, turno, pasos FROM rutinas WHERE id = ?').get(nueva.body.id);
+      expect(guardada.ninoId).toBe(hijo);
+      expect(guardada.turno).toBe('MANANA');
+      expect(JSON.parse(guardada.pasos)).toHaveLength(2);
+
+      const ajeno = await request(app).post(SYNC).set(auth(tutor.token)).send({ actividad: 'Otra', ninoId: 'dev_de_otro' });
+      expect(ajeno.status).toBe(400);
+      expect(ajeno.body.errors.code).toBe('NINO_INVALIDO');
+
+      const malos = await request(app).post(SYNC).set(auth(tutor.token)).send({ actividad: 'Mala', pasos: [{ texto: 'x', duracionMinutos: 500 }] });
+      expect(malos.status).toBe(400);
+      expect(malos.body.errors.code).toBe('PASOS_INVALIDOS');
+
+      // Formato antiguo (APK anterior): una actividad sin pasos, sin token
+      const antigua = await request(app).post(SYNC).send({ userId: tutor.id, actividad: 'Hacer la tarea', palabraClave: 'tarea', turno: 'TARDE' });
+      expect(antigua.status).toBe(201);
+      expect(antigua.body.pasos).toEqual([{ orden: 1, texto: 'Hacer la tarea', palabraClave: 'tarea', duracionMinutos: 5 }]);
+      expect(antigua.body.ninoId).toBeNull();
+
+      // Editar: pasar a «todos» (ninoId null) y cambiar los pasos
+      const editar = await request(app).put(SYNC).set(auth(tutor.token)).send({
+        id: nueva.body.id, actividad: 'Ponerse los zapatos', turno: 'MANANA', ninoId: null, pasos: [{ texto: 'Zapatos', duracionMinutos: 9 }],
+      });
+      expect(editar.status).toBe(200);
+      const editada = db.prepare('SELECT ninoId, pasos FROM rutinas WHERE id = ?').get(nueva.body.id);
+      expect(editada.ninoId).toBeNull();
+      expect(JSON.parse(editada.pasos)[0].duracionMinutos).toBe(9);
+
+      // Editar sin enviar ninoId no lo cambia
+      await request(app).put(SYNC).set(auth(tutor.token)).send({ id: antigua.body.id, actividad: 'Hacer la tarea', turno: 'TARDE', ninoId: hijo });
+      await request(app).put(SYNC).set(auth(tutor.token)).send({ id: antigua.body.id, actividad: 'Hacer la tarea', turno: 'TARDE' });
+      expect(db.prepare('SELECT ninoId FROM rutinas WHERE id = ?').get(antigua.body.id).ninoId).toBe(hijo);
+    });
+
+    test('el niño solo registra rutinas suyas o para todos, y recupera lo completado en el día', async () => {
+      const tutor = await registrarTutor();
+      const hijoA = await vincularHijo(tutor.token, 'Ana');
+      const hijoB = await vincularHijo(tutor.token, 'Beto');
+      await crear(tutor.token, { titulo: 'Tomar desayuno' });
+      await crear(tutor.token, { titulo: 'Solo para Beto', ninoId: hijoB });
+
+      const cumplir = (deviceId, actividad) =>
+        request(app).post(`/api/v1/devices/${deviceId}/cumplimiento`).send({ actividad, turno: 'MANANA', fecha: hoy() });
+
+      expect((await cumplir(hijoA, 'Solo para Beto')).status).toBe(400);
+      expect((await cumplir(hijoA, 'Tomar desayuno')).status).toBe(201);
+      expect((await cumplir(hijoB, 'Solo para Beto')).status).toBe(201);
+
+      const delDia = await request(app).get(`/api/v1/devices/${hijoA}/cumplimiento`).query({ fecha: hoy() });
+      expect(delDia.status).toBe(200);
+      expect(delDia.body.data.completadas).toEqual([expect.objectContaining({ actividad: 'Tomar desayuno', turno: 'MANANA' })]);
+      expect((await request(app).get(`/api/devices/${hijoB}/cumplimiento`).query({ fecha: hoy() })).body.data.completadas).toHaveLength(1);
+
+      const fechaMala = await request(app).get(`/api/v1/devices/${hijoA}/cumplimiento`).query({ fecha: '2020-01-01' });
+      expect(fechaMala.status).toBe(400);
+      expect(fechaMala.body.errors.code).toBe('FECHA_INVALIDA');
+      expect((await request(app).get('/api/v1/devices/dev_no_vinculado_q/cumplimiento').query({ fecha: hoy() })).status).toBe(404);
+
+      // Esperadas hoy: «Tomar desayuno» para 2 hijos + «Solo para Beto» para 1 = 3; completadas 2
+      const resumen = await request(app).get('/api/cumplimiento').query({ dias: 1, hasta: hoy() }).set(auth(tutor.token));
+      expect(resumen.status).toBe(200);
+      expect(resumen.body.data.total).toMatchObject({ completadas: 2, esperadas: 3 });
+      const porHijo = Object.fromEntries(resumen.body.data.porHijo.map((h) => [h.nombre, [h.completadas, h.esperadas]]));
+      expect(porHijo).toEqual({ Ana: [1, 1], Beto: [1, 2] });
+    });
+
+    test('la consulta del día tiene su propio límite por dispositivo (429 CUMPLIMIENTO_RATE_LIMIT)', async () => {
+      const tutor = await registrarTutor();
+      const hijo = await vincularHijo(tutor.token);
+      for (let i = 0; i < LIMITES_DISPOSITIVOS.CUMPLIMIENTO_DIA_POR_DISPOSITIVO; i += 1) {
+        expect((await request(app).get(`/api/v1/devices/${hijo}/cumplimiento`).query({ fecha: hoy() })).status).toBe(200);
+      }
+      const bloqueado = await request(app).get(`/api/v1/devices/${hijo}/cumplimiento`).query({ fecha: hoy() });
+      expect(bloqueado.status).toBe(429);
+      expect(bloqueado.body.errors.code).toBe('CUMPLIMIENTO_RATE_LIMIT');
     });
   });
 });

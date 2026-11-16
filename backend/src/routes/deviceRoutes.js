@@ -19,6 +19,7 @@ export const LIMITES_DISPOSITIVOS = Object.freeze({
   ESTADO_POR_DISPOSITIVO: 120,
   NOTIFICACIONES_POR_DISPOSITIVO: 30,
   CUMPLIMIENTO_POR_DISPOSITIVO: 60,
+  CUMPLIMIENTO_DIA_POR_DISPOSITIVO: 60,
 });
 
 export const limitePairingLink = crearLimiteIntentos({
@@ -73,6 +74,15 @@ export const limiteCumplimiento = crearLimiteIntentos({
   claves: (req) => [`cumplimiento:${req.params.deviceId}`],
   codigo: 'CUMPLIMIENTO_RATE_LIMIT',
   mensaje: 'Demasiados registros para este dispositivo. Espera un minuto.',
+});
+
+// Consulta de lo completado hoy por el niño: 60 por minuto por dispositivo
+export const limiteCumplimientoDia = crearLimiteIntentos({
+  ventanaMs: 60_000,
+  maximo: LIMITES_DISPOSITIVOS.CUMPLIMIENTO_DIA_POR_DISPOSITIVO,
+  claves: (req) => [`cumplimiento-dia:${req.params.deviceId}`],
+  codigo: 'CUMPLIMIENTO_RATE_LIMIT',
+  mensaje: 'Demasiadas consultas para este dispositivo. Espera un minuto.',
 });
 
 // reiniciar() de ambos límites de vinculación (lo usan los tests)
@@ -169,6 +179,16 @@ router.post('/:deviceId/cumplimiento', validarDeviceId, limiteCumplimiento, (req
     return nuevo
       ? sendCreated(res, 'Actividad registrada', cumplimiento)
       : sendSuccess(res, 200, 'La actividad ya estaba registrada hoy', cumplimiento);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// Lo que el niño ya completó en su fecha local (sin token; solo vinculados): recupera su avance al reabrir la app
+router.get('/:deviceId/cumplimiento', validarDeviceId, limiteCumplimientoDia, (req, res, next) => {
+  try {
+    const completadas = cumplimientoService.delDia(req.params.deviceId, req.query?.fecha);
+    return sendSuccess(res, 200, 'Actividades completadas del día', { fecha: req.query.fecha, completadas });
   } catch (error) {
     return next(error);
   }

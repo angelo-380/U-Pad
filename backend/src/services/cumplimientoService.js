@@ -9,10 +9,11 @@ import { AppError } from '../utils/AppError.js';
  * vinculado). El servidor decide el padre y la organización, y solo acepta actividades que existen como rutina activa
  * de ese padre: no se registran actividades inventadas. Completar la misma actividad dos veces el mismo día cuenta una.
  *
- * Cálculo del resumen: el teléfono del niño muestra todas las rutinas activas de su padre, así que en un día se
- * esperan (rutinas activas del tutor creadas hasta ese día) × (hijos vinculados del tutor). Solo cuentan los registros
- * de rutinas que siguen activas y de hijos que siguen vinculados a ese tutor, para que el porcentaje sea coherente
- * con lo esperado (nunca supera 100). Los hijos se cuentan con su vínculo actual.
+ * Cálculo del resumen: el teléfono de cada hijo muestra las rutinas activas de su padre asignadas a él o «para todos
+ * mis hijos» (ninoId NULL). En un día se esperan, por cada rutina activa creada hasta ese día, 1 si es de un hijo aún
+ * vinculado o tantos como hijos vinculados tenga el tutor si es para todos. Solo cuentan los registros de rutinas que
+ * siguen activas y de hijos que siguen vinculados a ese tutor, para que el porcentaje sea coherente con lo esperado
+ * (nunca supera 100). Los hijos se cuentan con su vínculo actual.
  */
 export const TURNOS_CUMPLIMIENTO = Object.freeze(['MANANA', 'TARDE', 'NOCHE']);
 export const MAX_DIAS_RESUMEN = 31;
@@ -81,8 +82,13 @@ export const cumplimientoService = {
 
     // La actividad debe ser una rutina activa del padre en ese turno (comparada en JavaScript: UPPER de SQLite no convierte la ñ)
     const buscada = normalizarTexto(actividad.slice(0, MAX_ACTIVIDAD));
-    const rutina = db.prepare('SELECT id, titulo FROM rutinas WHERE creadoPor = ? AND turno = ? AND activa = 1 ORDER BY creadoEn ASC')
-      .all(padreId, turnoNormalizado)
+    // y debe estar asignada a este hijo o a todos (ninoId NULL)
+    const rutina = db.prepare(`
+      SELECT id, titulo FROM rutinas
+      WHERE creadoPor = ? AND turno = ? AND activa = 1 AND (ninoId IS NULL OR ninoId = ?)
+      ORDER BY creadoEn ASC
+    `)
+      .all(padreId, turnoNormalizado, deviceId)
       .find((r) => normalizarTexto(r.titulo) === buscada);
     if (!rutina) {
       throw new AppError('Esa actividad no es una rutina activa de este turno.', 400, { field: 'actividad', code: 'RUTINA_NO_ENCONTRADA' });
@@ -114,6 +120,23 @@ export const cumplimientoService = {
   },
 
   /**
+   * Lo que el teléfono del niño ya completó en una fecha (su fecha local, ±1 día): [{ rutinaId, actividad, turno }].
+   * Así recupera su avance al recargar la lista o reabrir la app.
+   */
+  delDia(deviceId, fecha) {
+    exigirFechaCercana(fecha, 'fecha');
+    const dispositivo = db.prepare('SELECT parent_id FROM child_devices WHERE device_id = ? AND parent_id IS NOT NULL').get(deviceId);
+    if (!dispositivo) {
+      throw new AppError('Dispositivo no vinculado.', 404, { code: 'DEVICE_NOT_FOUND' });
+    }
+    return db.prepare(`
+      SELECT rutinaId, actividad, turno FROM cumplimientos
+      WHERE deviceId = ? AND padreId = ? AND fecha = ?
+      ORDER BY completadoEn ASC
+    `).all(deviceId, dispositivo.parent_id, fecha);
+  },
+
+  /**
    * Resumen de los últimos `dias` días hasta `hasta` (fecha local del cliente; por defecto, hoy en UTC).
    * tutor: lo suyo (con desglose por hijo); empresario: su organización (sin datos de los niños); developer: todo.
    */
@@ -135,16 +158,20 @@ export const cumplimientoService = {
     const alcance = alcanceDe(usuario);
 
     // Rutinas activas del alcance, con la fecha en que empezaron a esperarse y los hijos vinculados de su tutor
+    // (hijos = cuántos teléfonos la muestran: todos los hijos si es para todos, o 1 si su hijo sigue vinculado)
     const rutinas = db.prepare(`
       SELECT r.turno, substr(r.creadoEn, 1, 10) AS desde,
-        (SELECT COUNT(*) FROM child_devices c WHERE c.parent_id = r.creadoPor) AS hijos
+        CASE WHEN r.ninoId IS NULL
+          THEN (SELECT COUNT(*) FROM child_devices c WHERE c.parent_id = r.creadoPor)
+          ELSE (SELECT COUNT(*) FROM child_devices c WHERE c.parent_id = r.creadoPor AND c.device_id = r.ninoId)
+        END AS hijos
       FROM rutinas r WHERE r.activa = 1 AND ${alcance.where}
     `).all(...alcance.params);
 
     // Registros del periodo que siguen siendo coherentes (rutina activa e hijo aún vinculado a ese tutor)
     const registros = db.prepare(`
       SELECT k.fecha, k.turno, k.deviceId FROM cumplimientos k
-      JOIN rutinas r ON r.id = k.rutinaId AND r.activa = 1
+      JOIN rutinas r ON r.id = k.rutinaId AND r.activa = 1 AND (r.ninoId IS NULL OR r.ninoId = k.deviceId)
       JOIN child_devices c ON c.device_id = k.deviceId AND c.parent_id = k.padreId
       WHERE k.fecha BETWEEN ? AND ? AND ${alcance.where}
     `).all(desde, fin, ...alcance.params);
@@ -182,12 +209,15 @@ export const cumplimientoService = {
 
     // Solo el tutor ve el desglose por hijo (el director no ve datos de los niños)
     if (usuario.rol === 'tutor') {
-      const rutinasPropias = db.prepare("SELECT substr(creadoEn, 1, 10) AS desde FROM rutinas WHERE activa = 1 AND creadoPor = ?").all(usuario.id);
+      const rutinasPropias = db.prepare("SELECT substr(creadoEn, 1, 10) AS desde, ninoId FROM rutinas WHERE activa = 1 AND creadoPor = ?").all(usuario.id);
       resumen.porHijo = db.prepare('SELECT device_id, child_name FROM child_devices WHERE parent_id = ? ORDER BY child_name')
         .all(usuario.id)
         .map((hijo) => {
           const completadas = registros.filter((k) => k.deviceId === hijo.device_id).length;
-          const esperadas = fechas.reduce((t, fecha) => t + rutinasPropias.filter((r) => r.desde <= fecha).length, 0);
+          const esperadas = fechas.reduce(
+            (t, fecha) => t + rutinasPropias.filter((r) => r.desde <= fecha && (!r.ninoId || r.ninoId === hijo.device_id)).length,
+            0
+          );
           return { deviceId: hijo.device_id, nombre: hijo.child_name || null, completadas, esperadas, porcentaje: porcentaje(completadas, esperadas) };
         });
     }

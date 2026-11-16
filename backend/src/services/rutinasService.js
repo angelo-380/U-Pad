@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { db } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
+import { normalizarPasos, leerPasos, duracionTotal } from '../utils/pasosRutina.js';
 
 const TURNOS_VALIDOS = ['MANANA', 'TARDE', 'NOCHE'];
 
@@ -10,7 +11,7 @@ const sinValor = (valor) => valor === undefined || valor === null || (typeof val
  * Valida que el niño asignado sea un dispositivo vinculado al dueño de la rutina.
  * Devuelve el device_id limpio, o null si no se asigna ningún niño.
  */
-const validarNino = (ninoId, propietarioId) => {
+export const validarNino = (ninoId, propietarioId) => {
   if (sinValor(ninoId)) return null;
   const limpio = String(ninoId).trim();
   const hijo = db.prepare('SELECT device_id FROM child_devices WHERE device_id = ? AND parent_id = ?').get(limpio, propietarioId);
@@ -21,6 +22,12 @@ const validarNino = (ninoId, propietarioId) => {
     });
   }
   return limpio;
+};
+
+/** Fila de la base → rutina para la API (pasos con duración y duración total). */
+export const formatearRutina = (fila) => {
+  const pasos = leerPasos(fila.pasos, fila.titulo);
+  return { ...fila, activa: Boolean(fila.activa), pasos, duracionTotalMinutos: duracionTotal(pasos) };
 };
 
 export const rutinasService = {
@@ -39,14 +46,11 @@ export const rutinasService = {
     }
 
     const cleanTitulo = titulo.trim();
+    const pasosNormalizados = normalizarPasos(pasos, cleanTitulo);
 
-    // Niño asignado: el elegido (debe ser un hijo vinculado del usuario); si no se elige y el usuario
-    // tiene exactamente un hijo, se le asigna a él; en cualquier otro caso queda sin asignar.
-    let finalNinoId = validarNino(ninoId, usuarioActual.id);
-    if (sinValor(ninoId)) {
-      const hijos = db.prepare('SELECT device_id FROM child_devices WHERE parent_id = ? LIMIT 2').all(usuarioActual.id);
-      finalNinoId = hijos.length === 1 ? hijos[0].device_id : null;
-    }
+    // Niño asignado: el elegido (debe ser un hijo vinculado del usuario). Sin elegir (null) la rutina es
+    // «para todos mis hijos»: la ven todos los teléfonos de sus hijos (decisión del 16-nov-2026).
+    const finalNinoId = validarNino(ninoId, usuarioActual.id);
 
     // Desduplicación atómica: si el usuario hace doble clic rápido o concurrente
     const existente = db.prepare(`
@@ -57,25 +61,14 @@ export const rutinasService = {
     `).get(usuarioActual.id, cleanTitulo, turnoNormalizado);
 
     if (existente) {
-      let pasosParsed = [];
-      try {
-        pasosParsed = JSON.parse(existente.pasos || '[]');
-      } catch (e) {
-        pasosParsed = [];
-      }
-      return {
-        ...existente,
-        activa: Boolean(existente.activa),
-        pasos: pasosParsed,
-        duplicada: true
-      };
+      return { ...formatearRutina(existente), duplicada: true };
     }
 
     const rutinaId = `rut_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
     // La organización siempre es la del usuario autenticado (nunca un valor enviado por el cliente)
     const orgId = usuarioActual.organizacionId || null;
     const ahora = new Date().toISOString();
-    const pasosJson = JSON.stringify(Array.isArray(pasos) ? pasos : []);
+    const pasosJson = JSON.stringify(pasosNormalizados);
 
     db.prepare(`
       INSERT INTO rutinas (id, titulo, turno, ninoId, organizacionId, pasos, activa, creadoPor, creadoEn, actualizadoEn)
@@ -98,7 +91,8 @@ export const rutinasService = {
       turno: turnoNormalizado,
       ninoId: finalNinoId,
       organizacionId: orgId,
-      pasos: Array.isArray(pasos) ? pasos : [],
+      pasos: pasosNormalizados,
+      duracionTotalMinutos: duracionTotal(pasosNormalizados),
       activa: true,
       creadoPor: usuarioActual.id,
       creadoEn: ahora,
@@ -177,17 +171,7 @@ export const rutinasService = {
 
     const rows = db.prepare(query).all(...queryParams);
 
-    const formattedRows = rows.map(r => ({
-      ...r,
-      activa: Boolean(r.activa),
-      pasos: (() => {
-        try {
-          return JSON.parse(r.pasos || '[]');
-        } catch (e) {
-          return [];
-        }
-      })(),
-    }));
+    const formattedRows = rows.map(formatearRutina);
 
     if (isPaginated) {
       const totalPages = Math.ceil(total / limit) || 1;
@@ -217,17 +201,7 @@ export const rutinasService = {
       throw new AppError(`Rutina con ID [${id}] no encontrada.`, 404, { code: 'ROUTINE_NOT_FOUND' });
     }
 
-    const rutina = {
-      ...row,
-      activa: Boolean(row.activa),
-      pasos: (() => {
-        try {
-          return JSON.parse(row.pasos || '[]');
-        } catch (e) {
-          return [];
-        }
-      })(),
-    };
+    const rutina = formatearRutina(row);
 
     // Verificación de acceso y permisos (denegar por defecto):
     if (usuarioActual.rol === 'developer') {
@@ -295,8 +269,8 @@ export const rutinasService = {
       params.push(nuevoNinoId);
     }
 
-    if (datosActualizados.pasos !== undefined && Array.isArray(datosActualizados.pasos)) {
-      nuevosPasos = datosActualizados.pasos;
+    if (datosActualizados.pasos !== undefined && datosActualizados.pasos !== null) {
+      nuevosPasos = normalizarPasos(datosActualizados.pasos, nuevoTitulo);
       updates.push('pasos = ?');
       params.push(JSON.stringify(nuevosPasos));
     }
@@ -320,6 +294,7 @@ export const rutinasService = {
       turno: nuevoTurno,
       ninoId: nuevoNinoId,
       pasos: nuevosPasos,
+      duracionTotalMinutos: duracionTotal(nuevosPasos),
       activa: nuevaActiva,
       actualizadoEn: ahora,
     };

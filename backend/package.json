@@ -14,6 +14,7 @@
     "carga": "node scripts/k6.js run -e RESUMEN=reports/reporte-carga.json tests/k6/carga.js",
     "carga:escritura": "node scripts/k6.js run -e RESUMEN=reports/reporte-carga-escritura.json tests/k6/carga-escritura.js",
     "carga:limite": "node scripts/k6.js run -e RESUMEN=reports/reporte-limite-peticiones.json tests/k6/limite-peticiones.js",
+    "carga:10k": "node scripts/k6.js run -e RESUMEN=reports/reporte-estres-10k.json tests/k6/estres-10k.js",
     "carga:humo": "node scripts/k6.js run -e VUS=10 -e DURACION=10s tests/k6/carga.js && node scripts/k6.js run -e TOTAL=30 -e VUS=5 tests/k6/carga-escritura.js && node scripts/k6.js run tests/k6/limite-peticiones.js",
     "emulators:start": "firebase emulators:start --only firestore"
   },

@@ -3,6 +3,8 @@ import { db } from '../config/database.js';
 import { verifyToken } from '../utils/jwt.js';
 import { AppError } from '../utils/AppError.js';
 import { compatibilidadMovilActiva } from '../utils/compatMovil.js';
+import { normalizarPasos, leerPasos, duracionTotal } from '../utils/pasosRutina.js';
+import { validarNino } from '../services/rutinasService.js';
 
 const router = express.Router();
 
@@ -96,6 +98,26 @@ const actividadValida = (actividad) => {
 };
 
 /**
+ * Pasos que envía la app: la lista nueva `pasos[]` ({texto, palabraClave?, duracionMinutos?, pictogramaId?})
+ * o el formato antiguo de una sola actividad (`palabraClave` y `duracionMinutos` opcionales).
+ */
+const pasosDelCuerpo = (cuerpo, titulo) => {
+  if (Array.isArray(cuerpo?.pasos) && cuerpo.pasos.length > 0) return normalizarPasos(cuerpo.pasos, titulo);
+  const palabraClave = typeof cuerpo?.palabraClave === 'string' && cuerpo.palabraClave.trim() ? cuerpo.palabraClave.trim() : titulo;
+  return normalizarPasos([{ texto: titulo, palabraClave, duracionMinutos: cuerpo?.duracionMinutos, pictogramaId: cuerpo?.pictogramaId }], titulo);
+};
+
+/** ninoId enviado por la app: undefined = no cambiar; '' / null / 'TODOS' = para todos los hijos; si no, un hijo propio. */
+const ninoDelCuerpo = (cuerpo, usuarioId) => {
+  if (!cuerpo || !Object.prototype.hasOwnProperty.call(cuerpo, 'ninoId')) return undefined;
+  const valor = cuerpo.ninoId;
+  if (valor === null || valor === undefined || (typeof valor === 'string' && ['', 'TODOS'].includes(valor.trim().toUpperCase()))) {
+    return null;
+  }
+  return validarNino(valor, usuarioId);
+};
+
+/**
  * POST /api/v1/mobile/sync-routines
  * Guarda una rutina creada en la app a nombre del usuario identificado (sin duplicados).
  */
@@ -103,7 +125,6 @@ router.post('/mobile/sync-routines', identificarUsuarioMovil(), (req, res, next)
   try {
     const usuario = req.usuarioMovil;
     const titulo = actividadValida(req.body?.actividad);
-    const { palabraClave } = req.body;
     const turnoNormalizado = normalizarTurno(req.body?.turno);
 
     const existente = db.prepare(`
@@ -122,23 +143,23 @@ router.post('/mobile/sync-routines', identificarUsuarioMovil(), (req, res, next)
     }
 
     const id = `rut_app_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 8)}`;
-    const pasos = JSON.stringify([{
-      orden: 1,
-      texto: titulo,
-      palabraClave: typeof palabraClave === 'string' && palabraClave.trim() ? palabraClave.trim() : titulo.toLowerCase(),
-    }]);
+    const pasos = pasosDelCuerpo(req.body, titulo);
+    const ninoId = ninoDelCuerpo(req.body, usuario.id) ?? null;
     const creadoEn = new Date().toISOString();
 
     // La organización la define el servidor (la del usuario), nunca el cliente
     db.prepare(`
       INSERT INTO rutinas (id, titulo, turno, ninoId, organizacionId, pasos, activa, creadoPor, creadoEn, actualizadoEn)
-      VALUES (?, ?, ?, NULL, ?, ?, 1, ?, ?, ?)
-    `).run(id, titulo, turnoNormalizado, usuario.organizacionId || null, pasos, usuario.id, creadoEn, creadoEn);
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+    `).run(id, titulo, turnoNormalizado, ninoId, usuario.organizacionId || null, JSON.stringify(pasos), usuario.id, creadoEn, creadoEn);
 
     return res.status(201).json({
       status: 'success',
       message: 'Rutina creada desde la app',
       id,
+      ninoId,
+      pasos,
+      duracionTotalMinutos: duracionTotal(pasos),
     });
   } catch (error) {
     return next(error);
@@ -155,21 +176,38 @@ router.get('/mobile/sync-routines', identificarUsuarioMovil({ anonimoVacio: true
       return res.status(200).json({ status: 'success', total: 0, data: [] });
     }
 
-    const rows = db.prepare('SELECT * FROM rutinas WHERE activa = 1 AND creadoPor = ? ORDER BY creadoEn DESC').all(req.usuarioMovil.id);
+    // Teléfono del niño (?deviceId=): solo las rutinas para él o «para todos mis hijos». Si ese dispositivo no es
+    // un hijo vinculado de este usuario, la lista es vacía.
+    const deviceId = typeof req.query?.deviceId === 'string' ? req.query.deviceId.trim() : '';
+    let rows;
+    if (deviceId) {
+      const esHijo = db.prepare('SELECT 1 FROM child_devices WHERE device_id = ? AND parent_id = ?').get(deviceId, req.usuarioMovil.id);
+      rows = esHijo
+        ? db.prepare(`
+            SELECT * FROM rutinas WHERE activa = 1 AND creadoPor = ? AND (ninoId IS NULL OR ninoId = ?)
+            ORDER BY creadoEn ASC, rowid ASC
+          `).all(req.usuarioMovil.id, deviceId)
+        : [];
+    } else {
+      rows = db.prepare('SELECT * FROM rutinas WHERE activa = 1 AND creadoPor = ? ORDER BY creadoEn ASC, rowid ASC').all(req.usuarioMovil.id);
+    }
+
+    // En orden de creación: el niño empieza por la primera rutina que creó su padre
     const tasks = rows.map((r) => {
-      let pasos = [];
-      try {
-        pasos = typeof r.pasos === 'string' ? JSON.parse(r.pasos) : r.pasos;
-      } catch (e) {
-        pasos = [];
-      }
+      const pasos = leerPasos(r.pasos, r.titulo);
+      const total = duracionTotal(pasos);
       return {
         id: r.id,
         actividad: r.titulo.toUpperCase(),
-        palabraClave: (pasos?.[0]?.palabraClave || pasos?.[0]?.texto || r.titulo).toLowerCase(),
+        palabraClave: (pasos[0]?.palabraClave || r.titulo).toLowerCase(),
         dias: ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'],
         completada: false,
         turno: r.turno,
+        ninoId: r.ninoId || null,
+        pasos,
+        duracionTotalMinutos: total,
+        duration: total,
+        creadoEn: r.creadoEn,
       };
     });
 
@@ -222,22 +260,22 @@ router.delete('/mobile/sync-routines', identificarUsuarioMovil(), (req, res, nex
 router.put('/mobile/sync-routines', identificarUsuarioMovil({ compatibilidad: false }), (req, res, next) => {
   try {
     const usuario = req.usuarioMovil;
-    const { id, palabraClave } = req.body || {};
+    const { id } = req.body || {};
     const actividad = actividadValida(req.body?.actividad);
     const turnoNormalizado = normalizarTurno(req.body?.turno);
-    const pasos = JSON.stringify([{
-      orden: 1,
-      texto: actividad,
-      palabraClave: typeof palabraClave === 'string' && palabraClave.trim() ? palabraClave.trim() : actividad.toLowerCase(),
-    }]);
+    const pasos = JSON.stringify(pasosDelCuerpo(req.body, actividad));
+    const ninoId = ninoDelCuerpo(req.body, usuario.id); // undefined = no se cambia
     const actualizadoEn = new Date().toISOString();
 
     let resultado;
     if (id) {
       resultado = db.prepare(`
-        UPDATE rutinas SET titulo = ?, turno = ?, pasos = ?, actualizadoEn = ?
+        UPDATE rutinas SET titulo = ?, turno = ?, pasos = ?, ninoId = COALESCE(?, ninoId), actualizadoEn = ?
         WHERE id = ? AND creadoPor = ?
-      `).run(actividad, turnoNormalizado, pasos, actualizadoEn, String(id), usuario.id);
+      `).run(actividad, turnoNormalizado, pasos, ninoId === undefined ? null : ninoId, actualizadoEn, String(id), usuario.id);
+      if (ninoId === null) {
+        db.prepare('UPDATE rutinas SET ninoId = NULL WHERE id = ? AND creadoPor = ?').run(String(id), usuario.id);
+      }
     } else {
       resultado = db.prepare(`
         UPDATE rutinas SET pasos = ?, actualizadoEn = ?
