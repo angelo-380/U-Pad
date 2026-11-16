@@ -370,6 +370,10 @@ A) CONTRA EL BACKEND LOCAL (desde la carpeta backend/, con «npm run dev» encen
   npm run carga:escritura   -> 100 rutinas creadas por 10 usuarios a la vez.
   npm run carga:limite      -> 30 intentos de vincular con códigos falsos: ~10 con 404 y el resto con 429.
   npm run carga:humo        -> Las tres, cortas (lo que ejecuta GitHub Actions en cada push).
+  npm run carga:10k         -> Estrés: 10.000 usuarios distintos (registro, inicio de sesión, rutina de 2 pasos
+                               y borrado de su cuenta). Exige 0 fallos e informa el tiempo total.
+                               Medido en local: 53,4 s, 0 fallos (no 10 s: cada contraseña se cifra con PBKDF2
+                               de 100.000 rondas, 30.000 veces en total; es lo que protege las cuentas).
 
   Resultados en backend/reports/*.json. Contadores de la rúbrica: respuestas_429 y errores_otros.
 

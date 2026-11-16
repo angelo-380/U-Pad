@@ -78,6 +78,9 @@ Instalar k6: `brew install k6` (macOS) o `winget install k6 --source winget` (Wi
 | `npm run carga:escritura` | 10 usuarios crean 100 rutinas a la vez | las 100 se crean, `errores_otros = 0` |
 | `npm run carga:limite` | Escenario B: 30 intentos de vincular un hijo con códigos falsos | el servidor corta con `429 PAIRING_RATE_LIMIT` (`respuestas_429 > 0`) |
 | `npm run carga:humo` | Las tres, cortas | lo mismo; es lo que ejecuta GitHub Actions en cada push |
+| `npm run carga:10k` | Estrés: 10 000 usuarios distintos, cada uno se registra, inicia sesión, crea una rutina de 2 pasos y borra su cuenta | 0 fallos, los 10 000 completos y la base queda vacía; informa el tiempo total |
+
+**Sobre los 10 000 usuarios en 10 segundos.** Registrar, iniciar sesión y borrar la cuenta cifran o comprueban la contraseña con PBKDF2 (100 000 rondas, sha512): son 30 000 operaciones de unos 15 ms de CPU cada una. Medido el 16-nov-2026 en un Mac M (backend local, `UV_THREADPOOL_SIZE=16`): **10 000 usuarios en 53,4 s (187 usuarios/s), 40 001 peticiones, 0 fallos, p95 400 ms**, y la base quedó con 0 cuentas. Bajar a 10 s exigiría debilitar el cifrado de todas las contraseñas (OWASP recomienda más rondas, no menos) o varias instancias, que SQLite no admite. Variables: `USUARIOS` (10000), `VUS` (200), `MAX_MIN` (15). Necesita que el límite de autenticación admita 30 000 peticiones cada 15 min (por defecto 50 000).
 
 - Contadores de la rúbrica: `respuestas_429` y `errores_otros` (aparecen siempre en el resumen).
 - Resultados en `reports/*.json` (`-e RESUMEN=reports/archivo.json`; sin el token ni la contraseña de la cuenta temporal).
