@@ -113,4 +113,16 @@ export const authController = {
       next(error);
     }
   },
+
+  /**
+   * DELETE /api/auth/me { password }: borra la cuenta del usuario autenticado (ver authService.borrarCuenta).
+   */
+  async borrarMiCuenta(req, res, next) {
+    try {
+      const result = await authService.borrarCuenta(req.user.id, req.body?.password);
+      return sendSuccess(res, 200, 'Cuenta eliminada', result);
+    } catch (error) {
+      next(error);
+    }
+  },
 };

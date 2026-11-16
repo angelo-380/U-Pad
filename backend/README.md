@@ -66,53 +66,29 @@ npm test
 
 ---
 
-## 4. Pruebas de Carga con k6 (50 a 100 Usuarios Concurrentes)
+## 4. Pruebas de Carga con k6
 
-La prueba de carga (`tests/carga.js`) simula entre 50 y 100 usuarios concurrentes realizando peticiones a `/health`, inicio de sesión y consulta autenticada a `GET /api/rutinas`.
+Las pruebas están en `tests/k6/` y son **autosuficientes**: cada ejecución crea su propia cuenta temporal (empresario «Carga k6», correo `@carga.upad.test` y contraseña aleatoria generada en memoria) y la **borra al terminar** con `DELETE /api/auth/me`. No hace falta ninguna cuenta previa ni tocar `.env`, la base queda como estaba y ningún script contiene credenciales.
 
-El script cuenta con dos contadores personalizados obligatorios:
-- `respuestas_429`: Número de peticiones bloqueadas por el Rate Limiter.
-- `errores_otros`: Número de errores diferentes a 200 y 429.
+Instalar k6: `brew install k6` (macOS) o `winget install k6 --source winget` (Windows).
 
-### Escenario A: Prueba con Rate Limit Relajado (Demostración de Alto Rendimiento)
-Para evaluar la capacidad del servidor sin que el limitador de seguridad bloquee por IP local:
+| Comando (desde `backend/`) | Qué hace | Se considera correcto si |
+|---|---|---|
+| `npm run carga` | Escenario A: 100 usuarios durante 30 s consultando `/health`, rutinas, KPIs y cumplimiento | `http_req_failed < 1 %`, `p(95) < 800 ms`, `checks > 99 %`, `errores_otros = 0` |
+| `npm run carga:escritura` | 10 usuarios crean 100 rutinas a la vez | las 100 se crean, `errores_otros = 0` |
+| `npm run carga:limite` | Escenario B: 30 intentos de vincular un hijo con códigos falsos | el servidor corta con `429 PAIRING_RATE_LIMIT` (`respuestas_429 > 0`) |
+| `npm run carga:humo` | Las tres, cortas | lo mismo; es lo que ejecuta GitHub Actions en cada push |
 
-1. Configurar en tu archivo `.env`:
-   ```properties
-   RATE_LIMIT_MAX=100000
-   RATE_LIMIT_AUTH_MAX=100000
-   ```
-2. Reiniciar el servidor:
-   ```powershell
-   npm run dev
-   ```
-3. Ejecutar la prueba de carga:
-   ```powershell
-   npm run carga
-   ```
-   *Resultado esperado:* 100% de peticiones exitosas (HTTP 200), `http_req_failed < 5%`, `p(95) < 800 ms` y `respuestas_429 = 0`.  
-   *Reporte generado:* `reports/reporte-carga.json` (o HTML si usas el reporter de k6).
-
----
-
-### Escenario B: Prueba con Rate Limit Estricto (Demostración de Defensa ante Ataques)
-Para demostrar al evaluador que la protección contra ataques de saturación o denegación de servicio funciona exactamente como se diseñó:
-
-1. Restaurar en tu archivo `.env` los valores por defecto:
-   ```properties
-   RATE_LIMIT_MAX=100
-   RATE_LIMIT_AUTH_MAX=10
-   ```
-2. Reiniciar el servidor:
-   ```powershell
-   npm run dev
-   ```
-3. Ejecutar la prueba de carga:
-   ```powershell
-   npm run carga:ratelimit
-   ```
-   *Resultado esperado:* Se evidenciará en la consola de k6 que el contador `respuestas_429` registra las peticiones bloqueadas (aprox. 2,200), demostrando que la API responde con **HTTP 429 Too Many Requests** en formato JSON estructurado y rechaza el tráfico abusivo.  
-   *Reporte generado:* `reports/reporte-rate-limit.json`.
+- Contadores de la rúbrica: `respuestas_429` y `errores_otros` (aparecen siempre en el resumen).
+- Resultados en `reports/*.json` (`-e RESUMEN=reports/archivo.json`; sin el token ni la contraseña de la cuenta temporal).
+- Variables (`-e NOMBRE=valor`): `BASE_URL` (por defecto `http://localhost:3000`), `VUS`, `DURACION`, `TOTAL`, `P95_MS`. Opcional: `EMAIL` y `PASSWORD` para usar una cuenta empresario existente (no se borra).
+- Contra Cloud Run:
+  ```bash
+  k6 run -e BASE_URL=https://upad-backend-service-466241893446.us-central1.run.app tests/k6/carga.js
+  ```
+- Estrés con más usuarios: `ulimit -n 65536 && k6 run -e BASE_URL=<URL> -e VUS=1000 -e P95_MS=2000 tests/k6/carga.js`.
+- El escenario B usa un límite en memoria (10 intentos por minuto por cuenta y 30 por IP) que no depende de `.env`: funciona igual en local y en Cloud Run.
+- Si en `.env` pusiste `RATE_LIMIT_AUTH_MAX` con un valor bajo (p. ej. 10), el backend solo admite ese número de registros e inicios de sesión cada 15 min por IP, y cada prueba usa uno. Quita la variable (por defecto 50 000) y reinicia el backend.
 
 ---
 
@@ -125,6 +101,7 @@ Para demostrar al evaluador que la protección contra ataques de saturación o d
 | `POST` | `/api/auth/register` | Registro de usuario (bcrypt + JWT) | Público (Rate limited) | `201`, `400`, `409`, `429` |
 | `POST` | `/api/auth/login` | Inicio de sesión con JWT | Público (Rate limited) | `200`, `400`, `401`, `429` |
 | `GET` | `/api/auth/me` | Sesión del usuario autenticado | `Bearer <token>` | `200`, `401` |
+| `DELETE` | `/api/auth/me` | Borrar la propia cuenta (body `{password}`; no para developer) | `Bearer <token>` | `200`, `400`, `401`, `403`, `429` |
 | `GET` | `/api/rutinas` | Listado de rutinas (filtradas por rol) | `Bearer <token>` | `200`, `401` |
 | `POST` | `/api/rutinas` | Crear rutina visual | `Bearer <token>` | `201`, `400`, `401` |
 | `GET` | `/api/rutinas/:id` | Detalle de rutina | `Bearer <token>` | `200`, `401`, `403`, `404` |

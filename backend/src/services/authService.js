@@ -336,4 +336,63 @@ export const authService = {
       googleSub: sub,
     });
   },
+
+  /**
+   * DELETE /api/auth/me: el usuario borra su propia cuenta confirmando su contraseña.
+   * Se usa, entre otros, para que las pruebas de carga (k6) no dejen cuentas temporales en la base.
+   * - developer: no puede borrarse a sí mismo (se hace desde el Developer Center, por otro developer).
+   * - Borra sus rutinas, hijos vinculados, códigos, avisos, cumplimientos y bloqueos de login.
+   * - Empresario propietario: su organización desaparece y sus miembros (y sus rutinas) quedan sin organización.
+   */
+  async borrarCuenta(usuarioId, password) {
+    if (typeof password !== 'string' || password === '') {
+      throw new AppError('Confirma tu contraseña para borrar la cuenta.', 400, { field: 'password', code: 'PASSWORD_REQUERIDO' });
+    }
+
+    const user = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(usuarioId);
+    if (!user) {
+      throw new AppError('La cuenta ya no existe.', 401, { code: 'USUARIO_NO_EXISTE' });
+    }
+    if (user.rol === ROLES.DEVELOPER) {
+      throw new AppError('Una cuenta developer no puede borrarse a sí misma; usa el Developer Center.', 403, {
+        code: 'DEVELOPER_NO_AUTOBORRABLE',
+      });
+    }
+
+    const { valido } = await verificarPasswordUsuario(user, password);
+    if (!valido) {
+      throw new AppError('Contraseña incorrecta.', 401, { field: 'password', code: 'CREDENCIALES_INVALIDAS' });
+    }
+
+    const organizacionesPropias = db
+      .prepare('SELECT id FROM organizaciones WHERE propietarioId = ?')
+      .all(usuarioId)
+      .map((o) => o.id);
+
+    db.exec('BEGIN');
+    try {
+      db.prepare('DELETE FROM rutinas WHERE creadoPor = ?').run(usuarioId);
+      db.prepare('DELETE FROM cumplimientos WHERE padreId = ?').run(usuarioId);
+      db.prepare('DELETE FROM notificaciones WHERE padreId = ?').run(usuarioId);
+      db.prepare('DELETE FROM child_devices WHERE parent_id = ?').run(usuarioId);
+      db.prepare('DELETE FROM pairing_codes WHERE parent_id = ?').run(usuarioId);
+      db.prepare('DELETE FROM login_lockouts WHERE email = ?').run(user.email);
+
+      for (const orgId of organizacionesPropias) {
+        db.prepare('UPDATE usuarios SET organizacionId = NULL WHERE organizacionId = ?').run(orgId);
+        db.prepare('UPDATE rutinas SET organizacionId = NULL WHERE organizacionId = ?').run(orgId);
+        db.prepare('UPDATE cumplimientos SET organizacionId = NULL WHERE organizacionId = ?').run(orgId);
+        db.prepare('UPDATE pairing_codes SET organization_id = NULL WHERE organization_id = ?').run(orgId);
+        db.prepare('DELETE FROM organizaciones WHERE id = ?').run(orgId);
+      }
+
+      db.prepare('DELETE FROM usuarios WHERE id = ?').run(usuarioId);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+
+    return { userId: usuarioId, deleted: true, organizacionesBorradas: organizacionesPropias.length };
+  },
 };

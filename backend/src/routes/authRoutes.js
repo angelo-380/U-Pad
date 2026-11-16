@@ -3,6 +3,7 @@ import { authController } from '../controllers/authController.js';
 import { authLimiter } from '../middlewares/rateLimiter.js';
 import { authenticate } from '../middlewares/authMiddleware.js';
 import { sendSuccess } from '../utils/responseHandler.js';
+import { crearLimiteIntentos } from '../middlewares/limiteIntentos.js';
 
 const router = Router();
 
@@ -21,5 +22,17 @@ router.get('/me', authenticate, (req, res) => {
     usuario: req.user,
   });
 });
+
+// Borrar la propia cuenta (confirmando la contraseña). Lo usan también las pruebas de k6 al terminar.
+// Exige token y contraseña, así que usa su propio límite por cuenta (10 por minuto) en vez de authLimiter:
+// cada ejecución de k6 solo gasta un cupo de registro/login, el del alta de su cuenta temporal.
+export const limiteBorrarCuenta = crearLimiteIntentos({
+  ventanaMs: 60_000,
+  maximo: 10,
+  claves: (req) => [`cuenta:${req.user?.id}`],
+  codigo: 'BORRAR_CUENTA_RATE_LIMIT',
+  mensaje: 'Demasiados intentos de borrar la cuenta. Espera un minuto.',
+});
+router.delete('/me', authenticate, limiteBorrarCuenta, authController.borrarMiCuenta);
 
 export default router;

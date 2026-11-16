@@ -161,6 +161,27 @@ export const swaggerSpec = {
           401: { description: 'Token faltante o expirado' },
         },
       },
+      delete: {
+        summary: 'Borrar la propia cuenta (confirmando la contraseña)',
+        description:
+          'Borra la cuenta y sus rutinas, hijos vinculados, avisos y cumplimientos. Si es un empresario, también su organización (sus tutores quedan sin organización). Un developer no puede borrarse a sí mismo. Lo usan las pruebas de k6 para no dejar cuentas temporales.',
+        tags: ['Autenticación'],
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['password'], properties: { password: { type: 'string' } } },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Cuenta eliminada' },
+          400: { description: 'Falta la contraseña (PASSWORD_REQUERIDO)' },
+          401: { description: 'Contraseña incorrecta o token inválido' },
+          403: { description: 'Un developer no puede borrarse a sí mismo' },
+        },
+      },
     },
     '/api/rutinas': {
       get: {

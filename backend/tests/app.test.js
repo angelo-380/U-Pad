@@ -13,6 +13,7 @@ import { secretosFaltantes, SECRETOS_OBLIGATORIOS } from '../src/config/secretos
 import { limitePairingLink, limiteTelemetria, limiteEstadoDispositivo, limiteNotificaciones, limiteCumplimiento, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
 import { TIPOS_NOTIFICACION, MAX_LISTADO, DIAS_RETENCION } from '../src/services/notificacionesService.js';
 import { establecerVerificadorGoogle } from '../src/utils/googleVerifier.js';
+import { limiteBorrarCuenta } from '../src/routes/authRoutes.js';
 import { descripcionPersistencia } from '../src/config/persistencia.js';
 import { crearAlmacenGcs, crearAlmacenLocal, establecerAlmacenBackups } from '../src/services/almacenBackups.js';
 import { backupService } from '../src/services/backupService.js';
@@ -67,6 +68,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     limiteEstadoDispositivo.reiniciar();
     limiteNotificaciones.reiniciar();
     limiteCumplimiento.reiniciar();
+    limiteBorrarCuenta.reiniciar();
   });
 
   let authToken = '';
@@ -3400,6 +3402,119 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       expect(res.status).toBe(200);
       expect(res.body.data.total.completadas).toBeGreaterThanOrEqual(1);
       expect((await request(app).get('/api/cumplimiento')).status).toBe(401);
+    });
+  });
+  describe('26. Borrar la propia cuenta (DELETE /api/auth/me): limpieza de las pruebas de k6', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const correo = (etiqueta) => `test-${TIMESTAMP}-o-${etiqueta}-${crypto.randomUUID().slice(0, 8)}@upad.test`;
+
+    const registrar = async (rol = 'tutor', extra = {}) => {
+      const password = passwordGenerada();
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: `Cuenta O ${rol}`,
+        email: correo(rol),
+        password,
+        rol,
+        ...extra,
+      });
+      expect(res.status).toBe(201);
+      return { ...res.body.data, password };
+    };
+
+    const borrar = (token, cuerpo) => request(app).delete('/api/auth/me').set(auth(token)).send(cuerpo);
+    const existe = (id) => Boolean(db.prepare('SELECT 1 FROM usuarios WHERE id = ?').get(id));
+
+    test('un tutor borra su cuenta con sus rutinas, hijos, avisos y cumplimientos; el token deja de valer', async () => {
+      const tutor = await registrar('tutor');
+      const id = tutor.usuario.id;
+      const rutina = await request(app).post('/api/rutinas').set(auth(tutor.token)).send({ titulo: 'Lavarse los dientes', turno: 'MANANA', pasos: [] });
+      expect(rutina.status).toBe(201);
+
+      const code = String(crypto.randomInt(100000, 1000000));
+      const deviceId = `dev_o_${crypto.randomUUID().slice(0, 8)}`;
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+      expect((await request(app).post('/api/devices/pairing/link').set(auth(tutor.token)).send({ code, childName: 'Hijo O' })).status).toBe(201);
+      const hoy = new Date().toISOString().slice(0, 10);
+      expect((await request(app).post(`/api/v1/devices/${deviceId}/cumplimiento`).send({ actividad: 'Lavarse los dientes', turno: 'MANANA', fecha: hoy })).status).toBe(201);
+      expect((await request(app).post(`/api/v1/devices/${deviceId}/notificaciones`).send({ tipo: 'tarea_completada', titulo: 'Hecho', descripcion: '' })).status).toBe(201);
+
+      const res = await borrar(tutor.token, { password: tutor.password });
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({ userId: id, deleted: true });
+
+      expect(existe(id)).toBe(false);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM rutinas WHERE creadoPor = ?').get(id).n).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM child_devices WHERE parent_id = ?').get(id).n).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM cumplimientos WHERE padreId = ?').get(id).n).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM notificaciones WHERE padreId = ?').get(id).n).toBe(0);
+
+      const despues = await request(app).get('/api/auth/me').set(auth(tutor.token));
+      expect(despues.status).toBe(401);
+      expect(despues.body.errors.code).toBe('USUARIO_NO_EXISTE');
+    });
+
+    test('un empresario se borra con su organización; sus tutores conservan la cuenta sin organización', async () => {
+      const empresario = await registrar('empresario');
+      const orgId = empresario.organizacion.id;
+      const tutor = await registrar('tutor', { codigoOrganizacion: empresario.organizacion.codigo });
+      expect(tutor.usuario.organizacionId).toBe(orgId);
+      const rutinaTutor = await request(app).post('/api/rutinas').set(auth(tutor.token)).send({ titulo: 'Rutina del tutor', turno: 'TARDE', pasos: [] });
+      expect(rutinaTutor.status).toBe(201);
+
+      const res = await borrar(empresario.token, { password: empresario.password });
+      expect(res.status).toBe(200);
+      expect(res.body.data.organizacionesBorradas).toBe(1);
+
+      expect(existe(empresario.usuario.id)).toBe(false);
+      expect(db.prepare('SELECT 1 FROM organizaciones WHERE id = ?').get(orgId)).toBeUndefined();
+      expect(db.prepare('SELECT organizacionId FROM usuarios WHERE id = ?').get(tutor.usuario.id).organizacionId).toBeNull();
+      expect(db.prepare('SELECT organizacionId FROM rutinas WHERE id = ?').get(rutinaTutor.body.data.id).organizacionId).toBeNull();
+
+      // El tutor sigue funcionando con normalidad
+      expect((await request(app).get('/api/rutinas').set(auth(tutor.token))).status).toBe(200);
+    });
+
+    test('sin contraseña → 400 PASSWORD_REQUERIDO; contraseña incorrecta → 401; la cuenta no se toca', async () => {
+      const tutor = await registrar('tutor');
+      const sin = await borrar(tutor.token, {});
+      expect(sin.status).toBe(400);
+      expect(sin.body.errors.code).toBe('PASSWORD_REQUERIDO');
+
+      const mala = await borrar(tutor.token, { password: passwordGenerada() });
+      expect(mala.status).toBe(401);
+      expect(mala.body.errors.code).toBe('CREDENCIALES_INVALIDAS');
+      expect(existe(tutor.usuario.id)).toBe(true);
+    });
+
+    test('un developer no puede borrarse a sí mismo (403) y sin token responde 401', async () => {
+      const id = `usr_dev_o_${crypto.randomUUID().slice(0, 8)}`;
+      const token = tokenDe({ id, email: `${id}@upad.test`, rol: 'developer' });
+      const res = await borrar(token, { password: passwordGenerada() });
+      expect(res.status).toBe(403);
+      expect(res.body.errors.code).toBe('DEVELOPER_NO_AUTOBORRABLE');
+      expect(existe(id)).toBe(true);
+
+      expect((await request(app).delete('/api/auth/me').send({ password: 'x' })).status).toBe(401);
+    });
+
+    test('límite propio de 10 intentos por minuto por cuenta (429 BORRAR_CUENTA_RATE_LIMIT)', async () => {
+      limiteBorrarCuenta.reiniciar();
+      const tutor = await registrar('tutor');
+      for (let i = 0; i < 10; i += 1) {
+        expect((await borrar(tutor.token, { password: passwordGenerada() })).status).toBe(401);
+      }
+      const bloqueado = await borrar(tutor.token, { password: tutor.password });
+      expect(bloqueado.status).toBe(429);
+      expect(bloqueado.body.errors.code).toBe('BORRAR_CUENTA_RATE_LIMIT');
+      expect(existe(tutor.usuario.id)).toBe(true);
+      limiteBorrarCuenta.reiniciar();
+    });
+
+    test('también existe en /api/v1/auth/me (la ruta que usa el prefijo versionado)', async () => {
+      const tutor = await registrar('tutor');
+      const res = await request(app).delete('/api/v1/auth/me').set(auth(tutor.token)).send({ password: tutor.password });
+      expect(res.status).toBe(200);
+      expect(existe(tutor.usuario.id)).toBe(false);
     });
   });
 });
