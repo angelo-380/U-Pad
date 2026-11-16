@@ -788,6 +788,9 @@ class RoutineViewModel(
                     val esteDispositivo = com.example.upad.data.LocalDataManager.idEsteDispositivo()
                     val vinculado = com.example.upad.data.LocalDataManager.getAllDevices()[esteDispositivo]?.padreId?.isNotEmpty() == true
                     if (vinculado) {
+                        // Cumplimiento real para la web (Análisis de desempeño y panel gerencial)
+                        com.example.upad.data.LocalDataManager.registrarCumplimiento(esteDispositivo, actividadTexto, turnoValido)
+
                         val lang = appLanguage.value
 
                         // 1. Enviar notificación por la tarea completada

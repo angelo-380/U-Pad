@@ -11,7 +11,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
@@ -37,11 +36,28 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.Priority
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.LatLngBounds
-import com.google.maps.android.compose.*
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.CopyrightOverlay
+import org.osmdroid.views.overlay.Marker
+
+/** Punto redondo de color con borde blanco para los marcadores del mapa (sin imágenes externas). */
+private fun puntoMarcador(context: Context, color: Int): android.graphics.drawable.Drawable {
+    val tamano = (28 * context.resources.displayMetrics.density).toInt()
+    return android.graphics.drawable.GradientDrawable().apply {
+        shape = android.graphics.drawable.GradientDrawable.OVAL
+        setColor(color)
+        setStroke((4 * context.resources.displayMetrics.density).toInt(), android.graphics.Color.WHITE)
+        setSize(tamano, tamano)
+    }
+}
 
 @Composable
 fun HijoTrackingScreen(
@@ -93,7 +109,7 @@ fun HijoTrackingScreen(
     val dispositivosConectados by trackingViewModel.dispositivosConectados.collectAsState()
     var dispositivoSeleccionado by remember { mutableStateOf<DispositivoVinculado?>(null) }
 
-    var miUbicacionReal by remember { mutableStateOf<LatLng?>(null) }
+    var miUbicacionReal by remember { mutableStateOf<GeoPoint?>(null) }
     val datosUbicacionNino by trackingViewModel.ubicacion.collectAsState()
 
     var tienePermisoUbicacion by remember {
@@ -102,7 +118,53 @@ fun HijoTrackingScreen(
         )
     }
 
-    val cameraPositionState = rememberCameraPositionState()
+    // Mapa de OpenStreetMap (sin claves). La política de uso de OSM exige identificar la app (userAgent);
+    // la caché de teselas va en la carpeta privada de la app (no pide permisos de almacenamiento).
+    val mapView = remember {
+        Configuration.getInstance().apply {
+            // OSM bloquea los identificadores de ejemplo como «com.example.*»: se usa uno propio de la app
+            userAgentValue = "UPad-Android/1.0 (proyecto academico U-Pad)"
+            osmdroidBasePath = java.io.File(context.cacheDir, "osmdroid")
+            osmdroidTileCache = java.io.File(context.cacheDir, "osmdroid/tiles")
+        }
+        MapView(context).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            minZoomLevel = 3.0
+            controller.setZoom(3.0)
+            overlays.add(CopyrightOverlay(context))
+        }
+    }
+    val marcadorPadre = remember {
+        Marker(mapView).apply {
+            title = "Tu ubicación"
+            icon = puntoMarcador(context, android.graphics.Color.parseColor("#007AFF"))
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+        }
+    }
+    val marcadorHijo = remember {
+        Marker(mapView).apply {
+            icon = puntoMarcador(context, android.graphics.Color.parseColor("#4CAF50"))
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+        }
+    }
+
+    // Ciclo de vida del mapa (osmdroid pausa la descarga de teselas fuera de pantalla)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observador = LifecycleEventObserver { _, evento ->
+            when (evento) {
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observador)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observador)
+            mapView.onDetach()
+        }
+    }
 
     val launcherPermisos = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -116,41 +178,24 @@ fun HijoTrackingScreen(
         }
     }
 
-    // 📡 ESCUCHA DE UBICACIÓN DEL PADRE EN TIEMPO REAL
-    LaunchedEffect(tienePermisoUbicacion) {
+    // 📡 ESCUCHA DE UBICACIÓN DEL PADRE EN TIEMPO REAL (se detiene al salir de la pantalla)
+    DisposableEffect(tienePermisoUbicacion) {
+        val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+        val locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                val location = locationResult.lastLocation ?: return
+                miUbicacionReal = GeoPoint(location.latitude, location.longitude)
+            }
+        }
         if (tienePermisoUbicacion) {
             try {
-                val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
-                val locationRequest = LocationRequest.Builder(
-                    Priority.PRIORITY_HIGH_ACCURACY, 5000L
-                ).build()
-
-                val locationCallback = object : LocationCallback() {
-                    override fun onLocationResult(locationResult: LocationResult) {
-                        val location = locationResult.lastLocation
-                        if (location != null) {
-                            val pos = LatLng(location.latitude, location.longitude)
-                            miUbicacionReal = pos
-
-                            val ninoEsInvalido = datosUbicacionNino == null ||
-                                    (datosUbicacionNino?.latitud == 0.0 && datosUbicacionNino?.longitud == 0.0)
-
-                            if (ninoEsInvalido) {
-                                cameraPositionState.position = CameraPosition.fromLatLngZoom(pos, 15f)
-                            }
-                        }
-                    }
-                }
-
-                fusedLocationClient.requestLocationUpdates(
-                    locationRequest,
-                    locationCallback,
-                    android.os.Looper.getMainLooper()
-                )
+                val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000L).build()
+                fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, android.os.Looper.getMainLooper())
             } catch (e: SecurityException) {
                 e.printStackTrace()
             }
         }
+        onDispose { fusedLocationClient.removeLocationUpdates(locationCallback) }
     }
 
     // 📡 Lista de dispositivos vinculados en tiempo real
@@ -171,31 +216,35 @@ fun HijoTrackingScreen(
         }
     }
 
-    // 🎯 ENCUADRE DE CÁMARA DINÁMICO
-    LaunchedEffect(datosUbicacionNino, miUbicacionReal) {
+    // 🎯 MARCADORES Y ENCUADRE: el hijo (y el padre, si se conoce su posición)
+    LaunchedEffect(datosUbicacionNino, miUbicacionReal, dispositivoSeleccionado) {
         val infoNino = datosUbicacionNino
-        val infoPadre = miUbicacionReal
+        val posPadre = miUbicacionReal
+        val posHijo = infoNino?.takeIf { it.latitud != 0.0 || it.longitud != 0.0 }?.let { GeoPoint(it.latitud, it.longitud) }
 
-        if (infoNino != null && infoNino.latitud != 0.0 && infoNino.longitud != 0.0) {
-            val coordenadasHijo = LatLng(infoNino.latitud, infoNino.longitud)
-
-            if (infoPadre != null) {
-                val limites = LatLngBounds.Builder()
-                    .include(infoPadre)
-                    .include(coordenadasHijo)
-                    .build()
-
-                cameraPositionState.animate(
-                    update = CameraUpdateFactory.newLatLngBounds(limites, 150),
-                    durationMs = 1000
-                )
-            } else {
-                cameraPositionState.animate(
-                    update = CameraUpdateFactory.newLatLngZoom(coordenadasHijo, 16f),
-                    durationMs = 1000
-                )
-            }
+        mapView.overlays.remove(marcadorPadre)
+        mapView.overlays.remove(marcadorHijo)
+        posPadre?.let {
+            marcadorPadre.position = it
+            mapView.overlays.add(marcadorPadre)
         }
+        posHijo?.let {
+            marcadorHijo.position = it
+            marcadorHijo.title = dispositivoSeleccionado?.modelo ?: "Hijo"
+            mapView.overlays.add(marcadorHijo)
+        }
+
+        when {
+            // Padre e hijo casi en el mismo sitio: un recuadro de tamaño cero haría un zoom extremo
+            posHijo != null && posPadre != null && posHijo.distanceToAsDouble(posPadre) < 50.0 ->
+                mapView.controller.animateTo(posHijo, 17.0, 1000L)
+            posHijo != null && posPadre != null -> mapView.post {
+                mapView.zoomToBoundingBox(BoundingBox.fromGeoPoints(listOf(posHijo, posPadre)), true, 150)
+            }
+            posHijo != null -> mapView.controller.animateTo(posHijo, 16.0, 1000L)
+            posPadre != null -> mapView.controller.animateTo(posPadre, 15.0, 1000L)
+        }
+        mapView.invalidate()
     }
 
     // 🚀 2. IMPLEMENTACIÓN DEL CONTENEDOR BASE
@@ -221,66 +270,8 @@ fun HijoTrackingScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                // El mapa base de Google Maps se mantiene a pantalla completa
-                GoogleMap(
-                    modifier = Modifier.fillMaxSize(),
-                    cameraPositionState = cameraPositionState,
-                    properties = MapProperties(isMyLocationEnabled = tienePermisoUbicacion),
-                    uiSettings = MapUiSettings(myLocationButtonEnabled = true)
-                ) {
-                    // 👨‍🦰 Marcador de tu Ubicación Real
-                    miUbicacionReal?.let { posPadre ->
-                        MarkerComposable(
-                            state = MarkerState(position = posPadre),
-                            title = "Tu ubicación"
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(45.dp)
-                                    .background(Color(0xFF007AFF), CircleShape)
-                                    .padding(2.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color.White, CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("👨‍🦰", fontSize = 22.sp)
-                                }
-                            }
-                        }
-                    }
-
-                    // 👦 Marcador de la Ubicación Real del Menor
-                    datosUbicacionNino?.let { info ->
-                        if (info.latitud != 0.0 && info.longitud != 0.0) {
-                            val coordenadasHijo = LatLng(info.latitud, info.longitud)
-                            MarkerComposable(
-                                state = MarkerState(position = coordenadasHijo),
-                                title = dispositivoSeleccionado?.modelo ?: "Hijo"
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(45.dp)
-                                        .background(Color(0xFF4CAF50), CircleShape)
-                                        .padding(2.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Color.White, CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("👦", fontSize = 22.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                // Mapa de OpenStreetMap a pantalla completa (© OpenStreetMap contributors, abajo a la izquierda)
+                AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 
                 // Estado real: sin hijos, sin ubicación todavía, u hora de la última ubicación recibida
                 val textoEstado = when {

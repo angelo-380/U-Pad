@@ -22,7 +22,6 @@ android {
     }
     val groqApiKey = localProperties.getProperty("GROQ_API_KEY") ?: ""
     val googleClientId = localProperties.getProperty("GOOGLE_CLIENT_ID") ?: ""
-    val mapsApiKey = localProperties.getProperty("MAPS_API_KEY") ?: ""
 
     defaultConfig {
         applicationId = "com.example.upad"
@@ -35,7 +34,6 @@ android {
 
         buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
         buildConfigField("String", "GOOGLE_CLIENT_ID", "\"$googleClientId\"")
-        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {
@@ -108,7 +106,8 @@ dependencies {
     // Cambia la versión 0.9.0 por la 0.10.0 (o superior si usas un catálogo de versiones)
 // Cambia el 0.10.0 problemático por la versión verificada de producción
     // Esta versión está totalmente disponible en los servidores y corrige las rutas de red internas de Gemini
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")    // 🗺️ Dependencias de Google Maps para Jetpack Compose
-    implementation("com.google.maps.android:maps-compose:4.3.3")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Mapa del padre con OpenStreetMap (sin claves de API)
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("com.google.android.gms:play-services-location:21.3.0")
 }

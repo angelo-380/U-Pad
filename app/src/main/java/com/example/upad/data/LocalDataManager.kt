@@ -1106,6 +1106,21 @@ object LocalDataManager {
         }
     }
 
+    /**
+     * Registra en el servidor una actividad completada en el teléfono del niño (cumplimiento real para la web).
+     * Sin token, como la telemetría: el servidor solo lo acepta si el teléfono está vinculado y la actividad es una
+     * rutina activa de su padre. La fecha es el día local del teléfono.
+     */
+    fun registrarCumplimiento(deviceId: String, actividad: String, turno: String) {
+        if (deviceId.isBlank() || actividad.isBlank()) return
+        val fecha = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(System.currentTimeMillis())
+        kotlin.concurrent.thread {
+            val cuerpo = JSONObject().put("actividad", actividad).put("turno", turno).put("fecha", fecha)
+            val r = httpRequest("POST", "/api/v1/devices/${enc(deviceId)}/cumplimiento", cuerpo)
+            if (r == null || !r.ok) Log.w(TAG, "No se pudo registrar el cumplimiento (HTTP ${r?.codigo ?: "sin conexión"} ${r?.codigoError() ?: ""})")
+        }
+    }
+
     private fun parsearFechaIso(iso: String?): Long {
         if (iso.isNullOrBlank()) return 0L
         val formatos = listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'")
