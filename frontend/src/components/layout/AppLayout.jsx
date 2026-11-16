@@ -9,7 +9,6 @@ import {
   LogOut,
   CalendarCheck,
   Compass,
-  Cpu,
   ShieldAlert,
   Menu,
   X,
@@ -40,28 +39,26 @@ export const AppLayout = ({ children }) => {
   let mainLinks = [];
   if (isEmpresario) {
     mainLinks = [
-      { label: 'Panel Gerencial', path: '/gerencial', icon: Building2 },
-      { label: 'Análisis de Desempeño', path: '/desempeno', icon: TrendingUp },
+      { label: t('nav_management'), path: '/gerencial', icon: Building2 },
+      { label: t('nav_performance'), path: '/desempeno', icon: TrendingUp },
     ];
   } else if (isDeveloper) {
     mainLinks = [
-      { label: 'Developer Center & BD', path: '/admin/usuarios', icon: Users },
-      { label: 'Panel Gerencial', path: '/gerencial', icon: Building2 },
-      { label: 'Rutinas', path: '/rutinas', icon: CalendarCheck },
-      { label: 'Desempeño', path: '/desempeno', icon: TrendingUp },
-      { label: 'GPS', path: '/gps', icon: Compass },
-      { label: 'IA', path: '/ia', icon: Cpu },
+      { label: t('nav_developer_center'), path: '/admin/usuarios', icon: Users },
+      { label: t('nav_management'), path: '/gerencial', icon: Building2 },
+      { label: t('nav_routines_short'), path: '/rutinas', icon: CalendarCheck },
+      { label: t('nav_performance_short'), path: '/desempeno', icon: TrendingUp },
+      { label: t('nav_gps_short'), path: '/gps', icon: Compass },
     ];
   } else {
     mainLinks = [
       { label: t('nav_routines'), path: '/rutinas', icon: CalendarCheck },
-      { label: 'Análisis de Desempeño', path: '/desempeno', icon: TrendingUp },
-      { label: t('nav_gps') || 'GPS & Ubicación', path: '/gps', icon: Compass },
-      { label: t('nav_ai') || 'Asistente IA', path: '/ia', icon: Cpu },
+      { label: t('nav_performance'), path: '/desempeno', icon: TrendingUp },
+      { label: t('nav_gps'), path: '/gps', icon: Compass },
     ];
   }
 
-  const displayName = user?.nombre || (user?.email ? user.email.split('@')[0] : 'Usuario');
+  const displayName = user?.nombre || (user?.email ? user.email.split('@')[0] : t('user_fallback'));
 
   return (
     <div className="min-h-screen flex flex-col bg-tea-calm font-sans text-tea-text">
@@ -79,7 +76,7 @@ export const AppLayout = ({ children }) => {
             type="button"
             onClick={clearSessionNotice}
             className="p-1.5 hover:bg-accent-200 rounded-xl transition-tea min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
-            aria-label="Cerrar aviso de sesión expirada"
+            aria-label={t('session_notice_close')}
           >
             <X className="w-4 h-4" />
           </button>
@@ -94,7 +91,7 @@ export const AppLayout = ({ children }) => {
               <Link
                 to={homePath}
                 className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 rounded-xl p-1"
-                aria-label="U-Pad Inicio"
+                aria-label={t('nav_home_aria')}
               >
                 <div className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center font-black text-lg tracking-wider shadow-soft-xs overflow-hidden">
                   <img
@@ -117,7 +114,7 @@ export const AppLayout = ({ children }) => {
                 </div>
               </Link>
 
-              <nav aria-label="Navegación principal" className="hidden md:flex items-center gap-1">
+              <nav aria-label={t('nav_main_aria')} className="hidden md:flex items-center gap-1">
                 {mainLinks.map((link) => {
                   const Icon = link.icon;
                   const isActive = location.pathname === link.path;
@@ -145,10 +142,10 @@ export const AppLayout = ({ children }) => {
                     type="button"
                     onClick={() => setBackupsModalOpen(true)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[40px] rounded-xl text-sm font-semibold transition-tea text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 cursor-pointer"
-                    title="Administración de copias de seguridad de la base de datos"
+                    title={t('nav_backups_title')}
                   >
                     <Database className="w-4 h-4" />
-                    <span>Backups</span>
+                    <span>{t('nav_backups')}</span>
                     <span className="text-[10px] font-extrabold uppercase bg-indigo-600 text-white px-1.5 py-0.2 rounded-md">
                       Dev
                     </span>
@@ -180,7 +177,7 @@ export const AppLayout = ({ children }) => {
                 type="button"
                 onClick={handleLogout}
                 className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-sm font-semibold text-tea-muted hover:text-rose-700 hover:bg-rose-50 transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 cursor-pointer"
-                aria-label="Cerrar sesión de usuario"
+                aria-label={t('logout_confirm')}
                 title={t('logout_confirm')}
               >
                 <LogOut className="w-4 h-4" aria-hidden="true" />
@@ -194,7 +191,7 @@ export const AppLayout = ({ children }) => {
                 type="button"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="p-2.5 rounded-xl text-tea-muted hover:text-tea-text hover:bg-tea-cardSubtle min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 cursor-pointer"
-                aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú de navegación'}
+                aria-label={mobileMenuOpen ? t('nav_menu_close') : t('nav_menu_open')}
                 aria-expanded={mobileMenuOpen}
               >
                 {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -251,10 +248,10 @@ export const AppLayout = ({ children }) => {
                   >
                     <div className="flex items-center gap-2.5">
                       <Database className="w-4 h-4" />
-                      <span>Backups del Sistema</span>
+                      <span>{t('nav_backups_system')}</span>
                     </div>
                     <span className="text-[10px] font-extrabold uppercase bg-indigo-600 text-white px-1.5 py-0.5 rounded">
-                      Cloud DB
+                      Dev
                     </span>
                   </button>
                 )}

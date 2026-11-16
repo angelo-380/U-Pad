@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { backupsService } from '../../services/backupsService.js';
 import { useToast } from '../../context/ToastContext.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 import {
   X,
   Database,
@@ -21,6 +22,7 @@ import {
 export const BackupsModal = ({ isOpen, onClose }) => {
   const [tab, setTab] = useState('backups'); // 'backups' | 'sql'
   const [backups, setBackups] = useState([]);
+  const [almacen, setAlmacen] = useState(null); // { almacenamiento, ubicacion }
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
@@ -32,15 +34,17 @@ export const BackupsModal = ({ isOpen, onClose }) => {
   const [queryError, setQueryError] = useState(null);
 
   const toast = useToast();
+  const { t, locale } = useLanguage();
 
   const cargarBackups = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await backupsService.listar();
+      const [data, info] = await Promise.all([backupsService.listar(), backupsService.info()]);
       setBackups(Array.isArray(data) ? data : []);
+      setAlmacen(info);
     } catch (err) {
-      setError(err.message || 'No se pudo cargar la lista de copias de seguridad.');
+      setError(err.message || t('backup_load_error'));
     } finally {
       setLoading(false);
     }
@@ -58,13 +62,10 @@ export const BackupsModal = ({ isOpen, onClose }) => {
     try {
       setCreating(true);
       const res = await backupsService.crear();
-      toast.success(
-        `Copia de seguridad "${res?.backup?.filename || 'upad_backup.db'}" generada exitosamente.`,
-        'Backup en Caliente Realizado'
-      );
+      toast.success(t('backup_created', { archivo: res?.data?.filename || '' }), t('backup_created_title'));
       await cargarBackups();
     } catch (err) {
-      toast.error(err.message || 'Error al generar la copia de seguridad.', 'Fallo en Backup');
+      toast.error(err.message || t('backup_create_error'), t('backup_create_error_title'));
     } finally {
       setCreating(false);
     }
@@ -78,14 +79,14 @@ export const BackupsModal = ({ isOpen, onClose }) => {
       const res = await backupsService.ejecutarQuery(q);
       setQueryResult(res);
     } catch (err) {
-      setQueryError(err.message || 'Error al ejecutar la consulta SQL.');
+      setQueryError(err.message || t('sql_error'));
     } finally {
       setQueryLoading(false);
     }
   };
 
   const formatSize = (bytes) => {
-    if (!bytes && bytes !== 0) return 'N/A';
+    if (!bytes && bytes !== 0) return '—';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
@@ -96,6 +97,7 @@ export const BackupsModal = ({ isOpen, onClose }) => {
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fadeIn"
       role="dialog"
       aria-modal="true"
+      aria-label={t('backup_title')}
     >
       <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-tea-border relative animate-scaleIn flex flex-col max-h-[90vh]">
         {/* Cabecera */}
@@ -107,15 +109,15 @@ export const BackupsModal = ({ isOpen, onClose }) => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-xl font-extrabold text-slate-900">
-                  Infraestructura Cloud & Base de Datos
+                  {t('backup_title')}
                 </h3>
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
                   <ShieldCheck className="w-3 h-3" />
-                  GCP Cloud Run
+                  {t('backup_badge')}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Google Cloud Platform (us-central1) · Relational DB con PBKDF2 KMS Pepper
+                {t('backup_subtitle')}
               </p>
             </div>
           </div>
@@ -123,6 +125,7 @@ export const BackupsModal = ({ isOpen, onClose }) => {
           <button
             type="button"
             onClick={onClose}
+            aria-label={t('btn_close')}
             className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -141,7 +144,7 @@ export const BackupsModal = ({ isOpen, onClose }) => {
             }`}
           >
             <HardDrive className="w-3.5 h-3.5" />
-            <span>Copias de Seguridad (.db)</span>
+            <span>{t('backup_tab_backups')}</span>
           </button>
           <button
             type="button"
@@ -156,7 +159,7 @@ export const BackupsModal = ({ isOpen, onClose }) => {
             }`}
           >
             <Terminal className="w-3.5 h-3.5" />
-            <span>Visor SQL Cloud en Vivo</span>
+            <span>{t('backup_tab_sql')}</span>
           </button>
         </div>
 
@@ -166,10 +169,13 @@ export const BackupsModal = ({ isOpen, onClose }) => {
             {/* Acciones Rápidas */}
             <div className="my-4 flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
               <div className="text-xs text-slate-600">
-                <p className="font-semibold text-slate-800">Motor de Base de Datos Activo</p>
-                <p className="text-[11px] text-slate-500 mt-0.5 font-mono">
-                  GCP Container Volume · upad_relational.db · Snapshot atómico
+                <p className="font-semibold text-slate-800">{t('backup_db_title')}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {almacen?.almacenamiento === 'cloud-storage'
+                    ? t('backup_db_desc_cloud', { ubicacion: almacen.ubicacion })
+                    : t('backup_db_desc')}
                 </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">{t('backup_auto_note')}</p>
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -178,7 +184,8 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                   onClick={cargarBackups}
                   disabled={loading || creating}
                   className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-white transition-colors"
-                  title="Refrescar lista"
+                  title={t('backup_refresh')}
+                  aria-label={t('backup_refresh')}
                 >
                   <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 </button>
@@ -192,12 +199,12 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                   {creating ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Generando copia...</span>
+                      <span>{t('backup_creating')}</span>
                     </>
                   ) : (
                     <>
                       <Plus className="w-4 h-4" />
-                      <span>Crear Backup Ahora</span>
+                      <span>{t('backup_create')}</span>
                     </>
                   )}
                 </button>
@@ -216,16 +223,16 @@ export const BackupsModal = ({ isOpen, onClose }) => {
               {loading && (
                 <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
                   <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
-                  <span className="text-xs">Consultando catálogo de backups...</span>
+                  <span className="text-xs">{t('backup_loading')}</span>
                 </div>
               )}
 
               {!loading && backups.length === 0 && (
                 <div className="py-12 text-center text-slate-400">
                   <HardDrive className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm font-semibold text-slate-600">No hay copias de seguridad creadas aún</p>
+                  <p className="text-sm font-semibold text-slate-600">{t('backup_empty_title')}</p>
                   <p className="text-xs text-slate-400 mt-1">
-                    Haz clic en "Crear Backup Ahora" para generar el primer snapshot atómico.
+                    {t('backup_empty_desc')}
                   </p>
                 </div>
               )}
@@ -252,7 +259,7 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                             <span>•</span>
                             <span className="inline-flex items-center gap-1">
                               <Calendar className="w-3 h-3" />
-                              {b.fechaModificacion ? new Date(b.fechaModificacion).toLocaleString('es-PE') : 'Reciente'}
+                              {b.fechaModificacion ? new Date(b.fechaModificacion).toLocaleString(locale) : '—'}
                             </span>
                           </div>
                         </div>
@@ -264,10 +271,10 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold transition-colors cursor-pointer"
-                        title="Descargar copia de seguridad SQLite (.db) para abrir en DB Browser"
+                        title={t('backup_download_title')}
                       >
                         <Download className="w-3.5 h-3.5" />
-                        <span>Descargar .db</span>
+                        <span>{t('backup_download')}</span>
                       </a>
                     </div>
                   );
@@ -283,16 +290,17 @@ export const BackupsModal = ({ isOpen, onClose }) => {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-emerald-400 font-bold flex items-center gap-1.5">
                   <Terminal className="w-3.5 h-3.5" />
-                  Consola SQL en Google Cloud (Solo Lectura)
+                  {t('sql_console_readonly')}
                 </span>
-                <span className="text-[10px] text-slate-400">Motor: node:sqlite en GCP</span>
+                <span className="text-[10px] text-slate-400">{t('sql_engine')}</span>
               </div>
               <textarea
                 value={sqlQuery}
                 onChange={(e) => setSqlQuery(e.target.value)}
                 rows={3}
                 className="w-full bg-slate-800 text-white rounded-xl p-2.5 font-mono text-xs border border-slate-700 focus:outline-hidden focus:border-indigo-400 resize-none"
-                placeholder="Escribe SELECT * FROM usuarios..."
+                placeholder={t('sql_placeholder')}
+                aria-label={t('sql_placeholder')}
               />
               <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-2 border-t border-slate-800">
                 <div className="flex gap-2">
@@ -305,18 +313,18 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                     }}
                     className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[11px] text-slate-300"
                   >
-                    Ver Usuarios
+                    {t('sql_view_users')}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      const q = 'SELECT id, titulo, descripcion, turno, hora, duracion, activa FROM rutinas LIMIT 20;';
+                      const q = 'SELECT id, titulo, turno, ninoId, organizacionId, activa, creadoPor, creadoEn FROM rutinas ORDER BY creadoEn DESC LIMIT 20;';
                       setSqlQuery(q);
                       handleEjecutarSql(q);
                     }}
                     className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[11px] text-slate-300"
                   >
-                    Ver Rutinas
+                    {t('sql_view_routines')}
                   </button>
                   <button
                     type="button"
@@ -327,7 +335,7 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                     }}
                     className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[11px] text-slate-300"
                   >
-                    Ver Tablas
+                    {t('sql_view_tables')}
                   </button>
                 </div>
 
@@ -342,7 +350,7 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                   ) : (
                     <Play className="w-3.5 h-3.5" />
                   )}
-                  <span>Ejecutar SQL en Cloud</span>
+                  <span>{t('sql_run')}</span>
                 </button>
               </div>
             </div>
@@ -359,10 +367,10 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                 <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 text-xs">
                   <span className="font-bold text-slate-700 flex items-center gap-1.5">
                     <Table className="w-3.5 h-3.5 text-indigo-600" />
-                    Resultados de Google Cloud ({queryResult?.rowCount || 0} filas)
+                    {t('sql_results', { filas: queryResult?.rowCount || 0 })}
                   </span>
                   <span className="text-[11px] text-slate-400">
-                    {queryResult?.executedAt ? new Date(queryResult.executedAt).toLocaleTimeString() : ''}
+                    {queryResult?.executedAt ? new Date(queryResult.executedAt).toLocaleTimeString(locale) : ''}
                   </span>
                 </div>
 
@@ -393,7 +401,7 @@ export const BackupsModal = ({ isOpen, onClose }) => {
                   </div>
                 ) : (
                   <p className="text-xs text-slate-400 py-4 text-center">
-                    La consulta se ejecutó con éxito pero no devolvió filas.
+                    {t('sql_no_rows')}
                   </p>
                 )}
               </div>
@@ -404,14 +412,14 @@ export const BackupsModal = ({ isOpen, onClose }) => {
         {/* Footer */}
         <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
           <span className="text-[11px] text-slate-400">
-            Tip: Descarga el archivo .db para abrirlo directamente en DB Browser for SQLite.
+            {t('backup_tip')}
           </span>
           <button
             type="button"
             onClick={onClose}
             className="px-5 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors"
           >
-            Cerrar
+            {t('btn_close')}
           </button>
         </div>
       </div>

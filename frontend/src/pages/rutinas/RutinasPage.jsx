@@ -14,12 +14,11 @@ import { RutinasSkeleton } from '../../components/rutinas/RutinasSkeleton.jsx';
 import { RutinasEmptyState } from '../../components/rutinas/RutinasEmptyState.jsx';
 import { RutinasErrorState } from '../../components/rutinas/RutinasErrorState.jsx';
 import { VincularDispositivoModal } from '../../components/devices/VincularDispositivoModal.jsx';
+import { Paginacion } from '../../components/common/Paginacion.jsx';
 import {
   Plus,
   RefreshCw,
   Tablet,
-  ChevronLeft,
-  ChevronRight,
   Layers,
   Sparkles,
   Users,
@@ -91,9 +90,9 @@ export const RutinasPage = () => {
         setPagination(res.pagination);
       }
     } catch (err) {
-      const msg = err.message || 'Error al conectar con el servidor de rutinas.';
+      const msg = err.message || t('routines_load_error');
       setError(msg);
-      toast.error(msg, 'Error de sincronización');
+      toast.error(msg, t('routines_load_error_title'));
     } finally {
       setLoading(false);
     }
@@ -129,15 +128,15 @@ export const RutinasPage = () => {
       setDrawerLoading(true);
       if (drawerMode === 'create') {
         await rutinasService.crear(formData);
-        toast.success(`Rutina "${formData.titulo}" creada correctamente.`, 'Rutina Creada');
+        toast.success(t('routine_created', { titulo: formData.titulo }), t('routine_created_title'));
       } else if (drawerMode === 'edit' && selectedRutina) {
         await rutinasService.actualizar(selectedRutina.id, formData);
-        toast.success(`Rutina "${formData.titulo}" actualizada con éxito.`, 'Cambios Guardados');
+        toast.success(t('routine_updated', { titulo: formData.titulo }), t('routine_updated_title'));
       }
       setDrawerOpen(false);
       await cargarRutinas();
     } catch (err) {
-      toast.error(err.message || 'Error al procesar la solicitud.', 'No se pudo guardar');
+      toast.error(err.message || t('routine_save_error'), t('routine_save_error_title'));
     } finally {
       setDrawerLoading(false);
     }
@@ -156,19 +155,27 @@ export const RutinasPage = () => {
       setDeleteLoading(true);
       await rutinasService.eliminar(targetId);
       setRutinas((prev) => prev.filter((r) => r.id !== targetId));
-      toast.success(
-        `La rutina "${targetTitle}" fue eliminada del sistema.`,
-        'Rutina Eliminada'
-      );
+      toast.success(t('routine_deleted', { titulo: targetTitle }), t('routine_deleted_title'));
       setDeleteDialogOpen(false);
       setRutinaToDelete(null);
       await cargarRutinas();
     } catch (err) {
-      toast.error(err.message || 'No fue posible eliminar la rutina.', 'Error al eliminar');
+      toast.error(err.message || t('routine_delete_error'), t('routine_delete_error_title'));
     } finally {
       setDeleteLoading(false);
     }
   };
+
+  // Nombres de los hijos vinculados, para mostrar a quién está asignada cada rutina
+  const nombresHijos = Object.fromEntries(
+    devices.map((d) => [d.deviceId || d.device_id, d.childName || d.child_name || t('child_unnamed')])
+  );
+  const resumenHijos =
+    devices.length === 0
+      ? t('children_link_cta')
+      : devices.length === 1
+        ? nombresHijos[devices[0].deviceId || devices[0].device_id]
+        : `${devices.length} ${t('children_linked_plural')}`;
 
   const rutinasManana = rutinas.filter((r) => r.turno === 'MANANA');
   const rutinasTarde = rutinas.filter((r) => r.turno === 'TARDE');
@@ -190,9 +197,9 @@ export const RutinasPage = () => {
           <div className="flex items-center gap-3">
             <span className="p-2 rounded-xl bg-purple-600 text-white font-black text-xs">DEV</span>
             <div>
-              <p className="font-extrabold text-purple-900">Modo Desarrollador Cloud Activo</p>
+              <p className="font-extrabold text-purple-900">{t('routines_dev_banner_title')}</p>
               <p className="text-purple-700 text-[11px]">
-                Tienes acceso para auditar todos los usuarios del sistema ({pagination.total || 'miles'}) y ver qué rutinas tiene cada uno.
+                {t('routines_dev_banner_desc')}
               </p>
             </div>
           </div>
@@ -201,7 +208,7 @@ export const RutinasPage = () => {
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors shadow-sm flex-shrink-0"
           >
             <Users className="w-3.5 h-3.5" />
-            <span>Abrir Auditoría de Usuarios</span>
+            <span>{t('routines_dev_banner_cta')}</span>
           </Link>
         </div>
       )}
@@ -212,9 +219,9 @@ export const RutinasPage = () => {
           <div className="flex items-center gap-3">
             <span className="p-2 rounded-xl bg-indigo-600 text-white font-black text-xs">DIR</span>
             <div>
-              <p className="font-extrabold text-indigo-900">Panel Directivo Institucional ({organizacion?.nombre || 'Institución'})</p>
+              <p className="font-extrabold text-indigo-900">{organizacion?.nombre || t('org_fallback_name')}</p>
               <p className="text-indigo-700 text-[11px]">
-                Accede a las métricas e indicadores clave (KPIs) de asistencia, adherencia y alumnos con privacidad protegida.
+                {t('routines_dir_banner_desc')}
               </p>
             </div>
           </div>
@@ -223,7 +230,7 @@ export const RutinasPage = () => {
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-colors shadow-sm flex-shrink-0"
           >
             <Building2 className="w-3.5 h-3.5" />
-            <span>Ver Panel Gerencial</span>
+            <span>{t('routines_dir_banner_cta')}</span>
           </Link>
         </div>
       )}
@@ -240,20 +247,20 @@ export const RutinasPage = () => {
                 type="button"
                 onClick={() => setLinkDeviceModalOpen(true)}
                 className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors"
-                title="Tablet infantil sincronizada con la app"
+                title={t('children_manage')}
               >
                 <Tablet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>🧒 Tablet {devices[0].childName || devices[0].child_name || 'Mi Hijo'}</span>
+                <span>{resumenHijos}</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => setLinkDeviceModalOpen(true)}
                 className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-xs font-bold hover:bg-brand-100 transition-colors"
-                title="Vincular tablet de tu hijo"
+                title={t('children_link_cta')}
               >
                 <Tablet className="w-3.5 h-3.5 text-brand-600" />
-                <span>+ Vincular Tablet</span>
+                <span>+ {resumenHijos}</span>
               </button>
             )}
           </div>
@@ -269,7 +276,7 @@ export const RutinasPage = () => {
             className="sm:hidden inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl bg-tea-cardSubtle border border-tea-border text-xs font-bold text-tea-text"
           >
             <Tablet className="w-4 h-4 text-brand-600" />
-            <span>{devices.length > 0 ? devices[0].child_name || 'Tablet' : 'Vincular'}</span>
+            <span>{resumenHijos}</span>
           </button>
 
           <button
@@ -325,6 +332,7 @@ export const RutinasPage = () => {
               onEditar={handleOpenEdit}
               onEliminar={handleOpenDelete}
               onCrearEnTurno={handleOpenCreate}
+              nombresHijos={nombresHijos}
             />
           )}
 
@@ -335,6 +343,7 @@ export const RutinasPage = () => {
               onEditar={handleOpenEdit}
               onEliminar={handleOpenDelete}
               onCrearEnTurno={handleOpenCreate}
+              nombresHijos={nombresHijos}
             />
           )}
 
@@ -345,59 +354,21 @@ export const RutinasPage = () => {
               onEditar={handleOpenEdit}
               onEliminar={handleOpenDelete}
               onCrearEnTurno={handleOpenCreate}
+              nombresHijos={nombresHijos}
             />
           )}
         </div>
       )}
 
-      {/* Barra de Paginación */}
-      {pagination.totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-tea-border">
-          <span className="text-xs text-tea-muted font-medium">
-            Página <strong>{pagination.page}</strong> de <strong>{pagination.totalPages}</strong> ({pagination.total} rutinas registradas)
-          </span>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={!pagination.hasPrev || loading}
-              className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-tea-border bg-white text-xs font-bold text-tea-text hover:bg-tea-cardSubtle disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Anterior</span>
-            </button>
-
-            <div className="flex items-center gap-1">
-              {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => setPage(num)}
-                  disabled={loading}
-                  className={`w-8 h-8 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                    num === pagination.page
-                      ? 'bg-brand-600 text-white shadow-soft-xs'
-                      : 'text-tea-muted hover:bg-tea-cardSubtle'
-                  }`}
-                >
-                  {num}
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-              disabled={!pagination.hasNext || loading}
-              className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-tea-border bg-white text-xs font-bold text-tea-text hover:bg-tea-cardSubtle disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <span>Siguiente</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Barra de Paginación (acotada: no genera un botón por cada página) */}
+      <Paginacion
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        onChange={setPage}
+        disabled={loading}
+        etiquetaTotal={t('routine_plural')}
+      />
 
       <RutinaDrawer
         isOpen={drawerOpen}
@@ -407,6 +378,7 @@ export const RutinasPage = () => {
         mode={drawerMode}
         loading={drawerLoading}
         onOpenLinkDevice={() => setLinkDeviceModalOpen(true)}
+        devices={devices}
       />
 
       <VincularDispositivoModal

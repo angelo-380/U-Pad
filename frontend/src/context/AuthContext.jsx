@@ -9,6 +9,8 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => api.getToken());
   const [loading, setLoading] = useState(true);
   const [sessionExpiredNotice, setSessionExpiredNotice] = useState(false);
+  // Registro con Google pendiente de completar: { credential, perfil }. Solo en memoria (no se guarda).
+  const [registroGooglePendiente, setRegistroGooglePendiente] = useState(null);
 
   // Inicializar o restaurar sesión activa al cargar la aplicación
   useEffect(() => {
@@ -64,6 +66,39 @@ export const AuthProvider = ({ children }) => {
     return result;
   };
 
+  /**
+   * Entrar con Google. Si la cuenta no existe, guarda el registro pendiente y devuelve { requiereRegistro: true }.
+   */
+  const loginConGoogle = async (credential) => {
+    const result = await authService.loginGoogle(credential);
+    if (result?.requiereRegistro) {
+      setRegistroGooglePendiente({ credential, perfil: result.perfil });
+      return result;
+    }
+    setRegistroGooglePendiente(null);
+    setUser(result.usuario);
+    setToken(result.token);
+    setSessionExpiredNotice(false);
+    return result;
+  };
+
+  const registrarConGoogle = async ({ rol, nombreInstitucion, codigoOrganizacion }) => {
+    if (!registroGooglePendiente) throw new Error('No hay un registro con Google pendiente.');
+    const result = await authService.registroGoogle({
+      credential: registroGooglePendiente.credential,
+      rol,
+      nombreInstitucion,
+      codigoOrganizacion,
+    });
+    setRegistroGooglePendiente(null);
+    setUser(result.usuario);
+    setToken(result.token);
+    setSessionExpiredNotice(false);
+    return result;
+  };
+
+  const cancelarRegistroGoogle = () => setRegistroGooglePendiente(null);
+
   const logout = () => {
     authService.logout();
     setUser(null);
@@ -84,6 +119,10 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        loginConGoogle,
+        registrarConGoogle,
+        registroGooglePendiente,
+        cancelarRegistroGoogle,
       }}
     >
       {children}

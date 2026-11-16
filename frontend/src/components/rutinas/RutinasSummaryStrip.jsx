@@ -43,7 +43,7 @@ export const RutinasSummaryStrip = ({
   return (
     <nav
       role="tablist"
-      aria-label="Filtrar rutinas por turno del día"
+      aria-label={t('routines_filter_aria')}
       className="flex items-center gap-1.5 p-1 bg-tea-cardSubtle rounded-2xl w-full sm:w-auto self-start overflow-x-auto scrollbar-none"
     >
       {tabs.map((tab) => {

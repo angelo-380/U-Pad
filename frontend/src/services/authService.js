@@ -32,6 +32,41 @@ export const authService = {
   },
 
   /**
+   * Configuración pública de autenticación: { googleClientId } (null si Google no está configurado).
+   */
+  async obtenerConfig() {
+    const res = await api.get('/api/auth/config');
+    return res?.data || { googleClientId: null };
+  },
+
+  /**
+   * Entrar con Google. Devuelve { token, usuario } o { requiereRegistro: true, perfil }.
+   */
+  async loginGoogle(credential) {
+    const res = await api.post('/api/auth/google', { credential });
+    if (res?.data?.token) {
+      api.setToken(res.data.token);
+    }
+    return res.data;
+  },
+
+  /**
+   * Completar el registro de una cuenta nueva de Google (sin contraseña).
+   */
+  async registroGoogle({ credential, rol, nombreInstitucion, codigoOrganizacion }) {
+    const res = await api.post('/api/auth/google/registro', {
+      credential,
+      rol,
+      ...(rol === 'empresario' ? { nombreInstitucion } : {}),
+      ...(rol === 'tutor' && codigoOrganizacion ? { codigoOrganizacion } : {}),
+    });
+    if (res?.data?.token) {
+      api.setToken(res.data.token);
+    }
+    return res.data;
+  },
+
+  /**
    * Obtiene la sesión actual verificando el token
    */
   async getMe() {

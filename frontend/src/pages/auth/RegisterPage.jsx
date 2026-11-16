@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { mensajeDeError } from '../../utils/erroresApi.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { LanguageSelector } from '../../components/common/LanguageSelector.jsx';
 import { ImagePlaceholder } from '../../components/common/ImagePlaceholder.jsx';
+import { BotonGoogle } from '../../components/auth/BotonGoogle.jsx';
 import { User, Mail, Lock, UserPlus, AlertCircle, Loader2, Briefcase, KeyRound } from 'lucide-react';
 
 export const RegisterPage = () => {
@@ -15,13 +17,56 @@ export const RegisterPage = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const { register } = useAuth();
+  const { register, loginConGoogle, registrarConGoogle, registroGooglePendiente, cancelarRegistroGoogle } = useAuth();
+  // Modo «Completa tu registro»: la persona entró con Google y su cuenta aún no existe
+  const pendiente = registroGooglePendiente;
   const { t } = useLanguage();
   const navigate = useNavigate();
+
+  const handleGoogle = async (credential) => {
+    setError(null);
+    try {
+      setLoading(true);
+      const res = await loginConGoogle(credential);
+      // Si la cuenta ya existía, entra directamente; si no, la página pasa a «Completa tu registro»
+      if (!res?.requiereRegistro) navigate('/', { replace: true });
+    } catch (err) {
+      setError(mensajeDeError(err, t, t('api_google_invalid')));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const completarRegistroGoogle = async () => {
+    if (rol === 'empresario' && !nombre.trim()) {
+      setError(t('api_institution_required'));
+      return;
+    }
+    try {
+      setLoading(true);
+      await registrarConGoogle({
+        rol,
+        nombreInstitucion: rol === 'empresario' ? nombre.trim() : undefined,
+        codigoOrganizacion: rol === 'tutor' ? codigoOrganizacion.trim() : '',
+      });
+      navigate('/', { replace: true });
+    } catch (err) {
+      // La credencial de Google caduca (1 h): si ya no sirve, hay que volver a elegir la cuenta
+      if (err?.data?.errors?.code === 'GOOGLE_TOKEN_INVALIDO') cancelarRegistroGoogle();
+      setError(mensajeDeError(err, t, t('register_error')));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+
+    if (pendiente) {
+      await completarRegistroGoogle();
+      return;
+    }
 
     if (!nombre.trim() || !email.trim() || !password) {
       setError(t('register_fill_fields') || 'Please fill in all required fields.');
@@ -51,7 +96,7 @@ export const RegisterPage = () => {
       // La redirección por rol lleva al empresario a su panel, donde ve el código de su organización
       navigate('/', { replace: true });
     } catch (err) {
-      setError(err.message || t('register_error') || 'Error processing registration.');
+      setError(mensajeDeError(err, t, t('register_error')));
     } finally {
       setLoading(false);
     }
@@ -82,7 +127,7 @@ export const RegisterPage = () => {
             <ImagePlaceholder
               name="register-lateral.png"
               fallbackNames={['tutor.png', 'libros.png']}
-              alt="Registration and educational collaboration illustration"
+              alt={t('register_illustration_alt')}
               aspect="aspect-[4/3]"
             />
           </div>
@@ -98,9 +143,26 @@ export const RegisterPage = () => {
         {/* Form Column */}
         <div className="p-8 sm:p-10 flex flex-col justify-center">
           <div className="mb-6">
-            <h1 className="text-2xl font-extrabold text-tea-text tracking-tight">{t('register_title') || 'Account Registration'}</h1>
-            <p className="text-xs text-tea-muted mt-1">{t('register_subtitle') || 'Fill in the information to enable access'}</p>
+            <h1 className="text-2xl font-extrabold text-tea-text tracking-tight">
+              {pendiente ? t('google_complete_title') : t('register_title') || 'Account Registration'}
+            </h1>
+            <p className="text-xs text-tea-muted mt-1">
+              {pendiente ? t('google_complete_subtitle') : t('register_subtitle') || 'Fill in the information to enable access'}
+            </p>
           </div>
+
+          {pendiente && (
+            <div className="p-3.5 rounded-2xl mb-5 border border-tea-border bg-slate-50 text-xs text-tea-text space-y-1">
+              <div>
+                <span className="font-bold">{t('google_complete_account')}</span> {pendiente.perfil?.email}
+              </div>
+              {rol === 'tutor' && (
+                <div>
+                  <span className="font-bold">{t('google_complete_name')}</span> {pendiente.perfil?.nombre}
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <div
@@ -113,6 +175,7 @@ export const RegisterPage = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {(!pendiente || rol === 'empresario') && (
             <div>
               <label
                 htmlFor="nombre"
@@ -136,7 +199,9 @@ export const RegisterPage = () => {
                 />
               </div>
             </div>
+            )}
 
+            {!pendiente && (
             <div>
               <label
                 htmlFor="email"
@@ -160,6 +225,7 @@ export const RegisterPage = () => {
                 />
               </div>
             </div>
+            )}
 
             <div>
               <label
@@ -220,6 +286,7 @@ export const RegisterPage = () => {
               </div>
             )}
 
+            {!pendiente && (
             <div>
               <label
                 htmlFor="password"
@@ -243,6 +310,7 @@ export const RegisterPage = () => {
                 />
               </div>
             </div>
+            )}
 
             <button
               type="submit"
@@ -257,11 +325,29 @@ export const RegisterPage = () => {
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" />
-                  <span>{t('btn_register') || 'Complete Registration'}</span>
+                  <span>{pendiente ? t('google_complete_btn') : t('btn_register') || 'Complete Registration'}</span>
                 </>
               )}
             </button>
           </form>
+
+          {pendiente ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setError(null);
+                cancelarRegistroGoogle();
+              }}
+              className="mt-4 w-full text-xs font-bold text-tea-muted hover:text-brand-600 hover:underline disabled:opacity-60"
+            >
+              {t('google_complete_cancel')}
+            </button>
+          ) : (
+            <div className="mt-5">
+              <BotonGoogle onCredential={handleGoogle} texto="signup_with" disabled={loading} onError={setError} />
+            </div>
+          )}
 
           <div className="md:hidden mt-6 text-center text-xs text-tea-muted">
             {t('have_account') || 'Already have an account?'}{' '}

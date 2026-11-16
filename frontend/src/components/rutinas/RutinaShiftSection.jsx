@@ -9,6 +9,7 @@ export const RutinaShiftSection = ({
   onEditar,
   onEliminar,
   onCrearEnTurno,
+  nombresHijos = {},
 }) => {
   const { t } = useLanguage();
   const count = rutinas.length;
@@ -97,6 +98,7 @@ export const RutinaShiftSection = ({
               rutina={rutina}
               onEditar={onEditar}
               onEliminar={onEliminar}
+              nombresHijos={nombresHijos}
             />
           ))}
         </div>

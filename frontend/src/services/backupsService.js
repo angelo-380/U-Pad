@@ -10,6 +10,14 @@ export const backupsService = {
   },
 
   /**
+   * Dónde se guardan los backups: { almacenamiento: 'cloud-storage' | 'disco', ubicacion }
+   */
+  async info() {
+    const res = await api.get('/api/admin/backups/info');
+    return res?.data || null;
+  },
+
+  /**
    * Disparar generación de un backup atómico en caliente
    */
   async crear() {
@@ -26,7 +34,7 @@ export const backupsService = {
   },
 
   /**
-   * Ejecutar consulta SQL en vivo sobre la BD de Google Cloud
+   * Ejecutar una consulta SQL de solo lectura sobre la base de datos SQLite del servidor
    */
   async ejecutarQuery(query) {
     const res = await api.post('/api/admin/backups/sql-query', { query });

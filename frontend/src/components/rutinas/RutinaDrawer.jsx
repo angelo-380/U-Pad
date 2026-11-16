@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArasaacPictogram } from '../common/ArasaacPictogram.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
-import { devicesService } from '../../services/devicesService.js';
 import {
   X,
   Plus,
@@ -27,13 +26,14 @@ export const RutinaDrawer = ({
   onClose,
   onSubmit,
   onOpenLinkDevice,
+  devices = [], // hijos vinculados del usuario (los carga RutinasPage y se actualizan al vincular)
 }) => {
   const { t } = useLanguage();
   const [titulo, setTitulo] = useState('');
   const [turno, setTurno] = useState('MANANA');
   const [ninoId, setNinoId] = useState('');
-  const [devices, setDevices] = useState([]);
-  const [loadingDevices, setLoadingDevices] = useState(false);
+  // Niño asignado al abrir en modo edición: si no cambia, no se reenvía (datos antiguos o rutinas de un tutor)
+  const [ninoIdInicial, setNinoIdInicial] = useState('');
   const [pasos, setPasos] = useState([
     { orden: 1, texto: '', palabraClave: '' },
   ]);
@@ -52,6 +52,7 @@ export const RutinaDrawer = ({
         setTitulo(initialData.titulo || '');
         setTurno(initialData.turno || 'MANANA');
         setNinoId(initialData.ninoId || '');
+        setNinoIdInicial(initialData.ninoId || '');
         if (Array.isArray(initialData.pasos) && initialData.pasos.length > 0) {
           setPasos(
             initialData.pasos.map((p, idx) => ({
@@ -67,6 +68,7 @@ export const RutinaDrawer = ({
         setTitulo('');
         setTurno(initialData?.turno || 'MANANA');
         setNinoId('');
+        setNinoIdInicial('');
         setPasos([{ orden: 1, texto: '', palabraClave: '' }]);
       }
       setErrors({});
@@ -80,22 +82,12 @@ export const RutinaDrawer = ({
     }
   }, [isOpen, mode, initialData]);
 
-  // Cargar dispositivos vinculados (tablets del niño)
+  // Con un solo hijo, al crear queda elegido por defecto; con varios hay que elegir uno
   useEffect(() => {
-    if (isOpen) {
-      setLoadingDevices(true);
-      devicesService
-        .listar()
-        .then((devs) => {
-          setDevices(devs || []);
-          if (devs && devs.length > 0 && !ninoId) {
-            setNinoId(devs[0].childName || devs[0].child_name || devs[0].deviceId || devs[0].device_id);
-          }
-        })
-        .catch(() => setDevices([]))
-        .finally(() => setLoadingDevices(false));
+    if (isOpen && mode !== 'edit' && devices.length === 1) {
+      setNinoId(devices[0].deviceId || devices[0].device_id);
     }
-  }, [isOpen]);
+  }, [isOpen, mode, devices]);
 
   // Manejo de ESC para cerrar drawer de forma accesible
   useEffect(() => {
@@ -113,13 +105,13 @@ export const RutinaDrawer = ({
     const newErrors = {};
 
     if (!titulo.trim()) {
-      newErrors.titulo = 'El título de la rutina es obligatorio.';
+      newErrors.titulo = t('drawer_error_title_required');
     } else if (titulo.trim().length < 3) {
-      newErrors.titulo = 'El título debe tener al menos 3 caracteres.';
+      newErrors.titulo = t('drawer_error_title_min');
     }
 
     if (!['MANANA', 'TARDE', 'NOCHE'].includes(turno)) {
-      newErrors.turno = 'Selecciona un turno válido.';
+      newErrors.turno = t('drawer_error_shift');
     }
 
     // Validar pasos
@@ -127,7 +119,7 @@ export const RutinaDrawer = ({
     pasos.forEach((paso, idx) => {
       const pError = {};
       if (!paso.texto.trim()) {
-        pError.texto = 'La descripción es obligatoria.';
+        pError.texto = t('drawer_error_step_required');
       }
       if (Object.keys(pError).length > 0) {
         pasosErrors[idx] = pError;
@@ -136,6 +128,11 @@ export const RutinaDrawer = ({
 
     if (pasosErrors.length > 0) {
       newErrors.pasos = pasosErrors;
+    }
+
+    const idsHijos = devices.map((d) => d.deviceId || d.device_id);
+    if (devices.length > 1 && !idsHijos.includes(ninoId)) {
+      newErrors.ninoId = t('drawer_child_required');
     }
 
     setErrors(newErrors);
@@ -157,7 +154,8 @@ export const RutinaDrawer = ({
     const payload = {
       titulo: titulo.trim(),
       turno,
-      ninoId: ninoId.trim() || null,
+      // En edición, si el niño no cambió no se envía (se conserva tal cual en el servidor)
+      ninoId: mode === 'edit' && ninoId === ninoIdInicial ? undefined : ninoId || null,
       pasos: pasos.map((p, idx) => ({
         orden: idx + 1,
         texto: p.texto.trim(),
@@ -243,9 +241,6 @@ export const RutinaDrawer = ({
               >
                 {mode === 'create' ? t('drawer_create_title') : t('drawer_edit_title')}
               </h2>
-              <p className="text-xs text-tea-muted mt-1 leading-relaxed">
-                {t('drawer_subtitle')}
-              </p>
             </div>
 
             <button
@@ -253,7 +248,7 @@ export const RutinaDrawer = ({
               onClick={onClose}
               disabled={loading}
               className="p-2.5 rounded-xl text-tea-muted hover:text-tea-text hover:bg-tea-cardSubtle min-h-[44px] min-w-[44px] flex items-center justify-center transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
-              aria-label="Cerrar panel lateral"
+              aria-label={t('btn_close')}
             >
               <X className="w-5 h-5" aria-hidden="true" />
             </button>
@@ -324,63 +319,64 @@ export const RutinaDrawer = ({
               </div>
             </div>
 
-            {/* Asignación del Niño / Tablet Vinculada */}
+            {/* Hijo asignado: desplegable con los hijos vinculados (si hay uno, queda elegido) */}
             <div className="space-y-2 p-3.5 bg-tea-calm rounded-2xl border border-tea-border">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-tea-text flex items-center gap-1.5">
-                  <User className="w-4 h-4 text-brand-600" />
-                  <span>Asignado a:</span>
-                </label>
-                {devices.length > 0 && (
-                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    ● Tablet Sincronizada
-                  </span>
-                )}
-              </div>
+              <label htmlFor="drawer-nino" className="text-xs font-bold text-tea-text flex items-center gap-1.5">
+                <User className="w-4 h-4 text-brand-600" />
+                <span>{t('drawer_child_label')}</span>
+              </label>
 
               {devices.length > 1 ? (
-                <select
-                  value={ninoId}
-                  onChange={(e) => setNinoId(e.target.value)}
-                  disabled={loading}
-                  className="w-full px-3 py-2 rounded-xl text-xs font-semibold border border-tea-border bg-white text-tea-text focus:ring-2 focus:ring-brand-600 focus:outline-none"
-                >
-                  {devices.map((d) => {
-                    const dName = d.childName || d.child_name || 'Hijo';
-                    const dId = d.deviceId || d.device_id;
-                    const dModel = d.deviceModel || d.device_model || 'Tablet';
-                    return (
-                      <option key={dId} value={dName || dId}>
-                        🧒 {dName} · {dModel}
-                      </option>
-                    );
-                  })}
-                </select>
+                <>
+                  <select
+                    id="drawer-nino"
+                    value={ninoId}
+                    onChange={(e) => setNinoId(e.target.value)}
+                    disabled={loading}
+                    aria-invalid={Boolean(errors.ninoId)}
+                    className={`w-full px-3 py-2 rounded-xl text-xs font-semibold border bg-white text-tea-text focus:ring-2 focus:ring-brand-600 focus:outline-none ${
+                      errors.ninoId ? 'border-rose-400' : 'border-tea-border'
+                    }`}
+                  >
+                    <option value="" disabled>
+                      {t('drawer_child_select_placeholder')}
+                    </option>
+                    {devices.map((d) => {
+                      const dId = d.deviceId || d.device_id;
+                      return (
+                        <option key={dId} value={dId}>
+                          {d.childName || d.child_name || t('child_unnamed')}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {errors.ninoId && (
+                    <p className="text-xs text-rose-600 flex items-center gap-1" role="alert">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      {errors.ninoId}
+                    </p>
+                  )}
+                </>
               ) : devices.length === 1 ? (
-                <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-tea-border text-xs">
-                  <div className="flex items-center gap-2">
-                    <Tablet className="w-4 h-4 text-brand-600" />
-                    <div>
-                      <p className="font-bold text-tea-text">
-                        🧒 {devices[0].childName || devices[0].child_name || 'Mi Hijo'}
-                      </p>
-                      <p className="text-[11px] text-tea-muted">
-                        {devices[0].deviceModel || devices[0].device_model || 'Android Tablet'}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-mono text-tea-muted">
-                    ID: {(devices[0].deviceId || devices[0].device_id || '').substring(0, 10)}...
-                  </span>
+                <div className="flex items-center gap-2 p-2.5 bg-white rounded-xl border border-tea-border text-xs">
+                  <Tablet className="w-4 h-4 text-brand-600" />
+                  <p className="font-bold text-tea-text">
+                    {devices[0].childName || devices[0].child_name || t('child_unnamed')}
+                  </p>
                 </div>
               ) : (
-                <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-tea-border text-xs">
-                  <div className="flex items-center gap-2">
-                    <Tablet className="w-4 h-4 text-slate-400" />
-                    <p className="text-tea-text font-medium text-xs">
-                      🧒 Perfil de tu hijo(a) · Sincronización automática con la app
-                    </p>
-                  </div>
+                <div className="flex items-center justify-between gap-3 p-2.5 bg-white rounded-xl border border-tea-border text-xs">
+                  <p className="text-tea-muted">{t('drawer_child_none')}</p>
+                  {onOpenLinkDevice && (
+                    <button
+                      type="button"
+                      onClick={onOpenLinkDevice}
+                      className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700 border border-brand-200 font-bold hover:bg-brand-100 transition-colors"
+                    >
+                      <Tablet className="w-3.5 h-3.5" />
+                      {t('drawer_child_link')}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -393,7 +389,7 @@ export const RutinaDrawer = ({
                     {t('drawer_steps_title')}
                   </h3>
                   <p className="text-xs text-tea-muted mt-0.5">
-                    Previsualiza y ajusta cada pictograma en tiempo real.
+                    {t('drawer_steps_hint')}
                   </p>
                 </div>
 

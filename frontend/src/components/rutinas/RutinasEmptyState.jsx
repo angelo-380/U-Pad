@@ -31,7 +31,7 @@ export const RutinasEmptyState = ({
   return (
     <div
       role="region"
-      aria-label="Sin rutinas registradas"
+      aria-label={t('routines_empty_aria')}
       className="p-8 sm:p-12 bg-white rounded-3xl shadow-soft text-center flex flex-col items-center max-w-xl mx-auto border border-tea-border/60"
     >
       {/* Vista previa ilustrada de una rutina modelo con ARASAAC */}

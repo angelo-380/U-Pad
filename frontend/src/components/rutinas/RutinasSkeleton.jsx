@@ -1,10 +1,12 @@
 import React from 'react';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 
 export const RutinasSkeleton = ({ count = 3 }) => {
+  const { t } = useLanguage();
   return (
     <div
       role="status"
-      aria-label="Cargando rutinas..."
+      aria-label={t('routines_loading')}
       className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
     >
       {Array.from({ length: count }).map((_, i) => (

@@ -18,6 +18,7 @@ export const RutinaCard = ({
   rutina,
   onEditar,
   onEliminar,
+  nombresHijos = {}, // { deviceId: nombre } de los hijos vinculados
 }) => {
   const [expandSteps, setExpandSteps] = useState(false);
   const { t, translateDynamicText, language } = useLanguage();
@@ -108,10 +109,11 @@ export const RutinaCard = ({
             </span>
           )}
 
-          {rutina.ninoId && (
+          {/* Solo se muestra si el niño asignado es un hijo vinculado actual (no ids crudos ni datos antiguos) */}
+          {rutina.ninoId && nombresHijos[rutina.ninoId] && (
             <span className="inline-flex items-center gap-1 ml-auto text-xs bg-tea-cardSubtle text-tea-text px-2.5 py-0.5 rounded-full font-semibold border border-tea-border">
               <User className="w-3.5 h-3.5 text-tea-subtle" aria-hidden="true" />
-              {rutina.ninoId}
+              {nombresHijos[rutina.ninoId]}
             </span>
           )}
         </div>

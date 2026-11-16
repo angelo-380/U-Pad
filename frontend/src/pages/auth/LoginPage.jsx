@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { mensajeDeError } from '../../utils/erroresApi.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { LanguageSelector } from '../../components/common/LanguageSelector.jsx';
 import { ImagePlaceholder } from '../../components/common/ImagePlaceholder.jsx';
+import { BotonGoogle } from '../../components/auth/BotonGoogle.jsx';
 import { Mail, Lock, LogIn, AlertCircle, ShieldAlert, Loader2 } from 'lucide-react';
 
 export const LoginPage = () => {
@@ -13,7 +15,7 @@ export const LoginPage = () => {
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const { login, sessionExpiredNotice } = useAuth();
+  const { login, loginConGoogle, sessionExpiredNotice } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
@@ -21,6 +23,38 @@ export const LoginPage = () => {
   // Redirect to original route or /rutinas
   const from = location.state?.from?.pathname || '/rutinas';
   const isExpired = sessionExpiredNotice || new URLSearchParams(location.search).get('expired') === 'true';
+
+  const irDespuesDeEntrar = (userRole) => {
+    if (from && from !== '/' && from !== '/login') {
+      navigate(from, { replace: true });
+    } else if (userRole === 'developer') {
+      navigate('/admin/usuarios', { replace: true });
+    } else if (userRole === 'empresario') {
+      navigate('/gerencial', { replace: true });
+    } else {
+      navigate('/rutinas', { replace: true });
+    }
+  };
+
+  const handleGoogle = async (credential) => {
+    setError(null);
+    setIsRateLimited(false);
+    try {
+      setLoading(true);
+      const res = await loginConGoogle(credential);
+      if (res?.requiereRegistro) {
+        // Cuenta nueva: se completa el registro (rol e institución) en la página de registro
+        navigate('/register', { replace: true });
+        return;
+      }
+      irDespuesDeEntrar(res?.usuario?.rol);
+    } catch (err) {
+      if (err.status === 429) setIsRateLimited(true);
+      setError(mensajeDeError(err, t, t('api_google_invalid')));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -35,21 +69,12 @@ export const LoginPage = () => {
     try {
       setLoading(true);
       const res = await login(email, password);
-      const userRole = res?.usuario?.rol;
-      if (from && from !== '/' && from !== '/login') {
-        navigate(from, { replace: true });
-      } else if (userRole === 'developer') {
-        navigate('/admin/usuarios', { replace: true });
-      } else if (userRole === 'empresario') {
-        navigate('/gerencial', { replace: true });
-      } else {
-        navigate('/rutinas', { replace: true });
-      }
+      irDespuesDeEntrar(res?.usuario?.rol);
     } catch (err) {
       if (err.status === 429) {
         setIsRateLimited(true);
       }
-      setError(err.message || t('login_error') || 'Error logging in.');
+      setError(mensajeDeError(err, t, t('login_error')));
     } finally {
       setLoading(false);
     }
@@ -80,7 +105,7 @@ export const LoginPage = () => {
             <ImagePlaceholder
               name="login-lateral.png"
               fallbackNames={['ic_menu_login.png', 'libros.png']}
-              alt="ASD Educational Support Illustration"
+              alt={t('login_illustration_alt')}
               aspect="aspect-[4/3]"
             />
           </div>
@@ -116,7 +141,7 @@ export const LoginPage = () => {
             >
               <ShieldAlert className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-700" />
               <div className="flex-1 text-xs leading-relaxed font-semibold">
-                Sesión expirada: Tu token de acceso ha vencido por inactividad. Por favor, inicia sesión nuevamente para continuar.
+                {t('session_expired')}
               </div>
             </div>
           )}
@@ -207,6 +232,10 @@ export const LoginPage = () => {
               )}
             </button>
           </form>
+
+          <div className="mt-5">
+            <BotonGoogle onCredential={handleGoogle} texto="signin_with" disabled={loading} onError={setError} />
+          </div>
 
           <div className="md:hidden mt-6 text-center text-xs text-tea-muted">
             {t('no_account') || "Don't have an account?"}{' '}

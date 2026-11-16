@@ -8,34 +8,25 @@ import {
   ShieldCheck,
   Server,
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   X,
-  Clock,
-  Sparkles,
-  Database,
   Building,
   UserPlus,
   Edit,
   Trash2,
   Terminal,
   Play,
-  CheckCircle2,
   AlertTriangle,
-  KeyRound,
-  FileCode,
-  Table,
 } from 'lucide-react';
 import { adminService } from '../../services/adminService.js';
-import { ArasaacPictogram } from '../../components/common/ArasaacPictogram.jsx';
+import { Paginacion } from '../../components/common/Paginacion.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 
 export const DeveloperUsersPage = () => {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const toast = useToast();
 
-  const [activeTab, setActiveTab] = useState('users_table'); // 'users_table' | 'raw_db' | 'sql_console'
+  const [activeTab, setActiveTab] = useState('users_table'); // 'users_table' | 'routines_table' | 'sql_console'
   const [users, setUsers] = useState([]);
   const [pageSize, setPageSize] = useState(25);
   const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
@@ -69,6 +60,31 @@ export const DeveloperUsersPage = () => {
   const [sqlExecuting, setSqlExecuting] = useState(false);
   const [sqlError, setSqlError] = useState(null);
 
+  // Pestaña Rutinas: todas las rutinas del sistema, de la más reciente a la más antigua
+  const [rutinasAdmin, setRutinasAdmin] = useState([]);
+  const [rutinasPagina, setRutinasPagina] = useState(1);
+  const [rutinasPaginacion, setRutinasPaginacion] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
+  const [rutinasBusqueda, setRutinasBusqueda] = useState('');
+  const [cargandoRutinas, setCargandoRutinas] = useState(false);
+
+  const fetchRutinas = async (page = rutinasPagina) => {
+    setCargandoRutinas(true);
+    try {
+      const res = await adminService.listarRutinas({ page, limit: 25, search: rutinasBusqueda.trim() });
+      setRutinasAdmin(res.rutinas);
+      setRutinasPaginacion(res.pagination);
+    } catch (e) {
+      console.error('Error fetching routines:', e);
+      toast.error(t('dev_routines_error'));
+    } finally {
+      setCargandoRutinas(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'routines_table') fetchRutinas(rutinasPagina);
+  }, [activeTab, rutinasPagina]);
+
   const fetchUsers = async (page = 1, currentLimit = pageSize) => {
     setLoading(true);
     try {
@@ -83,7 +99,7 @@ export const DeveloperUsersPage = () => {
       setJumpPageInput(String(page));
     } catch (e) {
       console.error('Error fetching users:', e);
-      toast.error('Error al consultar usuarios desde la base de datos');
+      toast.error(t('dev_users_load_error'));
     } finally {
       setLoading(false);
     }
@@ -115,18 +131,18 @@ export const DeveloperUsersPage = () => {
   const handleCreateUserSubmit = async (e) => {
     e.preventDefault();
     if (!createUserData.nombre || !createUserData.email || !createUserData.password) {
-      toast.error('Por favor completa todos los campos requeridos.');
+      toast.error(t('dev_required_fields'));
       return;
     }
     setCreatingUser(true);
     try {
       await adminService.crearUsuario(createUserData);
-      toast.success(`Usuario ${createUserData.email} creado con éxito en la base de datos.`);
+      toast.success(t('dev_user_created', { email: createUserData.email }));
       setCreateUserModalOpen(false);
       setCreateUserData({ nombre: '', email: '', password: '', rol: 'tutor', organizacionId: '' });
       fetchUsers(pagination.page);
     } catch (err) {
-      toast.error(err.message || 'Error creando usuario');
+      toast.error(err.message || t('dev_user_create_error'));
     } finally {
       setCreatingUser(false);
     }
@@ -151,11 +167,11 @@ export const DeveloperUsersPage = () => {
     setEditingUser(true);
     try {
       await adminService.editarUsuario(editUserData.id, editUserData);
-      toast.success(`Usuario ${editUserData.email} actualizado exitosamente.`);
+      toast.success(t('dev_user_updated', { email: editUserData.email }));
       setEditUserModalOpen(false);
       fetchUsers(pagination.page);
     } catch (err) {
-      toast.error(err.message || 'Error actualizando usuario');
+      toast.error(err.message || t('dev_user_update_error'));
     } finally {
       setEditingUser(false);
     }
@@ -163,15 +179,15 @@ export const DeveloperUsersPage = () => {
 
   // Eliminar usuario con poder absoluto
   const handleDeleteUser = async (user) => {
-    const confirmMsg = `¿ESTÁS ABSOLUTAMENTE SEGURO de eliminar a:\n\n${user.nombre} (${user.email})?\n\nEsta acción ejecutará un DELETE definitivo en la base de datos de Google Cloud purgando en cascada todas sus rutinas, dispositivos vinculados y tokens.`;
+    const confirmMsg = t('dev_user_delete_confirm', { nombre: user.nombre, email: user.email });
     if (!window.confirm(confirmMsg)) return;
 
     try {
       await adminService.eliminarUsuario(user.id);
-      toast.success(`Usuario ${user.email} eliminado definitivamente del sistema.`);
+      toast.success(t('dev_user_deleted', { email: user.email }));
       fetchUsers(pagination.page);
     } catch (err) {
-      toast.error(err.message || 'No se pudo eliminar el usuario.');
+      toast.error(err.message || t('dev_user_delete_error'));
     }
   };
 
@@ -184,9 +200,9 @@ export const DeveloperUsersPage = () => {
     try {
       const res = await adminService.ejecutarSql(sqlQuery);
       setSqlResult(res);
-      toast.success('Consulta ejecutada con éxito en Google Cloud Engine.');
+      toast.success(t('sql_success'));
     } catch (err) {
-      setSqlError(err.message || 'Error de sintaxis o violación de integridad SQL.');
+      setSqlError(err.message || t('sql_error'));
     } finally {
       setSqlExecuting(false);
     }
@@ -198,14 +214,14 @@ export const DeveloperUsersPage = () => {
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
             <Server className="w-3 h-3" />
-            Developer
+            {t('role_developer')}
           </span>
         );
       case 'empresario':
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-200">
             <Building className="w-3 h-3" />
-            Empresario / Colegio
+            {t('dev_role_empresario')}
           </span>
         );
       case 'tutor':
@@ -213,7 +229,7 @@ export const DeveloperUsersPage = () => {
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
             <ShieldCheck className="w-3 h-3" />
-            Tutor
+            {t('dev_role_tutor')}
           </span>
         );
     }
@@ -229,14 +245,11 @@ export const DeveloperUsersPage = () => {
               <Server className="w-5 h-5" />
             </span>
             <h1 className="text-2xl font-extrabold text-tea-text tracking-tight flex items-center gap-2">
-              Developer Center: Poder Absoluto de Base de Datos
-              <span className="text-[10px] font-mono font-bold bg-purple-700 text-white px-2 py-0.5 rounded uppercase">
-                Root Access
-              </span>
+              {t('nav_developer_center')}
             </h1>
           </div>
           <p className="text-sm text-tea-muted mt-1">
-            Supervisión integral de usuarios, ejecución directa SQL, edición de registros y auditoría de rutinas en Google Cloud.
+            {t('dev_center_subtitle')}
           </p>
         </div>
 
@@ -247,16 +260,7 @@ export const DeveloperUsersPage = () => {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 transition-tea shadow-sm cursor-pointer"
           >
             <UserPlus className="w-4 h-4" />
-            <span>+ Crear Usuario</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => fetchUsers(pagination.page)}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-tea-text bg-white border border-tea-border hover:bg-slate-50 transition-tea shadow-sm cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-purple-600' : ''}`} />
-            <span>Refrescar</span>
+            <span>{t('dev_create_user')}</span>
           </button>
         </div>
       </div>
@@ -273,20 +277,20 @@ export const DeveloperUsersPage = () => {
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Gestión de Cuentas (CRUD Developer)</span>
+          <span>{t('dev_tab_accounts')}</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveTab('raw_db')}
+          onClick={() => setActiveTab('routines_table')}
           className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-colors ${
-            activeTab === 'raw_db'
+            activeTab === 'routines_table'
               ? 'bg-white border-t border-x border-tea-border text-purple-700 -mb-px'
               : 'text-tea-muted hover:text-tea-text'
           }`}
         >
-          <Table className="w-4 h-4" />
-          <span>SELECT * FROM usuarios (Raw Database View)</span>
+          <CalendarCheck className="w-4 h-4" />
+          <span>{t('dev_tab_routines')}</span>
         </button>
 
         <button
@@ -299,14 +303,14 @@ export const DeveloperUsersPage = () => {
           }`}
         >
           <Terminal className="w-4 h-4" />
-          <span>Consola SQL Directa</span>
+          <span>{t('dev_tab_sql')}</span>
         </button>
       </div>
 
       {/* PESTAÑA 1: TABLA DE USUARIOS Y GESTIÓN CRUD */}
       {activeTab === 'users_table' && (
         <div className="space-y-6">
-          {/* Tarjetas de Métricas de Auditoría */}
+          {/* Tarjeta de métricas de auditoría */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3.5">
               <div className="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
@@ -314,38 +318,10 @@ export const DeveloperUsersPage = () => {
               </div>
               <div>
                 <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
-                  Total de Usuarios Registrados
+                  {t('dev_users_total')}
                 </span>
                 <p className="text-xl font-black text-tea-text">
-                  {pagination.total.toLocaleString()} usuarios
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
-                <Database className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
-                  Persistencia Cloud Run
-                </span>
-                <p className="text-xl font-black text-indigo-700">
-                  Google Cloud KMS Activo
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
-                  Poder de Administrador
-                </span>
-                <p className="text-xl font-black text-emerald-700">
-                  CRUD Completo Habilitado
+                  {pagination.total.toLocaleString(locale)} {t('dev_users_plural')}
                 </p>
               </div>
             </div>
@@ -360,7 +336,8 @@ export const DeveloperUsersPage = () => {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar por email, nombre o ID de usuario..."
+                  placeholder={t('dev_users_search')}
+                  aria-label={t('dev_users_search')}
                   className="w-full text-xs bg-slate-50 border border-tea-border rounded-xl pl-9 pr-3 py-2 text-tea-text focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
@@ -368,7 +345,7 @@ export const DeveloperUsersPage = () => {
                 type="submit"
                 className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 transition-colors cursor-pointer"
               >
-                Buscar
+                {t('dev_routines_search_btn')}
               </button>
             </form>
 
@@ -376,13 +353,14 @@ export const DeveloperUsersPage = () => {
               <Filter className="w-4 h-4 text-tea-subtle" />
               <select
                 value={selectedRole}
+                aria-label={t('dev_filter_role')}
                 onChange={(e) => setSelectedRole(e.target.value)}
                 className="text-xs font-medium bg-slate-50 border border-tea-border rounded-xl px-3 py-2 text-tea-text focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
-                <option value="">Todos los Roles</option>
-                <option value="developer">Developer</option>
-                <option value="empresario">Empresario / Colegio</option>
-                <option value="tutor">Tutor / Familiar</option>
+                <option value="">{t('dev_all_roles')}</option>
+                <option value="developer">{t('role_developer')}</option>
+                <option value="empresario">{t('dev_role_empresario')}</option>
+                <option value="tutor">{t('role_tutor')}</option>
               </select>
             </div>
           </div>
@@ -393,12 +371,12 @@ export const DeveloperUsersPage = () => {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-b border-tea-border text-tea-subtle font-extrabold uppercase tracking-wider text-[11px]">
-                    <th className="py-3.5 px-4">Usuario</th>
-                    <th className="py-3.5 px-4">Rol</th>
-                    <th className="py-3.5 px-4">Organización</th>
-                    <th className="py-3.5 px-4 text-center">Rutinas</th>
-                    <th className="py-3.5 px-4">Registrado</th>
-                    <th className="py-3.5 px-4 text-right">Acciones de Desarrollador</th>
+                    <th className="py-3.5 px-4">{t('dev_col_user')}</th>
+                    <th className="py-3.5 px-4">{t('dev_col_role')}</th>
+                    <th className="py-3.5 px-4">{t('dev_routines_col_org')}</th>
+                    <th className="py-3.5 px-4 text-center">{t('dev_tab_routines')}</th>
+                    <th className="py-3.5 px-4">{t('dev_col_registered')}</th>
+                    <th className="py-3.5 px-4 text-right">{t('dev_col_actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-tea-border text-tea-text">
@@ -406,13 +384,13 @@ export const DeveloperUsersPage = () => {
                     <tr>
                       <td colSpan={6} className="py-10 text-center text-tea-muted">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto text-purple-600 mb-2" />
-                        <span>Consultando base de datos en Google Cloud...</span>
+                        <span>{t('dev_users_loading')}</span>
                       </td>
                     </tr>
                   ) : users.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-tea-muted">
-                        No se encontraron usuarios con los criterios seleccionados.
+                        {t('dev_users_empty')}
                       </td>
                     </tr>
                   ) : (
@@ -432,7 +410,7 @@ export const DeveloperUsersPage = () => {
                               {u.organizacionId}
                             </span>
                           ) : (
-                            <span className="text-tea-subtle italic text-[11px]">- Ninguna -</span>
+                            <span className="text-tea-subtle italic text-[11px]">{t('dev_org_none')}</span>
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-center font-bold">
@@ -442,7 +420,7 @@ export const DeveloperUsersPage = () => {
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-tea-muted text-[11px]">
-                          {u.creadoEn ? new Date(u.creadoEn).toLocaleDateString() : 'Reciente'}
+                          {u.creadoEn ? new Date(u.creadoEn).toLocaleDateString(locale) : '—'}
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="inline-flex items-center gap-1.5">
@@ -450,30 +428,30 @@ export const DeveloperUsersPage = () => {
                               type="button"
                               onClick={() => handleInspectUserRoutines(u)}
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs transition-colors cursor-pointer"
-                              title="Ver rutinas del usuario"
+                              title={t('dev_view_user_routines')}
                             >
                               <Eye className="w-3 h-3" />
-                              <span>Rutinas</span>
+                              <span>{t('dev_tab_routines')}</span>
                             </button>
 
                             <button
                               type="button"
                               onClick={() => handleOpenEditUser(u)}
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-xs transition-colors cursor-pointer"
-                              title="Editar usuario"
+                              title={t('dev_edit_user')}
                             >
                               <Edit className="w-3 h-3" />
-                              <span>Editar</span>
+                              <span>{t('btn_edit')}</span>
                             </button>
 
                             <button
                               type="button"
                               onClick={() => handleDeleteUser(u)}
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs transition-colors cursor-pointer"
-                              title="Eliminar usuario definitivamente"
+                              title={t('dev_delete_user')}
                             >
                               <Trash2 className="w-3 h-3" />
-                              <span>Eliminar</span>
+                              <span>{t('btn_delete')}</span>
                             </button>
                           </div>
                         </td>
@@ -484,17 +462,11 @@ export const DeveloperUsersPage = () => {
               </table>
             </div>
 
-            {/* Paginación Profesional Avanzada */}
-            <div className="p-4 border-t border-tea-border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-tea-muted">
-              <div className="flex items-center gap-3">
-                <span>
-                  Página <strong className="text-tea-text">{pagination.page}</strong> de{' '}
-                  <strong className="text-tea-text">{pagination.totalPages}</strong> (
-                  <strong className="text-purple-700">{pagination.total.toLocaleString()}</strong> usuarios totales)
-                </span>
-
-                <div className="flex items-center gap-1.5 pl-3 border-l border-tea-border">
-                  <span className="text-[11px]">Por página:</span>
+            {/* Paginación de usuarios: componente común + tamaño de página e «Ir a» */}
+            <div className="px-4 pb-4 pt-3 border-t border-tea-border space-y-1">
+              <div className="flex flex-wrap items-center justify-end gap-4 text-xs text-tea-muted">
+                <label className="flex items-center gap-1.5">
+                  <span className="text-[11px]">{t('pagination_per_page')}</span>
                   <select
                     value={pageSize}
                     onChange={(e) => {
@@ -509,124 +481,140 @@ export const DeveloperUsersPage = () => {
                     <option value={50}>50</option>
                     <option value={100}>100</option>
                   </select>
-                </div>
-              </div>
+                </label>
 
-              <div className="flex items-center gap-2">
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const target = parseInt(jumpPageInput, 10);
-                    if (target >= 1 && target <= pagination.totalPages) {
-                      fetchUsers(target);
-                    }
-                  }}
-                  className="flex items-center gap-1.5 pr-2"
-                >
-                  <span className="text-[11px]">Ir a:</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={pagination.totalPages}
-                    value={jumpPageInput}
-                    onChange={(e) => setJumpPageInput(e.target.value)}
-                    className="w-14 text-xs font-bold text-center bg-slate-50 border border-tea-border rounded-lg py-1 px-1 text-tea-text"
-                  />
-                  <button
-                    type="submit"
-                    className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-tea-text text-[11px] font-bold transition-colors cursor-pointer"
+                {pagination.totalPages > 1 && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const target = parseInt(jumpPageInput, 10);
+                      if (target >= 1 && target <= pagination.totalPages) {
+                        fetchUsers(target);
+                      }
+                    }}
+                    className="flex items-center gap-1.5"
                   >
-                    Ir
-                  </button>
-                </form>
-
-                <button
-                  type="button"
-                  onClick={() => fetchUsers(1)}
-                  disabled={pagination.page === 1 || loading}
-                  className="p-1.5 rounded-lg border border-tea-border hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none"
-                  title="Primera página"
-                >
-                  «
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fetchUsers(pagination.page - 1)}
-                  disabled={pagination.page <= 1 || loading}
-                  className="p-1.5 rounded-lg border border-tea-border hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none"
-                  title="Página anterior"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fetchUsers(pagination.page + 1)}
-                  disabled={pagination.page >= pagination.totalPages || loading}
-                  className="p-1.5 rounded-lg border border-tea-border hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none"
-                  title="Página siguiente"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fetchUsers(pagination.totalPages)}
-                  disabled={pagination.page === pagination.totalPages || loading}
-                  className="p-1.5 rounded-lg border border-tea-border hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none"
-                  title="Última página"
-                >
-                  »
-                </button>
+                    <span className="text-[11px]">{t('pagination_go_to')}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={pagination.totalPages}
+                      value={jumpPageInput}
+                      onChange={(e) => setJumpPageInput(e.target.value)}
+                      aria-label={t('pagination_go_to')}
+                      className="w-14 text-xs font-bold text-center bg-slate-50 border border-tea-border rounded-lg py-1 px-1 text-tea-text"
+                    />
+                    <button
+                      type="submit"
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-tea-text text-[11px] font-bold transition-colors cursor-pointer"
+                    >
+                      {t('pagination_go')}
+                    </button>
+                  </form>
+                )}
               </div>
+
+              <Paginacion
+                page={pagination.page}
+                totalPages={pagination.totalPages}
+                total={pagination.total}
+                onChange={(p) => fetchUsers(p)}
+                disabled={loading}
+                etiquetaTotal={t('dev_users_plural')}
+              />
             </div>
           </div>
         </div>
       )}
 
-      {/* PESTAÑA 2: VISTA CRUDA DE BASE DE DATOS (SELECT * FROM usuarios) */}
-      {activeTab === 'raw_db' && (
+      {/* PESTAÑA 2: TODAS LAS RUTINAS (de la más reciente a la más antigua) */}
+      {activeTab === 'routines_table' && (
         <div className="space-y-4">
-          <div className="bg-slate-900 text-slate-200 p-4 rounded-2xl font-mono text-xs shadow-md">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-700 mb-3">
-              <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-                <Database className="w-4 h-4" />
-                sqlite3 /app/data/upad.db &gt; SELECT id, nombre, email, rol, organizacionId, activo, creadoEn, saltPreview FROM usuarios;
-              </span>
-              <span className="text-[11px] text-slate-400">
-                Filas devueltas: {users.length} (Página {pagination.page})
-              </span>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (rutinasPagina === 1) fetchRutinas(1);
+              else setRutinasPagina(1);
+            }}
+            className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-2"
+          >
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-tea-subtle absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={rutinasBusqueda}
+                onChange={(e) => setRutinasBusqueda(e.target.value)}
+                placeholder={t('dev_routines_search')}
+                aria-label={t('dev_routines_search')}
+                className="w-full pl-9 pr-3 py-2 rounded-xl text-xs border border-tea-border focus:ring-2 focus:ring-purple-600 focus:outline-none"
+              />
             </div>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 transition-tea cursor-pointer"
+            >
+              {t('dev_routines_search_btn')}
+            </button>
+          </form>
 
+          <div className="bg-white rounded-2xl border border-tea-border shadow-soft-xs overflow-hidden">
+            <p className="px-4 py-3 border-b border-tea-border text-[11px] text-tea-muted">{t('dev_routines_order_hint')}</p>
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-[11px]">
-                <thead>
-                  <tr className="border-b border-slate-700 text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="py-2 px-3">id</th>
-                    <th className="py-2 px-3">nombre</th>
-                    <th className="py-2 px-3">email</th>
-                    <th className="py-2 px-3">rol</th>
-                    <th className="py-2 px-3">organizacionId</th>
-                    <th className="py-2 px-3">activo</th>
-                    <th className="py-2 px-3">creadoEn</th>
-                    <th className="py-2 px-3">salt_preview</th>
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-[11px] font-bold text-tea-subtle uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3">{t('dev_routines_col_title')}</th>
+                    <th className="px-4 py-3">{t('dev_routines_col_shift')}</th>
+                    <th className="px-4 py-3">{t('dev_routines_col_creator')}</th>
+                    <th className="px-4 py-3">{t('dev_routines_col_org')}</th>
+                    <th className="px-4 py-3 text-center">{t('dev_routines_col_steps')}</th>
+                    <th className="px-4 py-3">{t('dev_routines_col_created')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {users.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-800/60 font-mono">
-                      <td className="py-2 px-3 text-purple-300">{u.id}</td>
-                      <td className="py-2 px-3 text-amber-200">{u.nombre}</td>
-                      <td className="py-2 px-3 text-cyan-300">{u.email}</td>
-                      <td className="py-2 px-3 text-emerald-300">{u.rol}</td>
-                      <td className="py-2 px-3 text-slate-400">{u.organizacionId || 'NULL'}</td>
-                      <td className="py-2 px-3 text-yellow-300">{u.activo ?? 1}</td>
-                      <td className="py-2 px-3 text-slate-400">{u.creadoEn}</td>
-                      <td className="py-2 px-3 text-rose-300 font-mono text-[9px]">
-                        {u.saltPreview ? u.saltPreview.substring(0, 12) + '...' : 'SECURE_SALT'}
+                <tbody className="divide-y divide-tea-border">
+                  {cargandoRutinas ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-tea-muted">
+                        <RefreshCw className="w-5 h-5 animate-spin inline-block" />
                       </td>
                     </tr>
-                  ))}
+                  ) : rutinasAdmin.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-tea-muted">
+                        {t('dev_routines_empty')}
+                      </td>
+                    </tr>
+                  ) : (
+                    rutinasAdmin.map((r) => (
+                      <tr key={r.id} className="hover:bg-slate-50/60">
+                        <td className="px-4 py-3 font-bold text-tea-text">{r.titulo}</td>
+                        <td className="px-4 py-3">
+                          {r.turno === 'MANANA' ? t('tab_morning') : r.turno === 'TARDE' ? t('tab_afternoon') : r.turno === 'NOCHE' ? t('tab_night') : r.turno}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="block font-semibold text-tea-text">{r.creadorNombre || '—'}</span>
+                          <span className="block text-[11px] text-tea-muted">{r.creadorEmail || r.creadoPor}</span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[11px] text-tea-muted">{r.organizacionId || '—'}</td>
+                        <td className="px-4 py-3 text-center font-bold">{r.pasosCount}</td>
+                        <td className="px-4 py-3 text-tea-muted whitespace-nowrap">
+                          {r.creadoEn ? new Date(r.creadoEn).toLocaleString(locale) : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
+            </div>
+            <div className="px-4 pb-4">
+              <Paginacion
+                page={rutinasPaginacion.page}
+                totalPages={rutinasPaginacion.totalPages}
+                total={rutinasPaginacion.total}
+                onChange={setRutinasPagina}
+                disabled={cargandoRutinas}
+                etiquetaTotal={t('routine_plural')}
+              />
             </div>
           </div>
         </div>
@@ -640,10 +628,10 @@ export const DeveloperUsersPage = () => {
               <div>
                 <h3 className="text-base font-extrabold text-tea-text flex items-center gap-2">
                   <Terminal className="w-5 h-5 text-purple-600" />
-                  Terminal SQL Directo U-Pad
+                  {t('dev_sql_title')}
                 </h3>
                 <p className="text-xs text-tea-muted mt-0.5">
-                  Ejecuta consultas SQL directas sobre la base de datos de Google Cloud en producción.
+                  {t('dev_sql_desc')}
                 </p>
               </div>
 
@@ -678,14 +666,15 @@ export const DeveloperUsersPage = () => {
                 rows={4}
                 value={sqlQuery}
                 onChange={(e) => setSqlQuery(e.target.value)}
-                placeholder="Escribe tu consulta SQL aquí (ej. SELECT * FROM usuarios;)..."
+                placeholder={t('dev_sql_placeholder')}
+                aria-label={t('dev_sql_placeholder')}
                 className="w-full p-4 rounded-2xl bg-slate-900 text-emerald-400 font-mono text-xs border border-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-[11px] text-slate-400 font-mono">
-                Motor: SQLite3 WAL con Google Cloud KMS Encryption
+                {t('sql_engine')}
               </span>
               <button
                 type="button"
@@ -694,7 +683,7 @@ export const DeveloperUsersPage = () => {
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Play className={`w-3.5 h-3.5 ${sqlExecuting ? 'animate-spin' : ''}`} />
-                <span>{sqlExecuting ? 'Ejecutando...' : 'Ejecutar Consulta'}</span>
+                <span>{sqlExecuting ? t('dev_sql_running') : t('dev_sql_run')}</span>
               </button>
             </div>
 
@@ -708,9 +697,8 @@ export const DeveloperUsersPage = () => {
             {sqlResult && (
               <div className="p-4 rounded-2xl bg-slate-900 text-slate-200 font-mono text-xs overflow-x-auto max-h-96">
                 <div className="pb-2 border-b border-slate-700 mb-2 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Resultado: {sqlResult.type} ({sqlResult.rowCount ?? sqlResult.changes ?? 0} registros)</span>
-                  <span>Status: 200 OK</span>
-                </div>
+                  <span>{t('dev_sql_result', { tipo: sqlResult.type, total: sqlResult.rowCount ?? sqlResult.changes ?? 0 })}</span>
+                                  </div>
                 <pre className="text-emerald-300 overflow-x-auto text-[11px]">
                   {JSON.stringify(sqlResult.data || sqlResult, null, 2)}
                 </pre>
@@ -727,6 +715,7 @@ export const DeveloperUsersPage = () => {
             <button
               type="button"
               onClick={() => setCreateUserModalOpen(false)}
+              aria-label={t('btn_close')}
               className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"
             >
               <X className="w-5 h-5" />
@@ -737,69 +726,69 @@ export const DeveloperUsersPage = () => {
                 <UserPlus className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-lg font-extrabold text-tea-text">Crear Nuevo Usuario</h3>
-                <p className="text-xs text-tea-muted">Inserción directa en base de datos Google Cloud</p>
+                <h3 className="text-lg font-extrabold text-tea-text">{t('dev_create_title')}</h3>
+                <p className="text-xs text-tea-muted">{t('dev_create_desc')}</p>
               </div>
             </div>
 
             <form onSubmit={handleCreateUserSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nombre Completo</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_field_name')}</label>
                 <input
                   type="text"
                   required
                   value={createUserData.nombre}
                   onChange={(e) => setCreateUserData({ ...createUserData, nombre: e.target.value })}
-                  placeholder="Ej. Juan Pérez"
+                  placeholder={t('dev_field_name_placeholder')}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_field_email')}</label>
                 <input
                   type="email"
                   required
                   value={createUserData.email}
                   onChange={(e) => setCreateUserData({ ...createUserData, email: e.target.value })}
-                  placeholder="usuario@dominio.com"
+                  placeholder={t('dev_field_email_placeholder')}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Contraseña</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_field_password')}</label>
                 <input
                   type="password"
                   required
                   value={createUserData.password}
                   onChange={(e) => setCreateUserData({ ...createUserData, password: e.target.value })}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder={t('dev_field_password_placeholder')}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Rol</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_col_role')}</label>
                   <select
                     value={createUserData.rol}
                     onChange={(e) => setCreateUserData({ ...createUserData, rol: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:ring-2 focus:ring-purple-500 focus:outline-none bg-slate-50"
                   >
-                    <option value="tutor">Tutor</option>
-                    <option value="empresario">Empresario / Colegio</option>
-                    <option value="developer">Developer</option>
+                    <option value="tutor">{t('dev_role_tutor')}</option>
+                    <option value="empresario">{t('dev_role_empresario')}</option>
+                    <option value="developer">{t('role_developer')}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Organización (Opcional)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_field_org_optional')}</label>
                   <input
                     type="text"
                     value={createUserData.organizacionId}
                     onChange={(e) => setCreateUserData({ ...createUserData, organizacionId: e.target.value })}
-                    placeholder="Id de una organización existente (org_…)"
+                    placeholder={t('dev_field_org_placeholder')}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                   />
                 </div>
@@ -811,14 +800,14 @@ export const DeveloperUsersPage = () => {
                   onClick={() => setCreateUserModalOpen(false)}
                   className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
                 >
-                  Cancelar
+                  {t('btn_cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={creatingUser}
                   className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-sm disabled:opacity-50"
                 >
-                  {creatingUser ? 'Guardando en BD...' : 'Crear Usuario'}
+                  {creatingUser ? t('dev_saving') : t('dev_create_submit')}
                 </button>
               </div>
             </form>
@@ -833,6 +822,7 @@ export const DeveloperUsersPage = () => {
             <button
               type="button"
               onClick={() => setEditUserModalOpen(false)}
+              aria-label={t('btn_close')}
               className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"
             >
               <X className="w-5 h-5" />
@@ -843,14 +833,14 @@ export const DeveloperUsersPage = () => {
                 <Edit className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-lg font-extrabold text-tea-text">Editar Usuario en BD</h3>
+                <h3 className="text-lg font-extrabold text-tea-text">{t('dev_edit_title')}</h3>
                 <p className="text-xs text-tea-muted font-mono">{editUserData.id}</p>
               </div>
             </div>
 
             <form onSubmit={handleEditUserSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nombre</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_field_name')}</label>
                 <input
                   type="text"
                   required
@@ -861,7 +851,7 @@ export const DeveloperUsersPage = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_field_email')}</label>
                 <input
                   type="email"
                   required
@@ -872,37 +862,37 @@ export const DeveloperUsersPage = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Resetear Contraseña (Opcional)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_field_reset_password')}</label>
                 <input
                   type="password"
                   value={editUserData.password}
                   onChange={(e) => setEditUserData({ ...editUserData, password: e.target.value })}
-                  placeholder="Dejar en blanco para mantener la actual"
+                  placeholder={t('dev_field_reset_password_placeholder')}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Rol</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_col_role')}</label>
                   <select
                     value={editUserData.rol}
                     onChange={(e) => setEditUserData({ ...editUserData, rol: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:ring-2 focus:ring-purple-500 focus:outline-none bg-slate-50"
                   >
-                    <option value="tutor">Tutor</option>
-                    <option value="empresario">Empresario / Colegio</option>
-                    <option value="developer">Developer</option>
+                    <option value="tutor">{t('dev_role_tutor')}</option>
+                    <option value="empresario">{t('dev_role_empresario')}</option>
+                    <option value="developer">{t('role_developer')}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Organización</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">{t('dev_routines_col_org')}</label>
                   <input
                     type="text"
                     value={editUserData.organizacionId}
                     onChange={(e) => setEditUserData({ ...editUserData, organizacionId: e.target.value })}
-                    placeholder="Id de una organización existente (org_…)"
+                    placeholder={t('dev_field_org_placeholder')}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
                   />
                 </div>
@@ -916,7 +906,7 @@ export const DeveloperUsersPage = () => {
                     onChange={(e) => setEditUserData({ ...editUserData, activo: e.target.checked })}
                     className="rounded text-purple-600 focus:ring-purple-500"
                   />
-                  <span className="text-xs font-bold text-slate-700">Cuenta activa</span>
+                  <span className="text-xs font-bold text-slate-700">{t('dev_field_active')}</span>
                 </label>
               </div>
 
@@ -926,14 +916,14 @@ export const DeveloperUsersPage = () => {
                   onClick={() => setEditUserModalOpen(false)}
                   className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
                 >
-                  Cancelar
+                  {t('btn_cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={editingUser}
                   className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm disabled:opacity-50"
                 >
-                  {editingUser ? 'Guardando...' : 'Actualizar Usuario'}
+                  {editingUser ? t('dev_saving') : t('dev_edit_submit')}
                 </button>
               </div>
             </form>
@@ -948,6 +938,7 @@ export const DeveloperUsersPage = () => {
             <button
               type="button"
               onClick={() => setSelectedUserForRoutines(null)}
+              aria-label={t('btn_close')}
               className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"
             >
               <X className="w-5 h-5" />
@@ -959,7 +950,7 @@ export const DeveloperUsersPage = () => {
               </div>
               <div>
                 <h3 className="text-lg font-extrabold text-tea-text">
-                  Rutinas de {selectedUserForRoutines.nombre}
+                  {t('dev_user_routines_title', { nombre: selectedUserForRoutines.nombre })}
                 </h3>
                 <p className="text-xs text-tea-muted font-mono">{selectedUserForRoutines.email}</p>
               </div>
@@ -968,35 +959,35 @@ export const DeveloperUsersPage = () => {
             {loadingRoutines ? (
               <div className="py-12 text-center text-tea-muted">
                 <RefreshCw className="w-6 h-6 animate-spin mx-auto text-purple-600 mb-2" />
-                <span>Cargando rutinas del usuario...</span>
+                <span>{t('dev_user_routines_loading')}</span>
               </div>
             ) : userRoutines.length === 0 ? (
               <div className="py-10 text-center text-tea-muted">
-                Este usuario aún no tiene rutinas registradas.
+                {t('dev_user_routines_empty')}
               </div>
             ) : (
               <div className="space-y-3">
                 {userRoutines.map((r) => (
                   <div key={r.id} className="p-4 rounded-2xl bg-slate-50 border border-tea-border flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center flex-shrink-0">
-                        {r.pictogramaUrl ? (
-                          <img src={r.pictogramaUrl} alt={r.nombre} className="w-full h-full object-contain p-1" />
-                        ) : (
-                          <CalendarCheck className="w-6 h-6 text-purple-600" />
-                        )}
+                      <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+                        <CalendarCheck className="w-6 h-6 text-purple-600" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-tea-text">{r.nombre}</h4>
+                        <h4 className="text-sm font-bold text-tea-text">{r.titulo}</h4>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                            {r.turno || 'General'}
+                            {r.turno === 'MANANA' ? t('tab_morning') : r.turno === 'TARDE' ? t('tab_afternoon') : r.turno === 'NOCHE' ? t('tab_night') : r.turno || '—'}
                           </span>
-                          <span className="text-[11px] text-tea-muted font-mono">{r.horaInicio || '08:00'}</span>
+                          <span className="text-[11px] text-tea-muted">
+                            {t('dev_user_routine_steps', { total: Array.isArray(r.pasos) ? r.pasos.length : 0 })}
+                          </span>
                         </div>
                       </div>
                     </div>
-                    <span className="text-[11px] text-slate-400 font-mono">ID: {r.id.substring(0, 8)}...</span>
+                    <span className="text-[11px] text-slate-400">
+                      {r.creadoEn ? new Date(r.creadoEn).toLocaleDateString(locale) : '—'}
+                    </span>
                   </div>
                 ))}
               </div>

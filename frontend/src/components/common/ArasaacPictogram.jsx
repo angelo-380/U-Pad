@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { arasaacService } from '../../services/arasaacService.js';
 import { Sparkles, ImageOff } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 
 const SIZE_MAP = {
   xs: 'w-7 h-7',
@@ -26,6 +27,7 @@ export const ArasaacPictogram = ({
   showLabel = false,
   directUrl = null,
 }) => {
+  const { t } = useLanguage();
   const [imageUrl, setImageUrl] = useState(directUrl || null);
   const [loading, setLoading] = useState(!directUrl && Boolean(keyword));
   const [hasError, setHasError] = useState(false);
@@ -84,12 +86,12 @@ export const ArasaacPictogram = ({
     <div className={`flex flex-col items-center justify-center ${className}`}>
       <div
         className={`${containerSizeClass} flex-shrink-0 bg-white rounded-xl border border-slate-200/80 shadow-xs flex items-center justify-center p-1 overflow-hidden transition-all`}
-        title={keyword ? `Pictograma: ${keyword}` : undefined}
+        title={keyword ? t('pictogram_title', { palabra: keyword }) : undefined}
       >
         {loading ? (
           <div
             className="w-full h-full bg-slate-100 rounded-lg animate-pulse motion-reduce:animate-none flex items-center justify-center"
-            aria-label="Cargando pictograma..."
+            aria-label={t('pictogram_loading')}
           >
             <div className="w-2.5 h-2.5 rounded-full bg-slate-300" />
           </div>

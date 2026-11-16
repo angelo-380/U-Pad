@@ -1,367 +1,397 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Compass,
-  MapPin,
-  ShieldCheck,
-  BatteryCharging,
-  Wifi,
-  Navigation,
   RefreshCw,
-  AlertCircle,
-  Play,
-  Pause,
-  Maximize2,
+  MapPin,
+  Tablet,
   Clock,
-  Smartphone,
-  CheckCircle2,
+  ShieldCheck,
+  ShieldAlert,
+  AlertTriangle,
+  Loader2,
+  Crosshair,
+  Trash2,
+  ExternalLink,
 } from 'lucide-react';
 import { devicesService } from '../../services/devicesService.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
+import { useToast } from '../../context/ToastContext.jsx';
 
+// La app del niño envía su ubicación cada 5-10 s; la página la consulta cada 10 s
+const INTERVALO_CONSULTA_MS = 10_000;
+// Pasado este tiempo sin ubicación nueva, se avisa que puede estar desactualizada
+const UBICACION_DESACTUALIZADA_MS = 2 * 60_000;
+// Radio de la zona segura (punto 4 del docente: 200 m como máximo; igual que el backend)
+const RADIO_MIN = 20;
+const RADIO_MAX = 200;
+const RADIO_POR_DEFECTO = 100;
+
+/** Distancia en metros entre dos coordenadas (fórmula de Haversine). */
+const distanciaMetros = (a, b) => {
+  const R = 6371000;
+  const rad = (g) => (g * Math.PI) / 180;
+  const dLat = rad(b.latitude - a.latitude);
+  const dLng = rad(b.longitude - a.longitude);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
+const idDe = (d) => d?.deviceId || d?.device_id;
+
+/**
+ * Seguimiento GPS con datos reales: la ubicación que envía el teléfono del niño y la zona segura
+ * (radio de 20 a 200 m) que define el tutor. Sin simulaciones ni valores de ejemplo.
+ */
 export const GpsPage = () => {
-  const { t } = useLanguage();
-  const [device, setDevice] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const { t, language } = useLanguage();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [hijos, setHijos] = useState([]);
+  const [seleccionadoId, setSeleccionadoId] = useState('');
+  const [cargando, setCargando] = useState(true);
+  const [actualizando, setActualizando] = useState(false);
+  const [error, setError] = useState(null);
+  const [ahora, setAhora] = useState(Date.now());
+  const [radio, setRadio] = useState(RADIO_POR_DEFECTO);
+  const [guardandoZona, setGuardandoZona] = useState(false);
 
-  // Coordenadas actuales del menor (por defecto Centro Terapéutico / Escolar en Lima)
-  const [coords, setCoords] = useState({
-    lat: -12.046374,
-    lng: -77.042793,
-    accuracy: 4.5,
-    speed: 0,
-    battery: 89,
-    lastSeen: 'Hace un momento',
-  });
-
-  const [geofenceRadius, setGeofenceRadius] = useState(100);
-  const [safeZone, setSafeZone] = useState('Colegio San Martín (Zona Segura)');
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [alertStatus, setAlertStatus] = useState('safe'); // 'safe' | 'warning'
-
-  const cargarDispositivo = async () => {
+  const cargarHijos = useCallback(async ({ silencioso = false } = {}) => {
+    if (!silencioso) setActualizando(true);
     try {
       const lista = await devicesService.listar();
-      if (Array.isArray(lista) && lista.length > 0) {
-        const d = lista[0];
-        setDevice(d);
-        if (d.lastLatitude && d.lastLongitude) {
-          setCoords((prev) => ({
-            ...prev,
-            lat: Number(d.lastLatitude) || prev.lat,
-            lng: Number(d.lastLongitude) || prev.lng,
-          }));
-        }
-      } else {
-        // Fallback representativo para visualización cuando aún no se vincula
-        setDevice({
-          childName: 'Diego',
-          deviceModel: 'Samsung Galaxy Tab A8 (Kiosk U-Pad)',
-          isKioskActive: true,
-          deviceId: 'dev_child_cloud_1',
-        });
-      }
+      const hijosValidos = Array.isArray(lista) ? lista : [];
+      setHijos(hijosValidos);
+      setError(null);
+      setSeleccionadoId((actual) =>
+        hijosValidos.some((h) => idDe(h) === actual) ? actual : idDe(hijosValidos[0]) || ''
+      );
     } catch (e) {
-      setDevice({
-        childName: 'Diego',
-        deviceModel: 'Samsung Galaxy Tab A8 (Kiosk U-Pad)',
-        isKioskActive: true,
-        deviceId: 'dev_child_cloud_1',
-      });
+      // El texto traducido se resuelve al renderizar (así esta función no depende de t)
+      setError(e?.message || '');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setCargando(false);
+      setActualizando(false);
+      setAhora(Date.now());
     }
-  };
-
-  useEffect(() => {
-    cargarDispositivo();
   }, []);
 
-  // Simulación de recorrido en tiempo real
+  // Carga inicial y consulta periódica (tiempo real)
   useEffect(() => {
-    let interval = null;
-    if (isSimulating) {
-      interval = setInterval(() => {
-        setCoords((prev) => {
-          // Desplazamiento suave simulado de caminata escolar
-          const deltaLat = (Math.random() - 0.45) * 0.00015;
-          const deltaLng = (Math.random() - 0.45) * 0.00015;
-          const newLat = prev.lat + deltaLat;
-          const newLng = prev.lng + deltaLng;
-          return {
-            ...prev,
-            lat: parseFloat(newLat.toFixed(6)),
-            lng: parseFloat(newLng.toFixed(6)),
-            speed: parseFloat((1.2 + Math.random() * 0.8).toFixed(1)),
-            lastSeen: 'En tiempo real',
-          };
-        });
-      }, 2500);
-    }
+    cargarHijos();
+    const consulta = setInterval(() => cargarHijos({ silencioso: true }), INTERVALO_CONSULTA_MS);
+    const reloj = setInterval(() => setAhora(Date.now()), 5_000);
     return () => {
-      if (interval) clearInterval(interval);
+      clearInterval(consulta);
+      clearInterval(reloj);
     };
-  }, [isSimulating]);
+  }, [cargarHijos]);
 
-  const handleManualRefresh = async () => {
-    setRefreshing(true);
-    if (device?.deviceId) {
-      await devicesService.obtenerTelemetria(device.deviceId);
-    }
-    await cargarDispositivo();
-    setTimeout(() => setRefreshing(false), 600);
+  const hijo = hijos.find((h) => idDe(h) === seleccionadoId) || null;
+  const zona = hijo?.zonaSegura || null;
+
+  // Al cambiar de hijo, el deslizador muestra el radio de su zona (o el valor por defecto)
+  useEffect(() => {
+    setRadio(zona?.radio || RADIO_POR_DEFECTO);
+  }, [seleccionadoId, zona?.radio]);
+
+  const tieneUbicacion =
+    hijo && typeof hijo.lastLatitude === 'number' && typeof hijo.lastLongitude === 'number';
+  const ubicacion = tieneUbicacion ? { latitude: hijo.lastLatitude, longitude: hijo.lastLongitude } : null;
+
+  const actualizadaEnMs = hijo?.ubicacionActualizadaEn ? new Date(hijo.ubicacionActualizadaEn).getTime() : NaN;
+  const segundosDesde = Number.isFinite(actualizadaEnMs) ? Math.max(0, Math.round((ahora - actualizadaEnMs) / 1000)) : null;
+  const desactualizada = segundosDesde !== null && segundosDesde * 1000 > UBICACION_DESACTUALIZADA_MS;
+
+  const formatoRelativo = new Intl.RelativeTimeFormat(language || 'es', { numeric: 'auto' });
+  const haceCuanto = (seg) => {
+    if (seg < 60) return formatoRelativo.format(-seg, 'second');
+    if (seg < 3600) return formatoRelativo.format(-Math.round(seg / 60), 'minute');
+    if (seg < 86400) return formatoRelativo.format(-Math.round(seg / 3600), 'hour');
+    return formatoRelativo.format(-Math.round(seg / 86400), 'day');
   };
 
-  const childName = device?.childName || device?.child_name || 'Diego';
-  const deviceModel = device?.deviceModel || device?.device_model || 'Samsung Galaxy Tab A8 (U-Pad)';
+  const distanciaAZona = ubicacion && zona ? Math.round(distanciaMetros(ubicacion, zona)) : null;
+  const dentroDeZona = distanciaAZona !== null && distanciaAZona <= zona.radio;
 
-  // URL del iframe OpenStreetMap centrado en las coordenadas
+  const guardarZona = async (centro) => {
+    if (!hijo || !centro) return;
+    try {
+      setGuardandoZona(true);
+      await devicesService.guardarZonaSegura(idDe(hijo), { latitude: centro.latitude, longitude: centro.longitude, radio });
+      toast.success(t('gps_zone_saved'));
+      await cargarHijos({ silencioso: true });
+    } catch (e) {
+      toast.error(e?.message || t('gps_zone_error'));
+    } finally {
+      setGuardandoZona(false);
+    }
+  };
+
+  const quitarZona = async () => {
+    if (!hijo) return;
+    try {
+      setGuardandoZona(true);
+      await devicesService.quitarZonaSegura(idDe(hijo));
+      toast.success(t('gps_zone_removed'));
+      await cargarHijos({ silencioso: true });
+    } catch (e) {
+      toast.error(e?.message || t('gps_zone_error'));
+    } finally {
+      setGuardandoZona(false);
+    }
+  };
+
+  // Mapa de OpenStreetMap centrado en la ubicación real
   const delta = 0.004;
-  const bbox = `${coords.lng - delta}%2C${coords.lat - delta}%2C${coords.lng + delta}%2C${coords.lat + delta}`;
-  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${coords.lat}%2C${coords.lng}`;
+  const mapUrl = ubicacion
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=${ubicacion.longitude - delta}%2C${ubicacion.latitude - delta}%2C${ubicacion.longitude + delta}%2C${ubicacion.latitude + delta}&layer=mapnik&marker=${ubicacion.latitude}%2C${ubicacion.longitude}`
+    : null;
+  const enlaceMapa = ubicacion
+    ? `https://www.openstreetmap.org/?mlat=${ubicacion.latitude}&mlon=${ubicacion.longitude}#map=17/${ubicacion.latitude}/${ubicacion.longitude}`
+    : null;
 
   return (
     <div className="space-y-6">
-      {/* Encabezado Principal */}
+      {/* Encabezado */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-tea-border">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-brand-50 text-brand-600">
-              <Compass className="w-5 h-5" />
-            </span>
-            <h1 className="text-2xl font-extrabold text-tea-text tracking-tight">
-              {t('nav_gps') || 'Seguimiento GPS y Geocercas'}
-            </h1>
+        <div className="flex items-center gap-2.5">
+          <span className="p-2 rounded-xl bg-brand-50 text-brand-700">
+            <Compass className="w-5 h-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-extrabold text-tea-text tracking-tight">{t('gps_title')}</h1>
+            <p className="text-sm text-tea-muted mt-0.5">{t('gps_subtitle')}</p>
           </div>
-          <p className="text-sm text-tea-muted mt-1">
-            Supervisión perimetral en tiempo real del dispositivo infantil enlazado a la nube.
-          </p>
         </div>
-
-        <div className="flex items-center gap-2">
+        {hijos.length > 0 && (
           <button
             type="button"
-            onClick={handleManualRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-tea-text bg-white border border-tea-border hover:bg-slate-50 transition-tea shadow-sm cursor-pointer disabled:opacity-50"
+            onClick={() => cargarHijos()}
+            disabled={actualizando}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-tea-text bg-white border border-tea-border hover:bg-slate-50 transition-tea shadow-sm cursor-pointer disabled:opacity-50 self-start sm:self-auto"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-brand-600' : ''}`} />
-            <span>{refreshing ? 'Sincronizando...' : 'Actualizar GPS'}</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${actualizando ? 'animate-spin text-brand-600' : ''}`} />
+            <span>{t('gps_refresh')}</span>
           </button>
+        )}
+      </div>
 
+      {error !== null && (
+        <div className="p-3.5 rounded-2xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800" role="alert">
+          {error || t('gps_load_error')}
+        </div>
+      )}
+
+      {cargando ? (
+        <div className="flex justify-center py-16 text-tea-muted">
+          <Loader2 className="w-6 h-6 animate-spin" />
+        </div>
+      ) : hijos.length === 0 ? (
+        /* Sin hijos vinculados: no hay nada que ubicar */
+        <div className="bg-white rounded-3xl p-8 border border-tea-border shadow-soft-xs flex flex-col items-center text-center gap-3">
+          <span className="p-3 rounded-2xl bg-brand-50 text-brand-600">
+            <Tablet className="w-7 h-7" />
+          </span>
+          <h2 className="text-base font-extrabold text-tea-text">{t('gps_no_children_title')}</h2>
+          <p className="text-xs text-tea-muted max-w-md">{t('gps_no_children_desc')}</p>
           <button
             type="button"
-            onClick={() => setIsSimulating(!isSimulating)}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-tea shadow-sm cursor-pointer ${
-              isSimulating
-                ? 'bg-amber-600 text-white hover:bg-amber-700'
-                : 'bg-brand-600 text-white hover:bg-brand-700'
-            }`}
+            onClick={() => navigate('/rutinas')}
+            className="mt-1 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 transition-tea shadow-xs cursor-pointer"
           >
-            {isSimulating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-            <span>{isSimulating ? 'Pausar Simulación' : 'Simular Trayecto'}</span>
+            <span>{t('perf_go_routines')}</span>
           </button>
         </div>
-      </div>
-
-      {/* Tarjeta de Telemetría del Dispositivo del Niño */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Niño & Dispositivo */}
-        <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center flex-shrink-0">
-            <Smartphone className="w-6 h-6" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
-              Menor Vinculado
-            </span>
-            <p className="text-sm font-extrabold text-tea-text truncate">{childName}</p>
-            <p className="text-xs text-tea-muted truncate">{deviceModel}</p>
-          </div>
-        </div>
-
-        {/* Estado Geocerca */}
-        <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
-              Perímetro Seguro
-            </span>
-            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md mt-0.5">
-              <CheckCircle2 className="w-3 h-3" />
-              Dentro de la zona
-            </span>
-            <p className="text-[11px] text-tea-muted mt-0.5 truncate">Radio: {geofenceRadius}m</p>
-          </div>
-        </div>
-
-        {/* Batería & Señal */}
-        <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
-            <BatteryCharging className="w-6 h-6" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
-              Batería & Kiosk
-            </span>
-            <p className="text-sm font-extrabold text-tea-text">{coords.battery}% · En Carga</p>
-            <p className="text-xs text-brand-600 font-semibold">Kiosk U-Pad Activo</p>
-          </div>
-        </div>
-
-        {/* Coordenadas & Precisión */}
-        <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
-            <Navigation className="w-6 h-6" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider block">
-              Última Conexión
-            </span>
-            <p className="text-sm font-extrabold text-tea-text">{coords.lastSeen}</p>
-            <p className="text-xs text-tea-muted">Precisión: ±{coords.accuracy}m</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Sección del Mapa en Vivo y Controles */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Contenedor del Mapa (2 columnas) */}
-        <div className="lg:col-span-2 bg-white rounded-3xl border border-tea-border shadow-soft-xs overflow-hidden flex flex-col">
-          {/* Barra superior del mapa */}
-          <div className="px-5 py-3.5 border-b border-tea-border flex items-center justify-between bg-slate-50/70">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-              </span>
-              <span className="text-xs font-bold text-slate-700">
-                Ubicación Satelital en Tiempo Real
-              </span>
+      ) : (
+        <>
+          {/* Selector de hijo (si hay varios) */}
+          {hijos.length > 1 && (
+            <div className="flex items-center gap-3">
+              <label htmlFor="gps-hijo" className="text-xs font-bold text-tea-text">
+                {t('gps_child_select')}
+              </label>
+              <select
+                id="gps-hijo"
+                value={seleccionadoId}
+                onChange={(e) => setSeleccionadoId(e.target.value)}
+                className="px-3 py-2 rounded-xl text-xs font-semibold border border-tea-border bg-white text-tea-text focus:ring-2 focus:ring-brand-600 focus:outline-none"
+              >
+                {hijos.map((h) => (
+                  <option key={idDe(h)} value={idDe(h)}>
+                    {h.childName || h.child_name || t('child_unnamed')}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="text-[11px] font-mono text-slate-500">
-              LAT: {coords.lat.toFixed(5)} · LNG: {coords.lng.toFixed(5)}
-            </div>
-          </div>
+          )}
 
-          {/* Iframe del Mapa Interactivo OpenStreetMap */}
-          <div className="relative w-full h-[450px] bg-slate-100">
-            <iframe
-              title="Mapa de Ubicación del Menor"
-              src={mapUrl}
-              className="w-full h-full border-0"
-              loading="lazy"
-            />
-
-            {/* Overlay informativo flotante sobre el mapa */}
-            <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-2xl p-3 border border-slate-200 shadow-md max-w-xs text-xs">
-              <div className="flex items-center gap-2 mb-1">
-                <MapPin className="w-4 h-4 text-rose-500 flex-shrink-0" />
-                <span className="font-extrabold text-slate-800">{childName} (Tablet U-Pad)</span>
+          {/* Estado real: hijo, última ubicación y zona segura */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3">
+              <span className="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center flex-shrink-0">
+                <Tablet className="w-5 h-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider">{t('gps_child')}</p>
+                <p className="text-sm font-extrabold text-tea-text truncate">
+                  {hijo?.childName || hijo?.child_name || t('child_unnamed')}
+                </p>
               </div>
-              <p className="text-slate-600 text-[11px] leading-tight">
-                Zona actual: <span className="font-semibold text-brand-700">{safeZone}</span>
-              </p>
-              {isSimulating && (
-                <span className="mt-1.5 inline-block text-[10px] font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded">
-                  Simulación de trayecto activa ({coords.speed} km/h)
-                </span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3">
+              <span className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${desactualizada ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                <Clock className="w-5 h-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider">{t('gps_last_location')}</p>
+                <p className="text-sm font-extrabold text-tea-text">
+                  {segundosDesde === null ? t('gps_no_location_short') : haceCuanto(segundosDesde)}
+                </p>
+                {desactualizada && <p className="text-[11px] text-amber-700 font-semibold">{t('gps_stale')}</p>}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-tea-border shadow-soft-xs flex items-center gap-3">
+              <span
+                className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                  distanciaAZona === null ? 'bg-slate-100 text-slate-500' : dentroDeZona ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                }`}
+              >
+                {distanciaAZona !== null && !dentroDeZona ? <ShieldAlert className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider">{t('gps_zone')}</p>
+                <p className="text-sm font-extrabold text-tea-text">
+                  {!zona
+                    ? t('gps_zone_none')
+                    : distanciaAZona === null
+                      ? `${t('gps_zone_radius')}: ${zona.radio} m`
+                      : dentroDeZona
+                        ? t('gps_inside')
+                        : `${t('gps_outside')} · ${distanciaAZona} m`}
+                </p>
+                {zona && distanciaAZona !== null && (
+                  <p className="text-[11px] text-tea-muted">
+                    {t('gps_zone_radius')}: {zona.radio} m
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Mapa con la ubicación real */}
+            <div className="lg:col-span-2 bg-white rounded-3xl border border-tea-border shadow-soft-xs overflow-hidden">
+              {ubicacion ? (
+                <>
+                  <div className="px-4 py-3 border-b border-tea-border flex items-center justify-between gap-3 text-xs">
+                    <span className="font-mono text-tea-muted">
+                      {ubicacion.latitude.toFixed(5)}, {ubicacion.longitude.toFixed(5)}
+                    </span>
+                    <a
+                      href={enlaceMapa}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-bold text-brand-700 hover:underline"
+                    >
+                      {t('gps_open_map')}
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                  <iframe title={t('gps_map_title')} src={mapUrl} className="w-full h-[420px] border-0" loading="lazy" />
+                </>
+              ) : (
+                <div className="h-[420px] flex flex-col items-center justify-center text-center gap-2 px-6 bg-slate-50">
+                  <MapPin className="w-8 h-8 text-tea-subtle" />
+                  <p className="text-sm font-bold text-tea-text">{t('gps_no_location_title')}</p>
+                  <p className="text-xs text-tea-muted max-w-sm">{t('gps_no_location_desc')}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Zona segura: centro en la ubicación actual del niño y radio de 20 a 200 m */}
+            <div className="bg-white rounded-3xl p-6 border border-tea-border shadow-soft-xs space-y-4">
+              <div>
+                <h2 className="text-base font-extrabold text-tea-text flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-brand-600" />
+                  {t('gps_zone_title')}
+                </h2>
+                <p className="text-xs text-tea-muted mt-1">{t('gps_zone_desc')}</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <label htmlFor="gps-radio" className="font-bold text-tea-text">
+                    {t('gps_zone_radius')}
+                  </label>
+                  <span className="font-extrabold text-brand-600 font-mono">{radio} m</span>
+                </div>
+                <input
+                  id="gps-radio"
+                  type="range"
+                  min={RADIO_MIN}
+                  max={RADIO_MAX}
+                  step={10}
+                  value={radio}
+                  onChange={(e) => setRadio(Number(e.target.value))}
+                  disabled={guardandoZona}
+                  className="w-full accent-brand-600"
+                />
+                <div className="flex justify-between text-[10px] text-tea-subtle font-mono">
+                  <span>{RADIO_MIN} m</span>
+                  <span>{RADIO_MAX} m</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => guardarZona(ubicacion)}
+                  disabled={!ubicacion || guardandoZona}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 transition-tea shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {guardandoZona ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crosshair className="w-4 h-4" />}
+                  <span>{t('gps_zone_use_current')}</span>
+                </button>
+                {!ubicacion && <p className="text-[11px] text-tea-muted">{t('gps_zone_needs_location')}</p>}
+
+                {zona && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => guardarZona(zona)}
+                      disabled={guardandoZona || radio === zona.radio}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-tea-text bg-white border border-tea-border hover:bg-slate-50 transition-tea cursor-pointer disabled:opacity-50"
+                    >
+                      <span>{t('gps_zone_save_radius')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={quitarZona}
+                      disabled={guardandoZona}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{t('gps_zone_remove')}</span>
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {zona && distanciaAZona !== null && !dentroDeZona && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2" role="alert">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    {t('gps_outside_alert')} ({distanciaAZona} m)
+                  </span>
+                </div>
               )}
             </div>
           </div>
-        </div>
-
-        {/* Panel Lateral de Controles de Geocerca */}
-        <div className="space-y-4">
-          <div className="bg-white rounded-3xl p-5 border border-tea-border shadow-soft-xs space-y-4">
-            <h2 className="text-base font-extrabold text-tea-text tracking-tight flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-brand-600" />
-              Configuración de Geocerca
-            </h2>
-
-            <div>
-              <label className="text-xs font-bold text-tea-text block mb-1.5">
-                Zona Segura Designada
-              </label>
-              <select
-                value={safeZone}
-                onChange={(e) => setSafeZone(e.target.value)}
-                className="w-full text-xs font-medium bg-slate-50 border border-tea-border rounded-xl px-3 py-2 text-tea-text focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="Colegio San Martín (Zona Segura)">Colegio San Martín (Escolar)</option>
-                <option value="Hogar Familiar (Zona Segura)">Hogar Familiar</option>
-                <option value="Centro de Terapias TEA">Centro de Terapias TEA</option>
-                <option value="Parque Residencial Supervisado">Parque Residencial Supervisado</option>
-              </select>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="font-bold text-tea-text">Radio de Tolerancia Perimetral</span>
-                <span className="font-extrabold text-brand-600 font-mono">{geofenceRadius} metros</span>
-              </div>
-              <input
-                type="range"
-                min="50"
-                max="500"
-                step="25"
-                value={geofenceRadius}
-                onChange={(e) => setGeofenceRadius(Number(e.target.value))}
-                className="w-full accent-brand-600 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-tea-subtle font-mono mt-1">
-                <span>50m (Aula)</span>
-                <span>250m (Campus)</span>
-                <span>500m (Barrio)</span>
-              </div>
-            </div>
-
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 space-y-1">
-              <div className="flex items-center gap-1.5 font-bold">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Supervisión Perimetral Activa</span>
-              </div>
-              <p className="text-[11px] text-emerald-700 leading-snug">
-                Si el menor se aleja más de {geofenceRadius}m de {safeZone}, se enviará una notificación sonora a tu teléfono y se bloqueará el modo Kiosk.
-              </p>
-            </div>
-          </div>
-
-          {/* Tarjeta de Seguridad Kiosk y Acciones Rápidas */}
-          <div className="bg-white rounded-3xl p-5 border border-tea-border shadow-soft-xs space-y-3">
-            <h3 className="text-sm font-extrabold text-tea-text">
-              Protocolo de Emergencia & Kiosk
-            </h3>
-
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl text-xs">
-              <span className="font-medium text-slate-700">Modo Kiosk Protegido</span>
-              <span className="font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded">
-                Bloqueado
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl text-xs">
-              <span className="font-medium text-slate-700">Estado de Red del Móvil</span>
-              <span className="font-bold text-emerald-600 flex items-center gap-1">
-                <Wifi className="w-3.5 h-3.5" /> 4G LTE
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                alert(`Ping de sincronización emitido hacia el dispositivo de ${childName}. Las coordenadas satelitales fueron reconfirmadas.`);
-              }}
-              className="w-full py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors cursor-pointer"
-            >
-              Emitir Ping de Localización Sonora
-            </button>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 };

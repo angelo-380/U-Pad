@@ -1,10 +1,12 @@
 import React from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 
 export const RutinasErrorState = ({
   error,
   onRetry,
 }) => {
+  const { t } = useLanguage();
   return (
     <div
       role="alert"
@@ -16,10 +18,10 @@ export const RutinasErrorState = ({
         </div>
         <div>
           <h4 className="text-sm font-extrabold text-rose-950">
-            No se pudieron cargar las rutinas
+            {t('routines_error_title')}
           </h4>
           <p className="text-xs text-rose-800 font-medium mt-0.5 leading-relaxed">
-            {error || 'Ocurrió un problema de comunicación con el servidor de U-Pad.'}
+            {error || t('routines_error_desc')}
           </p>
         </div>
       </div>
@@ -30,7 +32,7 @@ export const RutinasErrorState = ({
         className="inline-flex items-center justify-center gap-2 px-5 py-2.5 min-h-[44px] rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold transition-colors shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 flex-shrink-0"
       >
         <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-        <span>Reintentar</span>
+        <span>{t('btn_retry')}</span>
       </button>
     </div>
   );

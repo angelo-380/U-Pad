@@ -20,6 +20,23 @@ export const adminService = {
   },
 
   /**
+   * Lista TODAS las rutinas del sistema (de la más reciente a la más antigua), paginadas
+   */
+  async listarRutinas(filtros = {}) {
+    const params = new URLSearchParams();
+    if (filtros.page) params.append('page', filtros.page);
+    if (filtros.limit) params.append('limit', filtros.limit);
+    if (filtros.search) params.append('search', filtros.search);
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const res = await api.get(`/api/admin/rutinas${query}`);
+    return {
+      rutinas: res?.data || [],
+      pagination: res?.pagination || { page: 1, limit: 25, total: 0, totalPages: 1 },
+    };
+  },
+
+  /**
    * Poder Absoluto Developer: Crear nuevo usuario directamente en la base de datos
    */
   async crearUsuario(userData) {

@@ -39,7 +39,7 @@ export const DeleteConfirmDialog = ({
 
   if (!isOpen) return null;
 
-  const targetRutina = rutina || { titulo: title || 'Rutina', id: 'rut_item', pasos: [] };
+  const targetRutina = rutina || { titulo: title || t('routine_singular'), id: 'rut_item', pasos: [] };
   const displayTitle = translateDynamicText ? translateDynamicText(targetRutina.titulo) : targetRutina.titulo;
 
   return (
@@ -77,7 +77,7 @@ export const DeleteConfirmDialog = ({
             onClick={handleClose}
             disabled={loading}
             className="p-1.5 rounded-xl text-tea-subtle hover:text-tea-text hover:bg-tea-cardSubtle transition-tea min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
-            aria-label="Cerrar diálogo"
+            aria-label={t('btn_close')}
           >
             <X className="w-5 h-5" />
           </button>

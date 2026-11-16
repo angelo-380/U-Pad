@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
+import { useLanguage } from './LanguageContext.jsx';
 
 const ToastContext = createContext(null);
 
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
+  const { t: traducir } = useLanguage();
 
   const removeToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -29,11 +31,11 @@ export const ToastProvider = ({ children }) => {
   );
 
   const toast = {
-    success: (message, title = 'Operación Exitosa') =>
+    success: (message, title = traducir('toast_success')) =>
       addToast({ type: 'success', title, message }),
-    error: (message, title = 'Ocurrió un Error') =>
+    error: (message, title = traducir('toast_error')) =>
       addToast({ type: 'error', title, message }),
-    info: (message, title = 'Información') =>
+    info: (message, title = traducir('toast_info')) =>
       addToast({ type: 'info', title, message }),
   };
 
@@ -89,7 +91,7 @@ export const ToastProvider = ({ children }) => {
                 type="button"
                 onClick={() => removeToast(t.id)}
                 className="flex-shrink-0 p-1.5 -mr-1 -mt-1 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-black/5 transition-colors"
-                aria-label="Cerrar notificación"
+                aria-label={traducir('btn_close')}
               >
                 <X className="w-4 h-4" />
               </button>

@@ -8,7 +8,7 @@ export const RoleBadge = ({ role, className = '' }) => {
 
   const roleConfigs = {
     developer: {
-      label: 'Desarrollador Cloud',
+      label: t('role_developer'),
       icon: Code2,
       bg: 'bg-indigo-50 text-indigo-900 border-indigo-200/80',
     },

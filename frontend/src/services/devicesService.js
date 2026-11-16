@@ -21,10 +21,10 @@ export const devicesService = {
   },
 
   /**
-   * Vincular dispositivo desde la web/app mediante código de 6 dígitos
+   * Vincular el dispositivo de un hijo con el código de 6 dígitos que muestra su teléfono (caduca a los 60 s)
    */
-  async vincularConCodigo(pairingCode, childName = 'Diego') {
-    const cleanCode = (pairingCode || '').trim().toUpperCase();
+  async vincularConCodigo(pairingCode, childName) {
+    const cleanCode = (pairingCode || '').trim();
     const res = await api.post('/api/devices/pairing/link', {
       code: cleanCode,
       pairing_code: cleanCode,
@@ -43,14 +43,18 @@ export const devicesService = {
   },
 
   /**
-   * Obtener telemetría de ubicación y estado del dispositivo infantil
+   * Guardar la zona segura de un hijo (radio entero de 20 a 200 m)
    */
-  async obtenerTelemetria(deviceId) {
-    try {
-      const res = await api.get(`/api/v1/devices/${deviceId}/telemetry`);
-      return res?.data || res;
-    } catch (e) {
-      return null;
-    }
+  async guardarZonaSegura(deviceId, { latitude, longitude, radio }) {
+    const res = await api.put(`/api/devices/${deviceId}/zona-segura`, { latitude, longitude, radio });
+    return res?.data || res;
+  },
+
+  /**
+   * Quitar la zona segura de un hijo
+   */
+  async quitarZonaSegura(deviceId) {
+    const res = await api.put(`/api/devices/${deviceId}/zona-segura`, { zonaSegura: null });
+    return res?.data || res;
   },
 };
