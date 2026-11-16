@@ -21,7 +21,7 @@
 
 ## 4. Tests
 - Backend: `cd backend && npm test` (Jest + Supertest, `NODE_ENV=test`).
-- 231/231 pruebas pasan (verificado 16-nov-2026, tras el bloque K); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
+- 247/247 pruebas pasan (verificado 16-nov-2026, tras L.1); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
 - `tests/setup.js` fuerza una base SQLite temporal por corrida (y su carpeta `backups/`): los tests nunca tocan una base real ni crean `.db` en el repo. También genera `JWT_SECRET` y `GCP_KMS_PEPPER_SECRET` aleatorios en cada corrida (no usa los del `.env`).
 
 ## 5. Roles (estado actual del código)
@@ -61,7 +61,7 @@ Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y 
 
 ## 7. Android
 - Desde el 16-nov-2026 (decisión del usuario) se puede modificar `app/` SOLO dentro del bloque L (correcciones críticas de integración con el backend; ver sección 10), con plan aprobado. Fuera de eso sigue sin tocarse.
-- No modificar la configuración de compilación (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradle.properties`, `gradlew*`) salvo indicación expresa.
+- No modificar la configuración de compilación (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradle.properties`, `gradlew*`) salvo indicación expresa. Excepción autorizada (16-nov-2026): quitar Firebase y el plugin `google-services` en el bloque L (Firebase ya no existe; el equipo lo confirmó).
 - La APK de la raíz (`UPad_Cloud_Ready.apk`) se regenera con `build-apk.sh` (lo ejecuta el usuario: en esta Mac no hay SDK de Android). Antes de commitearla, comprobar que no lleve claves (el repositorio de GitHub es público).
 - El backend es la fuente de verdad: Android se adapta a sus contratos, no al revés.
 
@@ -160,7 +160,35 @@ Nada de los bloques B a F tiene commit todavía (último commit: `59590d6`). Los
   - K.4: `GET /api/admin/rutinas` acepta `?turno=` (400 `TURNO_INVALIDO`) y devuelve `pasos`, `ninoId`, `actualizadoEn` y `organizacionNombre`; `GET /api/admin/users` devuelve `organizacionNombre`; nuevo `PUT /api/admin/organizaciones/:id {nombre}` (developer, 2–100 caracteres, 400 `NOMBRE_ORGANIZACION_INVALIDO`, 404). Developer Center: filtro por turno y pictogramas en la pestaña Rutinas, nombre de la organización en ambas tablas, campo «Nombre de la organización» al editar un usuario (solo si no cambia su organización), y «Rutinas de un usuario» agrupadas por turno con pictogramas.
   - K.5: `GET /api/empresario/kpis` devuelve `totalTutoresInstitucion` y `tutoresDetalle: [{id, nombre, cantidadNinos}]` (máx. 500, de la A a la Z, solo de su organización; el developer, de todas); `politicaPrivacidad.datosPersonalesVisibles: true`. Panel gerencial: tarjeta «Padres y tutores» con ventana de la lista y aviso de privacidad.
   - Falta: revisión del usuario en el navegador (perfil, Developer Center, panel gerencial, pictogramas).
-- **Siguiente:** bloque L (Android). Plan en `~/.claude/plans/empecemos-con-la-planificacion-sparkling-puzzle.md`. Desplegar J.1 y J.2 cuando el usuario quiera (no cambian el frontend: no hace falta regenerar `public_html`).
+- **`public_html` regenerado con el bloque K y commiteado (`4a9532a`, 16-nov-2026).** Producción aún no tiene J ni K: el usuario debe cancelar su `gcloud run deploy` a medias y desplegar desde `backend/` con `gcloud run deploy upad-backend-service --source . --region us-central1 --project project-e287e159-4fc1-4b7f-bf9`.
+- **Bloque L (Android) en curso, plan aprobado el 16-nov-2026** (`~/.claude/plans/empecemos-con-la-planificacion-sparkling-puzzle.md`). Decisiones del usuario: Firebase está muerto y se QUITA de la app (31 archivos; sin `google-services.json` no compila); «Entrar con Google» de la app irá por `/api/auth/google`; bloqueo kiosco y avisos al padre se hacen con el backend.
+  - **L.1 hecho (sin commit):** 247/247 tests (sección 24) y prueba de humo local correcta.
+    - Kiosco: `PUT /api/devices/:deviceId/kiosk {activo: boolean}` (token, solo el dueño: 404 `DEVICE_NOT_FOUND`; 400 `KIOSCO_VALOR_INVALIDO`). `GET /devices/status/:id` devuelve además `kioscoActivo` (solo true si está vinculado). `is_kiosk_active` vale 0 por defecto, se pone en 0 al (re)vincular, y la migración única `migrarKioscoDesactivado` (`user_version` 2) pone en 0 los existentes (antes valía 1 y nadie lo usaba). El KPI «kioscos» ahora cuenta solo los bloqueados de verdad.
+    - Avisos: tabla `notificaciones`. `POST /api/devices/:deviceId/notificaciones {tipo, titulo, descripcion}` sin token (solo vinculados; el padre lo decide el servidor; tipos `tarea_completada` y `rutina_completada`; título ≤120, descripción ≤500; 30/min por dispositivo, 429 `NOTIFICACION_RATE_LIMIT`; purga de más de 30 días). `GET /api/notificaciones?desde=<ISO>` (token; máx. 50, con `nombreHijo` y `noLeidas`; 400 `FECHA_INVALIDA`) y `PUT /api/notificaciones/leidas {ids?}`. Archivos: `services/notificacionesService.js`, `routes/notificacionesRoutes.js`.
+  - **L.2 a L.7 hechos (16-nov-2026, sin commit). La app compila sin `google-services.json` y no tiene dependencias de Firebase (0 referencias en `app/src`).** Se compila con `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" sh gradlew :app:assembleDebug` (`gradlew` no es ejecutable y no se toca).
+    - L.2: sin el plugin google-services, el BOM, auth, firestore, storage ni `kotlinx-coroutines-play-services`. Nuevo `data/ListenerRegistration.kt`. Se conservan Credential Manager, `googleid`, location y maps.
+    - L.3: `LocalDataManager.httpRequest` devuelve `RespuestaHttp(codigo, cuerpo)` y solo devuelve null si no hay conexión. Cuerpos con `JSONObject`. Un 401 con el token de la sesión la cierra y avisa (`sesionCaducada`). **Desviación del plan:** una sola URL base, sin pasar a otra si falla: Cloud Run, o el servidor que se fije en Ajustes (vacío = Cloud Run; en el emulador, `10.0.2.2`).
+    - L.4: el login sin conexión solo funciona si no hubo respuesta del servidor y verifica la contraseña con PBKDF2WithHmacSHA1 (sal y 20 000 rondas; SHA1 por minSdk 24). Google va por `/api/auth/google` (y `/registro` como tutor); sin `GOOGLE_CLIENT_ID` en `local.properties` el botón no aparece. Sin cuenta falsa ni usuario demo. Tras el login, «atrás» ya no vuelve a la bienvenida (se limpia la pila).
+    - L.5: vincular solo es éxito con 2xx (mensajes para 404/410/409/429); lista de hijos y mapa desde `GET /api/v1/devices` cada 10 s (sin Lima fija ni `dispositivo_local_1`); un solo sondeo de estado por dispositivo (cada 2 s); desvincular desde el kiosco comprueba correo y contraseña del padre en el servidor.
+    - L.6: el kiosco se activa con `PUT …/kiosk` y el niño lo recibe en el sondeo (unos 5 s). **Limitación de Android:** sin ser *device owner*, `startLockTask()` muestra el diálogo «App is pinned» y el fijado solo se activa si alguien lo confirma.
+    - L.7: el niño envía los avisos al completar una tarea o rutina; el padre consulta cada 30 s y muestra la notificación del sistema. Guarda en el teléfono la fecha del último aviso notificado (`ULTIMO_AVISO_NOTIFICADO_<uid>`): los que lleguen con la app cerrada se notifican al abrirla, y la primera vez no se notifica el historial. `NotificationsScreen` lista los avisos y los marca leídos.
+    - Premium: una cuenta sin plan elegido en el teléfono es premium por defecto (como antes).
+    - **Fallos previos encontrados en las pruebas y corregidos:**
+      - el manifiesto no declaraba `POST_NOTIFICATIONS`, así que en Android 13+ ninguna notificación de la app se mostraba;
+      - la consulta de avisos y la escucha del plan solo arrancaban al abrir la app, no tras iniciar sesión;
+      - el niño no marcaba tareas ni avisaba: buscaba la rutina en el almacenamiento local, donde no se guarda (ahora usa la lista en memoria);
+      - el teléfono del niño, que no inicia sesión, volvía a «¿Quién usará el dispositivo hoy?» al reabrir la app (ahora va directo a su pantalla).
+    - **Verificado en el emulador contra el backend local (16-nov-2026):**
+      - el niño genera el código y se vincula; desvincular desde la web lo devuelve al código;
+      - desvincular desde el kiosco con una contraseña incorrecta muestra el error y no desvincula; con la correcta, sí;
+      - un login con contraseña incorrecta muestra «Credenciales incorrectas» y no guarda sesión;
+      - vincular con un código inexistente muestra el error sin crear un hijo falso; con un código válido aparece el hijo;
+      - la ubicación del niño llega al servidor y el padre ve «Última ubicación recibida hace X min»;
+      - la rutina creada por el padre aparece en el niño; al completarla llegan los dos avisos («Actividad completada» y «Rutina de la mañana completada», con el nombre del hijo), sin duplicar la rutina en el servidor;
+      - el padre recibe la notificación del sistema y la lista de avisos.
+    - **El mapa sale en blanco:** falta `MAPS_API_KEY` en `local.properties` (la APK del compañero tenía `mock_maps_key`: su mapa nunca se dibujó). El usuario debe crear una clave de Maps SDK for Android restringida al paquete `com.example.upad` y su SHA-1, o decidir pasar el mapa a OpenStreetMap (requiere añadir una dependencia en Gradle).
+    - `MOBILE_SIN_TOKEN` sigue activo: el niño lee y sincroniza las rutinas del padre por `userId`, sin token.
+  - Siguiente: L.8 (APK con `build-apk.sh` sin claves, commits cuando el usuario lo pida y despliegue del backend con L.1 por el usuario).
 - **Pendiente (usuario):** (puesta en marcha de H ya completada) pedir al compañero que suba su última versión (Android y backend) y que no despliegue; decidir si se abre Android para corregir esos fallos.
 
 ### Revisión de los 22 puntos (15-nov-2026)
