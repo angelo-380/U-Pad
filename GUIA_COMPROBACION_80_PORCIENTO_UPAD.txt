@@ -98,8 +98,7 @@ OPCIÓN 1: VISOR SQL EN VIVO DIRECTO EN LA PLATAFORMA (¡La mejor y más impresi
 1. Abre la web en producción:
    https://upad-backend-service-466241893446.us-central1.run.app/login
 2. Inicia sesión como Developer:
-   - Correo: developer@upad.cloud
-   - Contraseña: Developer2026!#
+   - Correo y contraseña: los de DEV_EMAIL y DEV_PASSWORD con que se creó la cuenta developer en Cloud Run.
 3. En la barra superior, haz clic en el botón morado: "Backups [Dev]".
 4. En el modal, haz clic en la pestaña "Visor SQL Cloud en Vivo".
 5. Verás una consola SQL interactiva conectada directamente a la base de datos de Google Cloud Run.
@@ -122,7 +121,7 @@ OPCIÓN 2: ABRIR LA BASE DE DATOS DE CLOUD EN DB BROWSER FOR SQLITE (1 Clic)
    Verás exactamente los usuarios creados en la web o en la app móvil.
 
 OPCIÓN 3: DESCARGA DIRECTA POR TERMINAL (Comando 1 línea):
-TOKEN=$(curl -s -X POST -H "Content-Type: application/json" -d '{"email":"developer@upad.cloud","password":"Developer2026!#"}' https://upad-backend-service-466241893446.us-central1.run.app/api/auth/login | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+TOKEN=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"email\":\"$DEV_EMAIL\",\"password\":\"$DEV_PASSWORD\"}" https://upad-backend-service-466241893446.us-central1.run.app/api/auth/login | grep -o '"token":"[^"]*' | cut -d'"' -f4)
 BKP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" https://upad-backend-service-466241893446.us-central1.run.app/api/admin/backups | grep -o 'upad_relational_backup_[^"]*' | head -n1)
 curl -s -H "Authorization: Bearer $TOKEN" "https://upad-backend-service-466241893446.us-central1.run.app/api/admin/backups/$BKP" -o /Users/angeloricasca/Downloads/upad_cloud_en_vivo.db
 open -a "DB Browser for SQLite" /Users/angeloricasca/Downloads/upad_cloud_en_vivo.db
@@ -174,7 +173,7 @@ Para demostrárselo al profesor de forma inmediata:
 El sistema implementa control de acceso basado en roles (RBAC):
 
 1. DEVELOPER (Superadministrador de Infraestructura Cloud):
-   - Correo: developer@upad.cloud | Contraseña: Developer2026!#
+   - Cuenta: la creada con DEV_EMAIL/DEV_PASSWORD en Cloud Run (las cuentas sembradas ya no existen).
    - Capacidades: Control total. Botón exclusivo "Backups [Dev]" para crear backups
      atómicos en caliente (VACUUM INTO), consultar historial, descargarlos en .db y
      abrir el Visor SQL Cloud en vivo. Acceso a todas las rutinas, métricas del servidor
@@ -184,7 +183,7 @@ El sistema implementa control de acceso basado en roles (RBAC):
    - Supervisión transversal de rutinas escolares y auditoría de bloqueos de seguridad.
 
 3. EMPRESARIO (Director de Colegio / Terapeuta / Escuela Sol):
-   - Correo: director@colegiosol.edu.pe | Contraseña: ColegioSol2026!#
+   - Cuenta: cualquier empresario registrado en la web (las cuentas sembradas ya no existen).
    - Capacidades: Gestiona y crea rutinas exclusivamente para su institución (Colegio Sol).
      Aislamiento multitenant: Si intenta consultar o eliminar rutinas de otra escuela recibe
      403 Forbidden. NO puede acceder a backups del sistema.
@@ -280,13 +279,13 @@ El sistema implementa control de acceso basado en roles (RBAC):
       * Maneja fluidamente más de 4,850 usuarios registrados en la base de datos de Google Cloud.
 
 [✓] 3. Manejo de múltiples tipos de usuario y vistas especializadas:
-    - Developer / Admin (developer@upad.cloud / Developer2026!#):
+    - Developer (cuenta creada con DEV_EMAIL/DEV_PASSWORD):
       * Vista de Auditoría Global (/admin/usuarios): ve todos los usuarios del sistema,
         sus roles, organizaciones y fecha de registro.
       * Inspección de rutinas por usuario: botón "Ver Rutinas" para auditar qué secuencias
         visuales tiene configuradas cualquier usuario en particular.
       * Gestión de copias de seguridad atómicas y consola SQL en caliente.
-    - Empresario / Director de Colegio (director@colegiosol.edu.pe / ColegioSol2026!#):
+    - Empresario / Director de Colegio (cualquier empresario registrado):
       * Vista Gerencial Directiva (/gerencial): 100% blindada contra exposición de datos
         personales de menores (cero PII según normativas TEA).
       * 4 KPIs estratégicos: Población Estudiantil TEA (142 alumnos), Rutinas Institucionales
@@ -347,68 +346,58 @@ El sistema implementa control de acceso basado en roles (RBAC):
       pm2 start backend/src/server.js -i max --name upad-cluster
 
 ================================================================================
-11. GUÍA DEFINITIVA DE PRUEBAS DE CARGA CON K6 (HASTA 10,000 USUARIOS)
+11. PRUEBAS DE CARGA CON K6 (ACTUALIZADO 16-NOV-2026)
 ================================================================================
 
-Para demostrar al profesor la resiliencia del backend en la nube ante concurrencia
-masiva, dispones de scripts específicos listos para ejecutar con K6:
+Las pruebas son AUTOSUFICIENTES: cada ejecución crea su propia cuenta temporal
+(correo @carga.upad.test y contraseña aleatoria generada en memoria) y la BORRA al
+terminar (DELETE /api/auth/me). No hace falta ninguna cuenta previa ni contraseña,
+y la base de datos queda igual que antes. Ningún script contiene credenciales.
 
-• Archivos de prueba disponibles:
-  1. backend/tests/carga.js          -> Prueba rápida de 50 a 100 usuarios en 15-30s.
-  2. backend/tests/k6_10k_usuarios.js -> Suite de alto rendimiento parametrizable de 1,000 a 10,000 usuarios.
-  3. backend/tests/loadTestRunner.js -> Inyector de peticiones en ráfagas de alta frecuencia local.
+• Archivos (backend/tests/k6/):
+  1. carga.js              -> Escenario A: 50 a 100 usuarios leyendo (health, rutinas, KPIs y cumplimiento).
+  2. carga-escritura.js    -> Creación concurrente de rutinas (TOTAL rutinas con VUS usuarios).
+  3. limite-peticiones.js  -> Escenario B: defensa ante abuso (el servidor responde 429).
+  4. comun.js              -> Cuenta temporal, limpieza y utilidades comunes.
+  (backend/tests/loadTestRunner.js sigue disponible: ráfagas a /health sin k6.)
 
---------------------------------------------------------------------------------
-A) PRUEBA RÁPIDA EN VIVO ANTE EL PROFESOR (50 A 100 USUARIOS VIRTUALES):
---------------------------------------------------------------------------------
-Ejecuta K6 apuntando a la nube de Google Cloud Run:
-
-  cd /Users/angeloricasca/Projects/Cloud/U-Pad
-  k6 run -u 100 -d 15s backend/tests/carga.js
-
-• Explicación de los parámetros para el docente:
-  -u 100   : "Virtual Users" (VUs). Simula exactamente 100 usuarios navegando al mismo milisegundo.
-  -d 15s   : Duración de la prueba durante 15 segundos continuos.
-  > Resultado esperado: 100% de éxito en checks (health 200 y rutinas 200), 0% fallas.
+• Instalar k6: macOS «brew install k6» · Windows «winget install k6 --source winget».
 
 --------------------------------------------------------------------------------
-B) PRUEBA DE ESTRÉS EXTREMO CON K6: ESCALADO DE 1,000 A 10,000 USUARIOS:
+A) CONTRA EL BACKEND LOCAL (desde la carpeta backend/, con «npm run dev» encendido)
 --------------------------------------------------------------------------------
-El script backend/tests/k6_10k_usuarios.js incluye curvas de ramp-up, meseta de carga
-y ramp-down que simulan la llegada masiva de tutores y directores de colegios.
+  npm run carga             -> 100 usuarios durante 30 s (rúbrica 50-100 VUs).
+  npm run carga:escritura   -> 100 rutinas creadas por 10 usuarios a la vez.
+  npm run carga:limite      -> 30 intentos de vincular con códigos falsos: ~10 con 404 y el resto con 429.
+  npm run carga:humo        -> Las tres, cortas (lo que ejecuta GitHub Actions en cada push).
 
-1. Prueba de 1,000 Usuarios Concurrentes (Duración 30 segundos):
-   k6 run -e VUS=1000 -e DURATION=30s backend/tests/k6_10k_usuarios.js
+  Resultados en backend/reports/*.json. Contadores de la rúbrica: respuestas_429 y errores_otros.
 
-2. Prueba de 5,000 Usuarios Concurrentes (Duración 45 segundos):
-   k6 run -e VUS=5000 -e DURATION=45s backend/tests/k6_10k_usuarios.js
-
-3. Prueba Máxima de 10,000 Usuarios Concurrentes (Duración 1 minuto):
-   k6 run -e VUS=10000 -e DURATION=1m backend/tests/k6_10k_usuarios.js
-
-• Parámetros de la sentencia de K6 explicados al profesor:
-  -e VUS=10000      -> Define la variable de entorno para inyectar 10,000 usuarios virtuales concurrentes.
-  -e DURATION=1m    -> Sostiene la carga máxima durante 1 minuto completo (60 segundos).
-  -e BASE_URL=...   -> (Opcional) Permite alternar entre Google Cloud Run o http://localhost:3000.
-  thresholds        -> Reglas estrictas de calidad:
-                       * 'rate<0.05': Menos del 5% de fallos admitidos.
-                       * 'p(95)<2000': El 95% de las respuestas deben procesarse en menos de 2 segundos.
+  Nota: si en backend/.env existe RATE_LIMIT_AUTH_MAX con un valor bajo (p. ej. 10), el backend
+  solo admite ese número de registros/inicios de sesión cada 15 min por IP y cada prueba usa uno.
+  Quita esa variable (por defecto 50.000) y reinicia el backend.
 
 --------------------------------------------------------------------------------
-C) PRUEBA DE THROUGHPUT MASIVO (10,000 PETICIONES EN RÁFAGA LOCAL):
+B) CONTRA GOOGLE CLOUD RUN (desde la carpeta backend/)
 --------------------------------------------------------------------------------
-Si deseas demostrar el límite máximo de procesamiento (Requests Per Second - RPS)
-sin depender del ancho de banda doméstico ni de cortafuegos de IP externos:
+  k6 run -e BASE_URL=https://upad-backend-service-466241893446.us-central1.run.app tests/k6/carga.js
+  k6 run -e BASE_URL=https://upad-backend-service-466241893446.us-central1.run.app tests/k6/carga-escritura.js
+  k6 run -e BASE_URL=https://upad-backend-service-466241893446.us-central1.run.app tests/k6/limite-peticiones.js
 
-  1. Levanta el servidor backend:
-     cd /Users/angeloricasca/Projects/Cloud/U-Pad/backend && node src/server.js
+• Variables (-e NOMBRE=valor):
+  VUS=100        -> usuarios virtuales concurrentes (carga.js y carga-escritura.js).
+  DURACION=30s   -> tiempo de la meseta de carga (carga.js).
+  TOTAL=100      -> rutinas a crear (carga-escritura.js).
+  P95_MS=800     -> umbral: el 95 % de las respuestas debe tardar menos que esto (carga.js).
+  BASE_URL=...   -> destino (por defecto http://localhost:3000).
 
-  2. Ejecuta 10,000 peticiones con concurrencia de 200 sockets en paralelo:
-     cd /Users/angeloricasca/Projects/Cloud/U-Pad/backend
-     TOTAL_REQUESTS=10000 CONCURRENCY=200 node tests/loadTestRunner.js
+• Prueba de estrés (más usuarios): sube VUS y el umbral, p. ej.
+  ulimit -n 65536 && k6 run -e BASE_URL=<URL> -e VUS=1000 -e P95_MS=2000 tests/k6/carga.js
+  Cloud Run atiende con UNA instancia (la base SQLite se replica con Litestream), así que la
+  latencia crece con miles de usuarios: es una medición real, no un fallo del script.
 
-  > Resultado verificado: 10,000 peticiones atendidas con 0 errores (100% éxito)
-    y latencia media inferior a 10 ms gracias a libuv y mejorada gestión de I/O.
+• Umbrales (si alguno no se cumple, k6 lo marca con ✗ y termina con error):
+  http_req_failed < 1 %, p(95) < P95_MS, checks > 99 %, errores_otros = 0.
 
 ================================================================================
 12. CÓMO DEMOSTRAR AL PROFESOR LA VPC, SUBNET Y RED PRIVADA EN GOOGLE CLOUD
@@ -491,110 +480,16 @@ Si el profesor te pide mostrarlo por comando en tu terminal, ejecuta:
     3. ¡Listo! DrawSQL dibujará automáticamente todas las tablas, columnas y flechas de relaciones.
 
 ================================================================================
-14. CÓMO EJECUTAR Y DEMOSTRAR LAS PRUEBAS MASIVAS DE CARGA (K6) DIRECTAMENTE EN GOOGLE CLOUD
+14. PRUEBAS DE CARGA EN GOOGLE CLOUD
 ================================================================================
 
-¡IMPORTANTE - OBJETIVO 100% EN LA NUBE!:
-Estas pruebas NO se ejecutan en local; impactan directamente en el clúster de producción
-desplegado en Google Cloud Platform (Cloud Run en us-central1):
-• URL NUBE: https://upad-backend-service-466241893446.us-central1.run.app
+Ver la sección 11 (apartado B). Los scripts antiguos de load-tests/ se eliminaron:
+llamaban a rutas de otro backend, iniciaban sesión con cuentas que ya no existen y
+llevaban contraseñas escritas en el código. Las pruebas ya no crean cuentas de carga
+en producción: cada ejecución borra su cuenta temporal al terminar.
 
---------------------------------------------------------------------------------
-¿CÓMO SE DEFINE LA CANTIDAD DE USUARIOS Y EL TIEMPO EN EL COMANDO K6?
---------------------------------------------------------------------------------
-Los parámetros se introducen directamente mediante banderas (flags) en la línea de comandos:
-
-  • --vus <CANTIDAD>       : Define los Virtual Users (usuarios concurrentes simulados).
-                             Ejemplo: --vus 7500   o   --vus 1500   o   --vus 250
-  • --duration <TIEMPO>    : Define la duración de la prueba (s = segundos, m = minutos).
-                             Ejemplo: --duration 5s   o   --duration 10s   o   --duration 1m
-  • --iterations <CANTIDAD>: Define el número exacto de peticiones totales a repartir.
-                             Ejemplo: --iterations 10000
-
-DIRECTORIO OBLIGATORIO DE EJECUCIÓN:
-Para ejecutar cualquiera de estos comandos, debes posicionarte en la raíz del proyecto:
-   cd /Users/angeloricasca/Projects/Cloud/U-Pad
-
---------------------------------------------------------------------------------
-A) PRUEBA 1: RÁFAGA DE CREACIÓN DE RUTINAS EN 5 SEGUNDOS (BURST TEST EN CLOUD)
---------------------------------------------------------------------------------
-Esta prueba simula una ráfaga masiva de creación de rutinas visuales (POST /api/rutinas)
-impactando en vivo los microservicios en Google Cloud.
-
-1. Comando exacto especificando USUARIOS y TIEMPO directamente:
-   cd /Users/angeloricasca/Projects/Cloud/U-Pad
-   ulimit -n 65536 && k6 run --vus 7500 --duration 5s load-tests/k6_rafaga_7500_rutinas.js
-
-   [Desglose del comando]:
-   • ulimit -n 65536        -> Desbloquea el límite de sockets de Mac para admitir miles de conexiones simultáneas.
-   • --vus 7500             -> Aquí introduces la cantidad de usuarios deseados (7,500 usuarios virtuales).
-   • --duration 5s          -> Aquí introduces el tiempo deseado de la ráfaga (5 segundos).
-   • load-tests/...js       -> Script k6 optimizado para el endpoint de rutinas en Cloud.
-
-   (Nota: Si deseas realizar una prueba demostrativa más ligera y rápida ante el profesor:
-    ulimit -n 65536 && k6 run --vus 1500 --duration 5s load-tests/k6_rafaga_7500_rutinas.js)
-
-2. Cómo verificar en la terminal que está afectando a Google Cloud:
-   Al iniciar la ejecución, k6 imprimirá en consola:
-   ========================================================
-   [k6 Setup] OBJETIVO DIRECTO EN GOOGLE CLOUD PLATFORM:
-   [k6 Setup] URL NUBE: https://upad-backend-service-466241893446.us-central1.run.app
-   [k6 Setup] Autenticando Developer en Cloud para ráfaga...
-   ========================================================
-   Esto demuestra en vivo al profesor que el tráfico va dirigido al centro de datos de Google Cloud.
-
-3. Qué resultados mostrar al profesor:
-   • Total de rutinas creadas: Miles de peticiones POST /api/rutinas en ráfaga.
-   • Tasa de éxito: 100.00% (cero fallos).
-   • Tasa de error HTTP (http_req_failed): 0.00%.
-   • Throughput alcanzado: > 700 peticiones por segundo.
-   • Explicación técnica: "La base de datos SQLite opera en modo WAL (Write-Ahead Logging)
-     con busy_timeout=10000ms en Cloud Run, permitiendo que miles de escrituras concurrentes
-     se registren sin bloqueos de archivo (SQLITE_BUSY)".
-
---------------------------------------------------------------------------------
-B) PRUEBA 2: CARGA MASIVA DE 10,000 USUARIOS (REGISTRO + LOGIN SIMULTÁNEO EN CLOUD)
---------------------------------------------------------------------------------
-Esta prueba registra miles de cuentas únicas con cifrado PBKDF2 (100,000 rondas) + KMS Pepper
-e inicia sesión inmediatamente validando la emisión de tokens JWT contra Google Cloud.
-
-1. Comando exacto especificando USUARIOS y TIEMPO directamente:
-   cd /Users/angeloricasca/Projects/Cloud/U-Pad
-   ulimit -n 65536 && k6 run --vus 250 --iterations 10000 --duration 90s load-tests/k6_estres_10k_auth.js
-
-   [Desglose del comando]:
-   • --vus 250              -> 250 usuarios virtuales trabajando en paralelo continuo.
-   • --iterations 10000     -> 10,000 iteraciones completas de Registro + Login (20,000 peticiones HTTP en total).
-   • --duration 90s         -> Límite máximo de tiempo asignado para completar la carga.
-
-2. Qué resultados destacar al profesor:
-   • 20,000 peticiones de seguridad procesadas contra Cloud Run (10k registros + 10k logins).
-   • Aislamiento y Session Affinity: El servicio Cloud Run tiene activado Session Affinity
-     con la cookie 'GAESA', lo que garantiza que las peticiones encadenadas de un mismo cliente
-     se enrutan consistentemente al mismo contenedor sin pérdida de estado.
-   • Tasa de fallos inferior al 1% y p(95) < 3.0s bajo estrés criptográfico extremo.
-
---------------------------------------------------------------------------------
-C) CÓMO MOSTRAR LOS MILES DE USUARIOS EN VIVO EN LA WEB (PANEL DEVELOPER)
---------------------------------------------------------------------------------
-Para que el profesor vea con sus propios ojos los miles de usuarios registrados en Google Cloud:
-
-1. Ingresa a la URL de producción:
-   https://upad-backend-service-466241893446.us-central1.run.app
-
-2. Inicia sesión con la cuenta de desarrollador maestro:
-   • Correo: developer@upad.cloud
-   • Contraseña: Developer2026!#
-
-3. En el panel Developer Center, muestra:
-   • Pestaña "Gestión de Cuentas (CRUD Developer)":
-     - Observa el contador superior: muestra más de 4,950+ usuarios registrados en Cloud.
-     - Paginación activa: permite navegar por cientos de páginas (Página 1 a 248).
-     - Buscador reactivo: filtra instantáneamente por nombre o correo electrónico.
-   • Pestaña "Consola SQL Directa":
-     - Escribe la consulta: SELECT count(*) as total_usuarios FROM usuarios;
-     - Haz clic en "Ejecutar Consulta".
-     - El profesor verá la confirmación directa desde el motor SQLite en Cloud con miles de registros.
+Para ver los usuarios reales: Developer Center (cuenta developer creada con DEV_EMAIL,
+DEV_PASSWORD y DEV_NAME en Cloud Run) -> pestaña «Gestión de Cuentas».
 
 ================================================================================
 FIN DE LA GUÍA DE COMPROBACIÓN - U-PAD CLOUD (80%)
