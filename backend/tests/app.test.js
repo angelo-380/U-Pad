@@ -10,7 +10,7 @@ import request from 'supertest';
 import app from '../src/app.js';
 import { signToken } from '../src/utils/jwt.js';
 import { secretosFaltantes, SECRETOS_OBLIGATORIOS } from '../src/config/secretos.js';
-import { limitePairingLink, limiteTelemetria, limiteEstadoDispositivo, limiteNotificaciones, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
+import { limitePairingLink, limiteTelemetria, limiteEstadoDispositivo, limiteNotificaciones, limiteCumplimiento, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
 import { TIPOS_NOTIFICACION, MAX_LISTADO, DIAS_RETENCION } from '../src/services/notificacionesService.js';
 import { establecerVerificadorGoogle } from '../src/utils/googleVerifier.js';
 import { descripcionPersistencia } from '../src/config/persistencia.js';
@@ -66,6 +66,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     limiteTelemetria.reiniciar();
     limiteEstadoDispositivo.reiniciar();
     limiteNotificaciones.reiniciar();
+    limiteCumplimiento.reiniciar();
   });
 
   let authToken = '';
@@ -3214,6 +3215,191 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
         await aviso(deviceId);
         expect(db.prepare("SELECT COUNT(*) AS n FROM notificaciones WHERE id = 'ntf_l_viejo'").get().n).toBe(0);
       });
+    });
+  });
+  describe('25. Cumplimiento real: actividades completadas en el teléfono del niño (puntos 8 y 16)', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const correo = (etiqueta) => `test-${TIMESTAMP}-m-${etiqueta}-${crypto.randomUUID().slice(0, 8)}@upad.test`;
+    const hoy = () => new Date().toISOString().slice(0, 10);
+    const diasAtras = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const registrar = async (rol = 'tutor', extra = {}) => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: `Cuenta M ${rol}`,
+        email: correo(rol),
+        password: passwordGenerada(),
+        rol,
+        ...extra,
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    const vincularHijo = async (tutor, childName = 'Hijo M') => {
+      const code = String(crypto.randomInt(100000, 1000000));
+      const deviceId = `dev_m_${crypto.randomUUID().slice(0, 8)}`;
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+      const res = await request(app).post('/api/devices/pairing/link').set(auth(tutor.token)).send({ code, childName });
+      expect(res.status).toBe(201);
+      return deviceId;
+    };
+
+    const crearRutina = async (tutor, titulo, turno = 'MANANA') => {
+      const res = await request(app).post('/api/rutinas').set(auth(tutor.token)).send({ titulo, turno, pasos: [] });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    const completar = (deviceId, cuerpo = {}) =>
+      request(app).post(`/api/v1/devices/${deviceId}/cumplimiento`).send({ actividad: 'Lavarse los dientes', turno: 'MAÑANA', fecha: hoy(), ...cuerpo });
+
+    const resumen = (token, query = '') => request(app).get(`/api/v1/cumplimiento${query}`).set(auth(token));
+
+    test('sin registros: hayRegistros es false, nada completado y el porcentaje refleja lo esperado', async () => {
+      const tutor = await registrar();
+      const res = await resumen(tutor.token);
+      expect(res.status).toBe(200);
+      expect(res.body.data.hayRegistros).toBe(false);
+      expect(res.body.data.dias).toHaveLength(7);
+      expect(res.body.data.dias.every((d) => d.completadas === 0 && d.esperadas === 0 && d.porcentaje === null)).toBe(true);
+      expect(res.body.data.total).toEqual({ completadas: 0, esperadas: 0, porcentaje: null });
+    });
+
+    test('el niño vinculado registra una rutina activa de su padre (turno MAÑANA normalizado); repetirla el mismo día no cuenta doble', async () => {
+      const tutor = await registrar();
+      const deviceId = await vincularHijo(tutor);
+      const rutina = await crearRutina(tutor, 'Lavarse los dientes');
+
+      const primera = await completar(deviceId, { actividad: 'LAVARSE LOS DIENTES' });
+      expect(primera.status).toBe(201);
+      expect(primera.body.data).toMatchObject({ deviceId, rutinaId: rutina.id, actividad: 'Lavarse los dientes', turno: 'MANANA', fecha: hoy() });
+      expect(primera.body.data.padreId).toBeUndefined();
+
+      const segunda = await completar(deviceId);
+      expect(segunda.status).toBe(200);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM cumplimientos WHERE deviceId = ?').get(deviceId).n).toBe(1);
+    });
+
+    test('rechaza dispositivos no vinculados, actividades que no son rutinas activas, turnos y fechas inválidos', async () => {
+      const tutor = await registrar();
+      const deviceId = await vincularHijo(tutor);
+      await crearRutina(tutor, 'Lavarse los dientes');
+
+      expect((await completar('dev_m_desconocido')).status).toBe(404);
+      const inventada = await completar(deviceId, { actividad: 'Actividad inventada' });
+      expect(inventada.status).toBe(400);
+      expect(inventada.body.errors.code).toBe('RUTINA_NO_ENCONTRADA');
+      expect((await completar(deviceId, { turno: 'TARDE' })).body.errors.code).toBe('RUTINA_NO_ENCONTRADA');
+      expect((await completar(deviceId, { turno: 'MADRUGADA' })).body.errors.code).toBe('TURNO_INVALIDO');
+      expect((await completar(deviceId, { actividad: '' })).body.errors.code).toBe('ACTIVIDAD_REQUERIDA');
+      for (const fecha of ['2026-13-40', 'ayer', diasAtras(5)]) {
+        const res = await completar(deviceId, { fecha });
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('FECHA_INVALIDA');
+      }
+      expect((await request(app).post('/api/v1/devices/id%20malo/cumplimiento').send({})).body.errors.code).toBe('DEVICE_ID_INVALIDO');
+      expect(db.prepare('SELECT COUNT(*) AS n FROM cumplimientos WHERE deviceId = ?').get(deviceId).n).toBe(0);
+    });
+
+    test('límite de registros por dispositivo (429 CUMPLIMIENTO_RATE_LIMIT)', async () => {
+      const tutor = await registrar();
+      const deviceId = await vincularHijo(tutor);
+      await crearRutina(tutor, 'Lavarse los dientes');
+      for (let i = 0; i < LIMITES_DISPOSITIVOS.CUMPLIMIENTO_POR_DISPOSITIVO; i += 1) {
+        expect((await completar(deviceId)).status).toBeLessThan(300);
+      }
+      const excedido = await completar(deviceId);
+      expect(excedido.status).toBe(429);
+      expect(excedido.body.errors.code).toBe('CUMPLIMIENTO_RATE_LIMIT');
+    });
+
+    test('el tutor ve su porcentaje real del día, por turno y por hijo', async () => {
+      const tutor = await registrar();
+      const hijoA = await vincularHijo(tutor, 'Ana');
+      const hijoB = await vincularHijo(tutor, 'Beto');
+      await crearRutina(tutor, 'Lavarse los dientes', 'MANANA');
+      await crearRutina(tutor, 'Cenar', 'NOCHE');
+
+      // 2 rutinas × 2 hijos = 4 esperadas hoy; Ana completa las dos y Beto una
+      expect((await completar(hijoA)).status).toBe(201);
+      expect((await completar(hijoA, { actividad: 'Cenar', turno: 'NOCHE' })).status).toBe(201);
+      expect((await completar(hijoB)).status).toBe(201);
+
+      const res = await resumen(tutor.token, `?dias=1&hasta=${hoy()}`);
+      expect(res.status).toBe(200);
+      const datos = res.body.data;
+      expect(datos.hayRegistros).toBe(true);
+      expect(datos.dias).toEqual([{ fecha: hoy(), completadas: 3, esperadas: 4, porcentaje: 75 }]);
+      expect(datos.total).toEqual({ completadas: 3, esperadas: 4, porcentaje: 75 });
+      expect(datos.porTurno).toEqual([
+        { turno: 'MANANA', completadas: 2, esperadas: 2, porcentaje: 100 },
+        { turno: 'TARDE', completadas: 0, esperadas: 0, porcentaje: null },
+        { turno: 'NOCHE', completadas: 1, esperadas: 2, porcentaje: 50 },
+      ]);
+      const porNombre = Object.fromEntries(datos.porHijo.map((h) => [h.nombre, h]));
+      expect(porNombre.Ana).toMatchObject({ deviceId: hijoA, completadas: 2, esperadas: 2, porcentaje: 100 });
+      expect(porNombre.Beto).toMatchObject({ deviceId: hijoB, completadas: 1, esperadas: 2, porcentaje: 50 });
+    });
+
+    test('los días anteriores a la creación de la rutina no la esperan; dias fuera de rango → 400', async () => {
+      const tutor = await registrar();
+      await vincularHijo(tutor);
+      await crearRutina(tutor, 'Lavarse los dientes');
+      const res = await resumen(tutor.token, `?dias=3&hasta=${hoy()}`);
+      expect(res.body.data.dias.map((d) => d.esperadas)).toEqual([0, 0, 1]);
+      for (const dias of ['0', '32', 'x']) {
+        const malo = await resumen(tutor.token, `?dias=${dias}`);
+        expect(malo.status).toBe(400);
+        expect(malo.body.errors.code).toBe('DIAS_INVALIDO');
+      }
+      expect((await resumen(tutor.token, '?hasta=2020-01-01')).body.errors.code).toBe('FECHA_INVALIDA');
+    });
+
+    test('borrar la rutina saca sus registros del cálculo', async () => {
+      const tutor = await registrar();
+      const deviceId = await vincularHijo(tutor);
+      const rutina = await crearRutina(tutor, 'Lavarse los dientes');
+      await completar(deviceId);
+      expect((await resumen(tutor.token, `?dias=1&hasta=${hoy()}`)).body.data.total.completadas).toBe(1);
+
+      await request(app).delete(`/api/rutinas/${rutina.id}`).set(auth(tutor.token));
+      expect((await resumen(tutor.token, `?dias=1&hasta=${hoy()}`)).body.data.total).toEqual({ completadas: 0, esperadas: 0, porcentaje: null });
+    });
+
+    test('el empresario ve el cumplimiento de su organización (sin datos de los niños) y no el de otras', async () => {
+      const empresario = await registrar('empresario', { nombreInstitucion: 'Colegio M' });
+      const tutor = await registrar('tutor', { codigoOrganizacion: empresario.organizacion.codigo });
+      const deviceId = await vincularHijo(tutor);
+      await crearRutina(tutor, 'Lavarse los dientes');
+      await completar(deviceId);
+
+      const otroEmpresario = await registrar('empresario', { nombreInstitucion: 'Colegio Ajeno' });
+
+      const propio = await resumen(empresario.token, `?dias=1&hasta=${hoy()}`);
+      expect(propio.status).toBe(200);
+      expect(propio.body.data.total).toEqual({ completadas: 1, esperadas: 1, porcentaje: 100 });
+      expect(propio.body.data.porHijo).toBeUndefined();
+
+      const ajeno = await resumen(otroEmpresario.token, `?dias=1&hasta=${hoy()}`);
+      expect(ajeno.body.data.total.completadas).toBe(0);
+      expect(ajeno.body.data.hayRegistros).toBe(false);
+
+      // Otro tutor tampoco ve lo ajeno
+      const otroTutor = await registrar();
+      expect((await resumen(otroTutor.token, `?dias=1&hasta=${hoy()}`)).body.data.total.completadas).toBe(0);
+    });
+
+    test('el developer ve todo; sin token → 401', async () => {
+      const tutor = await registrar();
+      const deviceId = await vincularHijo(tutor);
+      await crearRutina(tutor, 'Lavarse los dientes');
+      await completar(deviceId);
+
+      const developer = tokenDe({ id: `usr_dev_m_${crypto.randomUUID().slice(0, 8)}`, email: correo('dev'), rol: 'developer' });
+      const res = await resumen(developer, `?dias=1&hasta=${hoy()}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.total.completadas).toBeGreaterThanOrEqual(1);
+      expect((await request(app).get('/api/cumplimiento')).status).toBe(401);
     });
   });
 });

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { deviceController } from '../controllers/deviceController.js';
 import { deviceService } from '../services/deviceService.js';
 import { notificacionesService } from '../services/notificacionesService.js';
+import { cumplimientoService } from '../services/cumplimientoService.js';
 import { sendCreated, sendSuccess } from '../utils/responseHandler.js';
 import { authenticate } from '../middlewares/authMiddleware.js';
 import { crearLimiteIntentos } from '../middlewares/limiteIntentos.js';
@@ -17,6 +18,7 @@ export const LIMITES_DISPOSITIVOS = Object.freeze({
   TELEMETRIA_POR_DISPOSITIVO: 30,
   ESTADO_POR_DISPOSITIVO: 120,
   NOTIFICACIONES_POR_DISPOSITIVO: 30,
+  CUMPLIMIENTO_POR_DISPOSITIVO: 60,
 });
 
 export const limitePairingLink = crearLimiteIntentos({
@@ -62,6 +64,15 @@ export const limiteNotificaciones = crearLimiteIntentos({
   claves: (req) => [`aviso:${req.params.deviceId}`],
   codigo: 'NOTIFICACION_RATE_LIMIT',
   mensaje: 'Demasiados avisos para este dispositivo. Espera un minuto.',
+});
+
+// Actividades completadas por el niño: 60 por minuto por dispositivo
+export const limiteCumplimiento = crearLimiteIntentos({
+  ventanaMs: 60_000,
+  maximo: LIMITES_DISPOSITIVOS.CUMPLIMIENTO_POR_DISPOSITIVO,
+  claves: (req) => [`cumplimiento:${req.params.deviceId}`],
+  codigo: 'CUMPLIMIENTO_RATE_LIMIT',
+  mensaje: 'Demasiados registros para este dispositivo. Espera un minuto.',
 });
 
 // reiniciar() de ambos límites de vinculación (lo usan los tests)
@@ -146,6 +157,18 @@ router.post('/:deviceId/notificaciones', validarDeviceId, limiteNotificaciones, 
   try {
     const aviso = notificacionesService.crear(req.params.deviceId, req.body || {});
     return sendCreated(res, 'Aviso enviado', aviso);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// Actividad completada en el teléfono del niño (sin token; solo vinculados; solo rutinas activas de su padre)
+router.post('/:deviceId/cumplimiento', validarDeviceId, limiteCumplimiento, (req, res, next) => {
+  try {
+    const { nuevo, cumplimiento } = cumplimientoService.registrar(req.params.deviceId, req.body || {});
+    return nuevo
+      ? sendCreated(res, 'Actividad registrada', cumplimiento)
+      : sendSuccess(res, 200, 'La actividad ya estaba registrada hoy', cumplimiento);
   } catch (error) {
     return next(error);
   }

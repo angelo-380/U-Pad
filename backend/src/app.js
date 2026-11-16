@@ -16,6 +16,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import kpiRoutes from './routes/kpiRoutes.js';
 import organizacionRoutes from './routes/organizacionRoutes.js';
 import notificacionesRoutes from './routes/notificacionesRoutes.js';
+import cumplimientoRoutes from './routes/cumplimientoRoutes.js';
 import { generalLimiter } from './middlewares/rateLimiter.js';
 import { notFoundHandler } from './middlewares/notFoundHandler.js';
 import { errorHandler } from './middlewares/errorHandler.js';
@@ -144,6 +145,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/empresario', kpiRoutes);
 app.use('/api/organizaciones', organizacionRoutes);
 app.use('/api/notificaciones', notificacionesRoutes);
+app.use('/api/cumplimiento', cumplimientoRoutes);
 app.use('/api', mobileSyncRoutes);
 
 // Alias para compatibilidad con prefijo /api/v1/
@@ -155,6 +157,7 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/empresario', kpiRoutes);
 app.use('/api/v1/organizaciones', organizacionRoutes);
 app.use('/api/v1/notificaciones', notificacionesRoutes);
+app.use('/api/v1/cumplimiento', cumplimientoRoutes);
 app.use('/api/v1', mobileSyncRoutes);
 
 // ==============================================================================

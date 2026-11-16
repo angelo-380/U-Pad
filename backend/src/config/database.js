@@ -236,7 +236,24 @@ export function inicializarEsquema(conexion) {
     leida INTEGER NOT NULL DEFAULT 0
   );
 
+  -- Cumplimiento real: cada actividad que el niño completa en su teléfono (una vez por día, actividad y turno).
+  -- Padre y organización los decide el servidor; la fecha es el día local del teléfono (YYYY-MM-DD).
+  CREATE TABLE IF NOT EXISTS cumplimientos (
+    id TEXT PRIMARY KEY,
+    padreId TEXT NOT NULL,
+    deviceId TEXT NOT NULL,
+    rutinaId TEXT,
+    actividad TEXT NOT NULL,
+    turno TEXT NOT NULL,
+    fecha TEXT NOT NULL,
+    completadoEn TEXT NOT NULL,
+    organizacionId TEXT,
+    UNIQUE(deviceId, actividad, turno, fecha)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_notificaciones_padre ON notificaciones(padreId, creadoEn);
+  CREATE INDEX IF NOT EXISTS idx_cumplimientos_padre ON cumplimientos(padreId, fecha);
+  CREATE INDEX IF NOT EXISTS idx_cumplimientos_organizacion ON cumplimientos(organizacionId, fecha);
   CREATE INDEX IF NOT EXISTS idx_usuarios_organizacion ON usuarios(organizacionId);
   CREATE INDEX IF NOT EXISTS idx_rutinas_organizacion ON rutinas(organizacionId);
 `);
