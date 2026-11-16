@@ -21,7 +21,7 @@
 
 ## 4. Tests
 - Backend: `cd backend && npm test` (Jest + Supertest, `NODE_ENV=test`).
-- 247/247 pruebas pasan (verificado 16-nov-2026, tras L.1); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
+- 256/256 pruebas pasan (verificado 16-nov-2026, tras el bloque M); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
 - `tests/setup.js` fuerza una base SQLite temporal por corrida (y su carpeta `backups/`): los tests nunca tocan una base real ni crean `.db` en el repo. También genera `JWT_SECRET` y `GCP_KMS_PEPPER_SECRET` aleatorios en cada corrida (no usa los del `.env`).
 
 ## 5. Roles (estado actual del código)
@@ -61,7 +61,7 @@ Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y 
 
 ## 7. Android
 - Desde el 16-nov-2026 (decisión del usuario) se puede modificar `app/` SOLO dentro del bloque L (correcciones críticas de integración con el backend; ver sección 10), con plan aprobado. Fuera de eso sigue sin tocarse.
-- No modificar la configuración de compilación (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradle.properties`, `gradlew*`) salvo indicación expresa. Excepción autorizada (16-nov-2026): quitar Firebase y el plugin `google-services` en el bloque L (Firebase ya no existe; el equipo lo confirmó).
+- No modificar la configuración de compilación (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradle.properties`, `gradlew*`) salvo indicación expresa. Excepción autorizada (16-nov-2026): quitar Firebase y el plugin `google-services` en el bloque L (Firebase ya no existe; el equipo lo confirmó). También autorizado (16-nov-2026, bloque N): sustituir `maps-compose` por `org.osmdroid:osmdroid-android` y quitar `MAPS_API_KEY`.
 - La APK de la raíz (`UPad_Cloud_Ready.apk`) se regenera con `build-apk.sh` (lo ejecuta el usuario: en esta Mac no hay SDK de Android). Antes de commitearla, comprobar que no lleve claves (el repositorio de GitHub es público).
 - El backend es la fuente de verdad: Android se adapta a sus contratos, no al revés.
 
@@ -191,6 +191,20 @@ Nada de los bloques B a F tiene commit todavía (último commit: `59590d6`). Los
   - **L.8 hecho (16-nov-2026):** commits `d783843` (backend L.1), `d168f04` (Android L.2 a L.7), `003d82a` (docs) y `fa71695` (APK), y **push** de la rama `feature/mejoras-feedback-docente` a `origin` (incluye los commits locales anteriores desde `cfbad61`). Antes del push se escanearon los cambios y la APK: sin claves privadas ni `.env`, `local.properties`, `google-services.json` o bases de datos. `UPad_Cloud_Ready.apk` se generó con los pasos de `build-apk.sh` usando `sh gradlew` (compilación limpia; sin Firebase; declara `POST_NOTIFICATIONS`; apunta a Cloud Run; `GOOGLE_CLIENT_ID` y `MAPS_API_KEY` vacíos).
   - Manual para el equipo (cambios, nuevo proceder y lista de pruebas finales): documento de Claude «U-Pad: manual de cambios y nuevo proceder» (https://claude.ai/artifact/7ptX6HSv6vWpttzv5ppXuA).
   - **Siguiente (usuario):** desplegar el backend desde `backend/` (producción aún no tiene J, K ni L.1: sin eso la APK falla en estado del niño, kiosco y avisos) y hacer las pruebas finales con dos teléfonos.
+- **Bloques M y N (16-nov-2026, plan aprobado: cierre de la entrega). La entrega se presenta desde esta rama (sin PR a main).**
+  - **M. Cumplimiento real (puntos 8 y 16):**
+    - Backend: tabla `cumplimientos` (única por dispositivo, actividad, turno y fecha) y `services/cumplimientoService.js`.
+    - `POST /api/devices/:deviceId/cumplimiento {actividad, turno, fecha}`: sin token, solo vinculados y solo rutinas activas del padre (400 `RUTINA_NO_ENCONTRADA`); fecha local a ±1 día (400 `FECHA_INVALIDA`); 60 por minuto (429 `CUMPLIMIENTO_RATE_LIMIT`); un duplicado responde 200.
+    - `GET /api/cumplimiento?dias=7&hasta=YYYY-MM-DD` (tutor: lo suyo con `porHijo`; empresario: su organización, sin datos de niños; developer: todo).
+    - Cálculo: esperadas = rutinas activas creadas hasta ese día × hijos vinculados del tutor; solo cuentan registros de rutinas activas y de hijos aún vinculados.
+    - Sección 25 de tests: 256/256.
+    - Web: `components/common/CumplimientoResumen.jsx` (barras por día, turno e hijo; estado vacío sin registros) en Desempeño y en «Adherencia semanal» del panel gerencial; `services/cumplimientoService.js` envía la fecha local; 10 claves es/en. Desempeño pide hasta 100 rutinas (antes, 20).
+    - Android: `LocalDataManager.registrarCumplimiento`, llamado en `completeTaskPorNombre` junto al aviso. Verificado en el emulador: el niño completó «Ponerse los zapatos» y quedó en la tabla.
+  - **N. Mapa del padre con OpenStreetMap (punto 6):** `HijoTrackingScreen` usa osmdroid (MAPNIK), con marcadores dibujados, atribución y ciclo de vida; la escucha de ubicación del padre se detiene al salir. OSM bloquea el identificador `com.example.*`, así que el userAgent es propio (`UPad-Android/1.0 …`). Verificado en el emulador: las teselas cargan y se ve el marcador del hijo.
+  - APK regenerada (sin claves, Firebase ni Google Maps).
+  - `backend/public_html` regenerado a pedido del usuario (`VITE_API_URL=""`; sin `localhost` ni claves en el bundle).
+  - **Subido (16-nov-2026):** commits `601d290` (backend), `2122bd1` (web), `cd4de32` (Android), `9e3c121` (APK), `7f34a5d` (public_html) y este de docs, con push a `feature/mejoras-feedback-docente`. Manual del equipo actualizado.
+  - **Falta (usuario):** desplegar el backend desde `backend/` (producción no tiene J, K, L ni M); pruebas finales con dos teléfonos; revisar en el navegador Desempeño y el panel gerencial con datos; añadir usuarios de prueba de OAuth.
 - **Pendiente (usuario):** (puesta en marcha de H ya completada) pedir al compañero que suba su última versión (Android y backend) y que no despliegue; decidir si se abre Android para corregir esos fallos.
 
 ### Revisión de los 22 puntos (15-nov-2026)
