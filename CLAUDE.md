@@ -188,7 +188,9 @@ Nada de los bloques B a F tiene commit todavía (último commit: `59590d6`). Los
       - el padre recibe la notificación del sistema y la lista de avisos.
     - **El mapa sale en blanco:** falta `MAPS_API_KEY` en `local.properties` (la APK del compañero tenía `mock_maps_key`: su mapa nunca se dibujó). El usuario debe crear una clave de Maps SDK for Android restringida al paquete `com.example.upad` y su SHA-1, o decidir pasar el mapa a OpenStreetMap (requiere añadir una dependencia en Gradle).
     - `MOBILE_SIN_TOKEN` sigue activo: el niño lee y sincroniza las rutinas del padre por `userId`, sin token.
-  - Siguiente: L.8 (APK con `build-apk.sh` sin claves, commits cuando el usuario lo pida y despliegue del backend con L.1 por el usuario).
+  - **L.8 hecho (16-nov-2026):** commits `d783843` (backend L.1), `d168f04` (Android L.2 a L.7), `003d82a` (docs) y `fa71695` (APK), y **push** de la rama `feature/mejoras-feedback-docente` a `origin` (incluye los commits locales anteriores desde `cfbad61`). Antes del push se escanearon los cambios y la APK: sin claves privadas ni `.env`, `local.properties`, `google-services.json` o bases de datos. `UPad_Cloud_Ready.apk` se generó con los pasos de `build-apk.sh` usando `sh gradlew` (compilación limpia; sin Firebase; declara `POST_NOTIFICATIONS`; apunta a Cloud Run; `GOOGLE_CLIENT_ID` y `MAPS_API_KEY` vacíos).
+  - Manual para el equipo (cambios, nuevo proceder y lista de pruebas finales): documento de Claude «U-Pad: manual de cambios y nuevo proceder» (https://claude.ai/artifact/7ptX6HSv6vWpttzv5ppXuA).
+  - **Siguiente (usuario):** desplegar el backend desde `backend/` (producción aún no tiene J, K ni L.1: sin eso la APK falla en estado del niño, kiosco y avisos) y hacer las pruebas finales con dos teléfonos.
 - **Pendiente (usuario):** (puesta en marcha de H ya completada) pedir al compañero que suba su última versión (Android y backend) y que no despliegue; decidir si se abre Android para corregir esos fallos.
 
 ### Revisión de los 22 puntos (15-nov-2026)
