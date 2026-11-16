@@ -1,3 +1,4 @@
+import { db } from '../config/database.js';
 import { verifyToken } from '../utils/jwt.js';
 import { AppError } from '../utils/AppError.js';
 
@@ -32,8 +33,30 @@ export const authenticate = (req, res, next) => {
     // Decodifica y verifica criptográficamente la firma del token
     const decoded = verifyToken(token);
 
-    // Inyecta el usuario autenticado en la petición
-    req.user = decoded;
+    // La cuenta se consulta en la base en cada petición: una cuenta borrada o desactivada deja de valer
+    // al instante (aunque su token no haya vencido) y el rol y la organización son siempre los actuales.
+    const usuario = decoded?.id
+      ? db.prepare('SELECT id, nombre, email, rol, organizacionId, activo FROM usuarios WHERE id = ?').get(decoded.id)
+      : null;
+    if (!usuario) {
+      throw new AppError('La cuenta de esta sesión ya no existe. Inicia sesión de nuevo.', 401, {
+        code: 'USUARIO_NO_EXISTE',
+      });
+    }
+    if (Number(usuario.activo) === 0) {
+      throw new AppError('Tu cuenta se encuentra desactivada. Contacta al administrador.', 403, {
+        code: 'ACCOUNT_INACTIVE',
+      });
+    }
+
+    req.user = {
+      ...decoded,
+      id: usuario.id,
+      nombre: usuario.nombre,
+      email: usuario.email,
+      rol: usuario.rol,
+      organizacionId: usuario.organizacionId || null,
+    };
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {

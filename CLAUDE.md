@@ -21,7 +21,7 @@
 
 ## 4. Tests
 - Backend: `cd backend && npm test` (Jest + Supertest, `NODE_ENV=test`).
-- 213/213 pruebas pasan (verificado 15-nov-2026, tras el bloque H); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
+- 222/222 pruebas pasan (verificado 16-nov-2026, tras J.1 y J.2); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
 - `tests/setup.js` fuerza una base SQLite temporal por corrida (y su carpeta `backups/`): los tests nunca tocan una base real ni crean `.db` en el repo. También genera `JWT_SECRET` y `GCP_KMS_PEPPER_SECRET` aleatorios en cada corrida (no usa los del `.env`).
 
 ## 5. Roles (estado actual del código)
@@ -34,7 +34,7 @@ Valores en minúscula, guardados en `usuarios.rol` y en el JWT (`rol`):
 
 Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y no tiene guardas por rol):
 - `backend/src/utils/roles.js`: catálogo de roles, `ROLES_REGISTRO_PUBLICO` (empresario, tutor), `ROLES_ASIGNABLES` (developer, empresario, tutor) y `normalizarRol`.
-- `backend/src/middlewares/authMiddleware.js` → `authenticate` y `authorizeRoles(...)`.
+- `backend/src/middlewares/authMiddleware.js` → `authenticate` y `authorizeRoles(...)`. Desde J.2, `authenticate` consulta la cuenta en la base en cada petición: borrada → 401 `USUARIO_NO_EXISTE`; desactivada → 403 `ACCOUNT_INACTIVE`; el rol y la organización de `req.user` salen de la base, no del token. En los tests, `tokenDe(payload)` crea la cuenta del token antes de firmarlo.
 - Rutas: `routes/adminRoutes.js` y `routes/backupRoutes.js` (developer), `routes/rutinasRoutes.js` (developer, empresario, tutor), `routes/kpiRoutes.js` (empresario, developer).
 - Lógica por rol: `services/rutinasService.js` (listar, obtener, editar, borrar; deniega por defecto a roles desconocidos) y `services/backupService.js`.
 - Registro público: `services/authService.js` solo acepta `empresario` y `tutor` (`developer` se rechaza con `INVALID_ROLE`). Al crear/editar usuarios, `routes/adminRoutes.js` valida el rol con lista blanca (`ROLES_ASIGNABLES`).
@@ -72,7 +72,7 @@ Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y 
 a) Se elimina por completo el rol `admin`. Se conservan `developer`, `empresario`, `tutor` y `niño`. Hecho en el bloque A para backend, frontend y tests (el identificador técnico de niño será `nino`, aún sin implementar).
 b) Se eliminan los seeders y los datos demo. Hecho en `backend/src/config/database.js` (sin cuentas sembradas ni auto-reparación de credenciales). La primera cuenta `developer` se crea SOLO si la tabla `usuarios` está vacía, leyendo `DEV_EMAIL`, `DEV_PASSWORD` y `DEV_NAME` del entorno (las tres son obligatorias; si falta alguna no se crea nada y se avisa en consola con los nombres faltantes). Sus valores nunca se escriben en archivos. `backend/scripts/seedAdmin.js` y el script `seed:admin` ya fueron eliminados. Pendiente: rotar/eliminar las cuentas sembradas que ya existan en bases de datos creadas antes (p. ej. la de Cloud Run).
 c) Solo se trabaja la web. La app Android no se toca (ver sección 7).
-d) El informe del proyecto es la referencia: pepper con Cloud KMS, backups a Cloud Storage y persistencia de la base de datos. Desde el bloque H el CÓDIGO lo soporta (variables `PEPPER_KMS_CIFRADO`/`PEPPER_KMS_CLAVE` y `UPAD_BUCKET`), pero solo funciona en producción cuando el usuario configure Google Cloud (ver «Puesta en marcha de H» en la sección 10). Hasta comprobarlo con `/health`, no lo des por hecho en la documentación.
+d) El informe del proyecto es la referencia: pepper con Cloud KMS, backups a Cloud Storage y persistencia de la base de datos. **Verificado en producción el 16-nov-2026** (`/health`: `persistencia: "Cloud Storage (Litestream)"`, `pepper: "Cloud KMS"`; una cuenta sobrevivió a una nueva implementación; carpetas `db/` y `backups/` en el bucket).
 e) El build del frontend se copia a `backend/public_html` solo cuando el usuario lo pida, al final del trabajo. Mientras tanto, no se regenera ni se modifica.
 
 ## 10. Estado de avance (actualizado 16-nov-2026)
@@ -131,6 +131,26 @@ Nada de los bloques B a F tiene commit todavía (último commit: `59590d6`). Los
   - Datos falsos corregidos de paso: el botón «Ver rutinas» de la consola de Backups pedía columnas inexistentes y siempre fallaba; la ventana «Rutinas de un usuario» mostraba campos inexistentes y una hora inventada («08:00»), ahora muestra título, turno, pasos y fecha; los banners de Rutinas prometían KPIs de adherencia (ya no existen) y decían «miles» de usuarios.
   - Fuera de alcance, siguen en español: `AiAssistantPage.jsx` (no está en el menú), `EnDesarrolloPage.jsx` y `EnDesarrolloModal.jsx` (código muerto: nada los importa; contienen promesas falsas, conviene borrarlos) y los mensajes de error del backend distintos de login y registro.
 
+### Integración del trabajo Android del compañero (16-nov-2026)
+- **Paso 1 hecho:** commits locales (sin push) `cfbad61` backend, `8ee46d0` frontend, `10c982a` public_html y `bbb27d6` docs. 213/213 tests y 0 secretos antiguos en lo commiteado.
+- **Paso 2 hecho:** `git fetch`. Su trabajo subido está en `origin/feature/entrega-80-cloud-dualidad` (hasta `95983cd`, 12-nov): Android (`LocalDataManager`, `RoutineViewModel`, `ChildStartScreen`, `DevicePairingScreen`, `ConnectionScreen`, `DeviceManagementScreen`, APK) y un backend propio. El backend que sirve producción (revisión `00035`, 15-nov) NO está en GitHub: tiene trabajo sin subir.
+- **Hallazgo crítico de seguridad:** su backend (`asegurarCuentasMaestras` en `database.js`) crea al arrancar una cuenta developer y otra empresario con contraseñas escritas en el código y en un mensaje de commit. El repositorio de GitHub es PÚBLICO. Esas cuentas existen probablemente en producción (revisión `00035`) y en la etiqueta `credential-repair` (`00033`). Además, la función borra usuarios por patrones de correo. Nada de eso se trae a nuestro backend; esas contraseñas no deben volver a usarse. Solución inmediata: pasar el tráfico a nuestra revisión (base limpia) y quitar la etiqueta `credential-repair`.
+- **Paso 3 (informe), contratos de su app frente a nuestro backend:**
+  - Funcionan tal cual: login y registro (tutor), `pairing/create`, polling `GET /pairing/:code`, `pairing/link` con `parentId`, telemetría, desvincular con `DELETE /devices/:id?parentId=`, sincronización de rutinas por `userId` (sin token, así que `MOBILE_SIN_TOKEN` debe seguir activo).
+  - Falta en nuestro backend: `GET /api/v1/devices/status/:deviceId` → `{linked, parentId}`. Lo usa la app del niño cada 2 s para detectar una desvinculación hecha desde la web.
+  - Punto 10 resuelto en Android: el niño regenera el código cada 60 s con cuenta regresiva y pantalla de «Sin conexión». Punto 6 (GPS en el teléfono del padre) sin cambios.
+  - Fallos de Android (requieren tocarlo): `httpPostSync` devuelve null ante cualquier error HTTP, así que (a) un código vencido o erróneo en `pairing/link` se da por bueno en el teléfono del padre y (b) un login con contraseña incorrecta cae al «login local offline» y entra sin comprobar la contraseña si ese correo ya inició sesión antes en el teléfono. Sigue sin enviar el token.
+  - Su backend tiene una idea útil: `authenticate` consulta el usuario en la base en cada petición (una cuenta desactivada o con rol cambiado deja de valer al instante). Candidata a portarse con tests.
+  - La APK subida no contiene una clave de Groq (comprobado).
+- **Tráfico pasado a nuestro código (16-nov-2026, 14:47 UTC):** el usuario ejecutó `--to-latest` y quitó `credential-repair` (su URL da 404). `/health` responde con el código nuevo, pero `persistencia: "disco temporal"`, `pepper: "variable de entorno"` y `googleClientId: null`: la revisión no tiene `UPAD_BUCKET`, `PEPPER_KMS_*` ni `GOOGLE_CLIENT_ID` (falta el paso 5 de la puesta en marcha de H). La base actual es efímera: no crear cuentas reales hasta completar el paso 5.
+- **Primer intento del paso 5 (revisión `00039-rdl`, 16-nov 14:50 UTC): no arrancó** (el tráfico siguió en `00038`). Logs: `PEPPER_KMS_CLAVE` tenía una «P» de más al inicio (`Pprojects/…`) → KMS respondió `INVALID_ARGUMENT` y el backend salió con exit(1), como está diseñado. Además, el arranque avisó «sin UPAD_BUCKET»: la variable no llegó a esa revisión. Corrección indicada: quitar la «P» y añadir `UPAD_BUCKET`.
+- **Segundo intento (16-nov 14:56 UTC): arrancó.** `/health` → `pepper: "Cloud KMS"` (paso H.3 verificado en producción) y `googleClientId` definido. Pero `persistencia` sigue en `"disco temporal"`: `UPAD_BUCKET` sigue sin llegar a la revisión. Se pidió al usuario listar solo los NOMBRES de las variables para encontrar el error. Resultado: la variable se llamaba `U-PAD_BUCKET` (con guion); debe ser `UPAD_BUCKET`. Variables presentes: `NODE_ENV`, `UV_THREADPOOL_SIZE`, `JWT_SECRET`, `PEPPER_KMS_CIFRADO`, `PEPPER_KMS_CLAVE`, `DEV_EMAIL`, `DEV_PASSWORD`, `DEV_NAME`, `GOOGLE_CLIENT_ID`. Ya no están `GCP_KMS_PEPPER_SECRET` (paso 7 hecho de hecho) ni `RATE_LIMIT_DISABLED` (límites del login activos).
+- **Corregido (16-nov 14:58 UTC):** con `UPAD_BUCKET` bien escrito, `/health` → `persistencia: "Cloud Storage (Litestream)"` y `pepper: "Cloud KMS"`. H.1 y H.3 verificados en producción. **Paso 8 completado por el usuario (16-nov-2026):** entró con la cuenta developer, creó una cuenta de prueba que sobrevivió a una nueva implementación, el bucket tiene `db/` y `backups/`, quitó `DEV_PASSWORD` y añadió la URL de Cloud Run a los orígenes autorizados de OAuth (app de Google en modo «Prueba»; el usuario se añadió como usuario de prueba, los compañeros se añaden después). **Bloque H cerrado en producción.**
+- **J.1 hecho (16-nov-2026, sin commit):** `GET /api/v1/devices/status/:deviceId` (y `/api/devices/…`), sin token, para la app del niño: `{deviceId, linked, parentId}` (desconocido → `linked: false`, `parentId: ''`); valida el formato del id (400 `DEVICE_ID_INVALIDO`) y admite 60 consultas por minuto por dispositivo (429 `ESTADO_RATE_LIMIT`; la app consulta cada 2 s). No expone nombre, modelo ni ubicación. Riesgo aceptado mientras `MOBILE_SIN_TOKEN` siga activo: quien conozca un `deviceId` obtiene el id del padre.
+- **J.2 hecho (16-nov-2026, sin commit):** `authenticate` comprueba la cuenta en la base en cada petición (ver sección 5). Sección 22 de tests (9 pruebas); 222/222. Prueba de humo local correcta.
+- **Siguiente:** J.3 (traer `app/` y la APK cuando el compañero suba su versión final) y J.4 (decidir si se abre Android). Desplegar J.1 y J.2 cuando el usuario quiera (no cambian el frontend: no hace falta regenerar `public_html`).
+- **Pendiente (usuario):** (puesta en marcha de H ya completada) pedir al compañero que suba su última versión (Android y backend) y que no despliegue; decidir si se abre Android para corregir esos fallos.
+
 ### Revisión de los 22 puntos (15-nov-2026)
 - Resueltos: 2, 3, 4, 5, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17 (web: paso 2; backend: paso I.5), 18, 19, 20, 21, 22 y la nota extra (rol admin).
 - En pausa: 1 (Google, bloque G). El usuario ya guardó `GOOGLE_CLIENT_ID` en `backend/.env` y se comprobó (sin leer el archivo) que existe y tiene el formato correcto. Ningún código lo usa todavía.
@@ -178,8 +198,8 @@ Nada de los bloques B a F tiene commit todavía (último commit: `59590d6`). Los
 
 ### Pendiente
 Referencia: el listado completo de 22 puntos del docente está en `docs/FEEDBACK_DOCENTE.md` (los números de abajo son los de ese listado).
-- **G. Login con Google.**
-- **H. Coherencia con el informe:** código hecho; falta la puesta en marcha en Google Cloud (usuario).
+- **G. Login con Google:** funciona en local y está configurado en producción; falta añadir a los compañeros (y al docente) como usuarios de prueba en la consola de OAuth.
+- **H. Coherencia con el informe:** hecho y verificado en producción el 16-nov-2026.
 - **I. Seguridad (en curso, ver «Orden de trabajo»).** Para cerrar del todo la sincronización móvil, la app Android debe enviar `Authorization: Bearer <AUTH_TOKEN>` (ya guarda el token al iniciar sesión, pero no lo envía). Cuando lo haga, poner `MOBILE_SIN_TOKEN=false` en Cloud Run. Mientras tanto, quien conozca el `userId` de alguien puede crear, ver o borrar sus rutinas desde la API.
 - **Android (bloque D):** la app del niño genera el código una vez por sesión y no lo renueva. Con la caducidad de 60 s, un código vencido obliga a reabrir la app. Falta que la app lo regenere cada 60 s con una cuenta regresiva.
 - **GPS en el teléfono del padre (Android):** la pantalla de seguimiento de la app lee la ubicación guardada en el propio teléfono, no la del servidor, así que el «tanto en el teléfono» del punto 6 depende de cambiar Android. Además, la app del niño solo envía la ubicación si el padre es premium en la app.
@@ -188,7 +208,7 @@ Referencia: el listado completo de 22 puntos del docente está en `docs/FEEDBACK
 - **Registro de cumplimiento real** (tabla y endpoint para rutinas completadas): queda para cuando se pueda modificar la app Android. Además, la app envía `dias` al sincronizar y el backend lo ignora.
 
 ### Recordatorios
-- Cuentas semilla antiguas de producción: desaparecen al poner en marcha H (la base de producción empieza vacía).
+- Cuentas semilla antiguas de producción: eliminadas (la base de producción empezó vacía el 16-nov-2026). Las cuentas maestras del backend del compañero tampoco existen ya.
 - `backend/public_html` regenerado el 16-nov-2026; volver a regenerarlo si cambia el frontend antes de desplegar.
 - Idiomas: las claves de `t()` deben existir en `es` y en `en` (el docente revisa en inglés; los usuarios usan español). pt, fr y de caen a español. Todo texto nuevo de la web va por `t()`; para valores variables usa `t('clave', { valor })` con `{valor}` en el texto.
 - En el primer arranque en producción, la migración creará una organización por cada empresario existente (incluidas las cuentas de las pruebas de carga).

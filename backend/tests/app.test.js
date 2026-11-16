@@ -10,7 +10,7 @@ import request from 'supertest';
 import app from '../src/app.js';
 import { signToken } from '../src/utils/jwt.js';
 import { secretosFaltantes, SECRETOS_OBLIGATORIOS } from '../src/config/secretos.js';
-import { limitePairingLink, limiteTelemetria, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
+import { limitePairingLink, limiteTelemetria, limiteEstadoDispositivo, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
 import { establecerVerificadorGoogle } from '../src/utils/googleVerifier.js';
 import { descripcionPersistencia } from '../src/config/persistencia.js';
 import { crearAlmacenGcs, crearAlmacenLocal, establecerAlmacenBackups } from '../src/services/almacenBackups.js';
@@ -46,12 +46,23 @@ const TIMESTAMP = Date.now();
 // Se genera en cada ejecución: los tests nunca contienen credenciales literales.
 const passwordGenerada = () => `Aa1!${crypto.randomBytes(9).toString('hex')}`;
 
+// authenticate comprueba la cuenta en la base en cada petición: este ayudante crea la cuenta del token
+// (con su rol y organización, sin contraseña utilizable) si no existe, y luego firma el token.
+const tokenDe = (payload) => {
+  db.prepare(`
+    INSERT OR IGNORE INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+    VALUES (?, ?, ?, 'sin-uso', 'sin-uso', ?, ?, 1, ?)
+  `).run(payload.id, payload.nombre || payload.id, payload.email, payload.rol, payload.organizacionId ?? null, new Date().toISOString());
+  return signToken(payload);
+};
+
 describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', () => {
   // Aislamiento: los límites de intentos (en memoria) se reinician antes de cada test,
   // porque toda la suite comparte la IP 127.0.0.1.
   beforeEach(() => {
     limitePairingLink.reiniciar();
     limiteTelemetria.reiniciar();
+    limiteEstadoDispositivo.reiniciar();
   });
 
   let authToken = '';
@@ -316,21 +327,21 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     const orgAId = `org_A_${TIMESTAMP}`;
     const orgBId = `org_B_${TIMESTAMP}`;
 
-    const orgAToken = signToken({
+    const orgAToken = tokenDe({
       id: `emp_a_${TIMESTAMP}`,
       email: `test-${TIMESTAMP}-empa@org-a.com`,
       rol: 'empresario',
       organizacionId: orgAId,
     });
 
-    const orgBToken = signToken({
+    const orgBToken = tokenDe({
       id: `emp_b_${TIMESTAMP}`,
       email: `test-${TIMESTAMP}-empb@org-b.com`,
       rol: 'empresario',
       organizacionId: orgBId,
     });
 
-    const developerToken = signToken({
+    const developerToken = tokenDe({
       id: `dev_${TIMESTAMP}`,
       email: `test-${TIMESTAMP}-dev@upad.test`,
       rol: 'developer',
@@ -403,7 +414,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     let devToken = '';
 
     beforeAll(() => {
-      devToken = signToken({
+      devToken = tokenDe({
         id: `dev_backups_${TIMESTAMP}`,
         email: `test-${TIMESTAMP}-dev-backups@upad.test`,
         rol: 'developer',
@@ -507,11 +518,11 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     const contarUsuarios = (email) => db.prepare('SELECT COUNT(*) AS total FROM usuarios WHERE email = ?').get(email).total;
     const auth = (token) => ({ Authorization: `Bearer ${token}` });
 
-    const developerToken = signToken({ id: `dev8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev8@upad.test`, rol: 'developer', organizacionId: null });
-    const tutorToken = signToken({ id: `tutor8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-tutor8@upad.test`, rol: 'tutor', organizacionId: null });
-    const empresarioToken = signToken({ id: `emp8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-emp8@upad.test`, rol: 'empresario', organizacionId: `org8_${TIMESTAMP}` });
+    const developerToken = tokenDe({ id: `dev8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev8@upad.test`, rol: 'developer', organizacionId: null });
+    const tutorToken = tokenDe({ id: `tutor8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-tutor8@upad.test`, rol: 'tutor', organizacionId: null });
+    const empresarioToken = tokenDe({ id: `emp8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-emp8@upad.test`, rol: 'empresario', organizacionId: `org8_${TIMESTAMP}` });
     // Token "legado": emitido cuando el rol admin aún existía
-    const adminLegadoToken = signToken({ id: `admin8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-admin8@upad.test`, rol: 'admin', organizacionId: null });
+    const adminLegadoToken = tokenDe({ id: `admin8_${TIMESTAMP}`, email: `test-${TIMESTAMP}-admin8@upad.test`, rol: 'admin', organizacionId: null });
 
     describe('8.1 Registro público', () => {
       test('rol "developer" es rechazado (400 INVALID_ROLE) y NO crea la cuenta', async () => {
@@ -1032,7 +1043,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       });
 
       test('un empresario sin organización en el token recibe 409 (no hay fallback a una organización demo)', async () => {
-        const tokenSinOrg = signToken({ id: `emp_sin_org_${TIMESTAMP}`, email: `test-${TIMESTAMP}-sinorg@upad.test`, rol: 'empresario', organizacionId: null });
+        const tokenSinOrg = tokenDe({ id: `emp_sin_org_${TIMESTAMP}`, email: `test-${TIMESTAMP}-sinorg@upad.test`, rol: 'empresario', organizacionId: null });
 
         const res = await kpis(tokenSinOrg);
 
@@ -1041,7 +1052,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       });
 
       test('el developer ve el agregado global o una organización concreta; una inexistente da 404', async () => {
-        const developerToken = signToken({ id: `dev9_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev9@upad.test`, rol: 'developer', organizacionId: null });
+        const developerToken = tokenDe({ id: `dev9_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev9@upad.test`, rol: 'developer', organizacionId: null });
 
         const global = await kpis(developerToken);
         expect(global.status).toBe(200);
@@ -1086,7 +1097,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     });
 
     describe('9.6 El developer asigna organizaciones solo si existen (/api/admin/users)', () => {
-      const developerToken = signToken({ id: `dev96_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev96@upad.test`, rol: 'developer', organizacionId: null });
+      const developerToken = tokenDe({ id: `dev96_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev96@upad.test`, rol: 'developer', organizacionId: null });
       let orgA;
       let orgB;
 
@@ -1123,7 +1134,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
 
       test('al cambiar la organización de un usuario, sus rutinas se mueven con él', async () => {
         const tutor = await crearUsuarioAdmin({ rol: 'tutor', organizacionId: orgA.id });
-        const tokenTutor = signToken({ id: tutor.body.data.id, email: tutor.body.data.email, rol: 'tutor', organizacionId: orgA.id });
+        const tokenTutor = tokenDe({ id: tutor.body.data.id, email: tutor.body.data.email, rol: 'tutor', organizacionId: orgA.id });
         const rutina = await crearRutina(tokenTutor);
         expect(rutina.body.data.organizacionId).toBe(orgA.id);
 
@@ -1782,7 +1793,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
 
   describe('12. Developer Center: rutinas y usuarios (de la más reciente a la más antigua) con paginación', () => {
     const auth = (token) => ({ Authorization: `Bearer ${token}` });
-    const developerToken = () => signToken({ id: `dev12_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev12@upad.test`, rol: 'developer', organizacionId: null });
+    const developerToken = () => tokenDe({ id: `dev12_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev12@upad.test`, rol: 'developer', organizacionId: null });
     const etiqueta = `F${crypto.randomUUID().slice(0, 8)}`;
 
     const registrar = async (rol, nombre) => {
@@ -2158,7 +2169,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
 
   describe('16. Sin afirmaciones falsas sobre Google Cloud / KMS en las respuestas del backend', () => {
     const FALSAS = /Google Cloud|GCP|KMS/i;
-    const developer = () => signToken({ id: `dev16_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev16@upad.test`, rol: 'developer', organizacionId: null });
+    const developer = () => tokenDe({ id: `dev16_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev16@upad.test`, rol: 'developer', organizacionId: null });
 
     test.each(['/', '/health', '/api/v1/health'])('%s no menciona Google Cloud, GCP ni KMS', async (ruta) => {
       const res = await request(app).get(ruta).set('Accept', 'application/json');
@@ -2389,8 +2400,8 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
         };
       },
     };
-    const developer = () => signToken({ id: `dev19_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev19@upad.test`, rol: 'developer', organizacionId: null });
-    const tutor = () => signToken({ id: `tut19_${TIMESTAMP}`, email: `test-${TIMESTAMP}-tut19@upad.test`, rol: 'tutor', organizacionId: null });
+    const developer = () => tokenDe({ id: `dev19_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev19@upad.test`, rol: 'developer', organizacionId: null });
+    const tutor = () => tokenDe({ id: `tut19_${TIMESTAMP}`, email: `test-${TIMESTAMP}-tut19@upad.test`, rol: 'tutor', organizacionId: null });
     const auth = (token) => ({ Authorization: `Bearer ${token}` });
 
     beforeEach(() => {
@@ -2653,7 +2664,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     });
 
     test('el developer al crear una cuenta o cambiar su contraseña la deja en la versión 2', async () => {
-      const dev = signToken({ id: `dev21_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev21@upad.test`, rol: 'developer', organizacionId: null });
+      const dev = tokenDe({ id: `dev21_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev21@upad.test`, rol: 'developer', organizacionId: null });
       const email = correo('admin');
       const creado = await request(app).post('/api/admin/users').set('Authorization', `Bearer ${dev}`)
         .send({ nombre: 'Desde Admin', email, password: passwordGenerada(), rol: 'tutor' });
@@ -2675,6 +2686,122 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     test('el registro ya no copia el hash a la tabla heredada users', () => {
       const fuente = fs.readFileSync(path.resolve(process.cwd(), 'src/services/authService.js'), 'utf8');
       expect(fuente).not.toMatch(/INSERT INTO users/);
+    });
+  });
+
+  describe('22. Integración con la app Android: estado del dispositivo y cuenta comprobada en cada petición', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const correo = (etiqueta) => `test-${TIMESTAMP}-j-${etiqueta}-${crypto.randomUUID().slice(0, 8)}@upad.test`;
+
+    const registrar = async (rol = 'tutor', extra = {}) => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: `Cuenta ${rol}`,
+        email: correo(rol),
+        password: passwordGenerada(),
+        rol,
+        ...extra,
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    const vincularHijo = async (tutor) => {
+      const code = String(crypto.randomInt(100000, 1000000));
+      const deviceId = `dev_j_${crypto.randomUUID().slice(0, 8)}`;
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+      const res = await request(app).post('/api/devices/pairing/link').set(auth(tutor.token)).send({ code, childName: 'Hijo J' });
+      expect(res.status).toBe(201);
+      return deviceId;
+    };
+
+    describe('GET /api/v1/devices/status/:deviceId (sin token, para la app del niño)', () => {
+      test('un dispositivo desconocido responde linked: false', async () => {
+        const res = await request(app).get('/api/v1/devices/status/dev_desconocido_j');
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ deviceId: 'dev_desconocido_j', linked: false, parentId: '' });
+      });
+
+      test('un hijo vinculado responde linked: true con el id del padre, y false tras desvincularlo desde la web', async () => {
+        const tutor = await registrar('tutor');
+        const deviceId = await vincularHijo(tutor);
+
+        const vinculado = await request(app).get(`/api/v1/devices/status/${deviceId}`);
+        expect(vinculado.status).toBe(200);
+        expect(vinculado.body.data).toEqual({ deviceId, linked: true, parentId: tutor.usuario.id });
+
+        const borrado = await request(app).delete(`/api/devices/${deviceId}`).set(auth(tutor.token));
+        expect(borrado.status).toBe(200);
+
+        const despues = await request(app).get(`/api/v1/devices/status/${deviceId}`);
+        expect(despues.body.data).toEqual({ deviceId, linked: false, parentId: '' });
+      });
+
+      test('no expone el nombre del hijo, el modelo ni la ubicación', async () => {
+        const tutor = await registrar('tutor');
+        const deviceId = await vincularHijo(tutor);
+        await request(app).post(`/api/v1/devices/${deviceId}/telemetry`).send({ latitude: -12.05, longitude: -77.04 });
+
+        const res = await request(app).get(`/api/devices/status/${deviceId}`);
+        expect(Object.keys(res.body.data).sort()).toEqual(['deviceId', 'linked', 'parentId']);
+        expect(JSON.stringify(res.body)).not.toMatch(/Hijo J|-12\.05|-77\.04/);
+      });
+
+      test('un deviceId con formato inválido responde 400 DEVICE_ID_INVALIDO', async () => {
+        const res = await request(app).get(`/api/v1/devices/status/${'x'.repeat(129)}`);
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('DEVICE_ID_INVALIDO');
+      });
+
+      test(`máximo ${LIMITES_DISPOSITIVOS.ESTADO_POR_DISPOSITIVO} consultas por minuto por dispositivo (luego 429); otro dispositivo sigue pudiendo`, async () => {
+        for (let i = 0; i < LIMITES_DISPOSITIVOS.ESTADO_POR_DISPOSITIVO; i += 1) {
+          const r = await request(app).get('/api/v1/devices/status/dev_limite_j');
+          expect(r.status).toBe(200);
+        }
+        const bloqueado = await request(app).get('/api/v1/devices/status/dev_limite_j');
+        expect(bloqueado.status).toBe(429);
+        expect(bloqueado.body.errors.code).toBe('ESTADO_RATE_LIMIT');
+
+        const otro = await request(app).get('/api/v1/devices/status/dev_otro_j');
+        expect(otro.status).toBe(200);
+      });
+    });
+
+    describe('authenticate consulta la cuenta en la base en cada petición', () => {
+      test('el token de una cuenta borrada deja de valer (401 USUARIO_NO_EXISTE)', async () => {
+        const tutor = await registrar('tutor');
+        expect((await request(app).get('/api/rutinas').set(auth(tutor.token))).status).toBe(200);
+
+        db.prepare('DELETE FROM usuarios WHERE id = ?').run(tutor.usuario.id);
+        const res = await request(app).get('/api/rutinas').set(auth(tutor.token));
+        expect(res.status).toBe(401);
+        expect(res.body.errors.code).toBe('USUARIO_NO_EXISTE');
+      });
+
+      test('una cuenta desactivada deja de entrar al instante aunque su token no haya vencido (403 ACCOUNT_INACTIVE)', async () => {
+        const tutor = await registrar('tutor');
+        db.prepare('UPDATE usuarios SET activo = 0 WHERE id = ?').run(tutor.usuario.id);
+
+        const res = await request(app).get('/api/rutinas').set(auth(tutor.token));
+        expect(res.status).toBe(403);
+        expect(res.body.errors.code).toBe('ACCOUNT_INACTIVE');
+      });
+
+      test('el rol es el de la base, no el del token: un empresario degradado a tutor pierde los KPIs', async () => {
+        const empresario = await registrar('empresario', { nombreInstitucion: 'Institución J' });
+        expect((await request(app).get('/api/empresario/kpis').set(auth(empresario.token))).status).toBe(200);
+
+        db.prepare("UPDATE usuarios SET rol = 'tutor' WHERE id = ?").run(empresario.usuario.id);
+        const res = await request(app).get('/api/empresario/kpis').set(auth(empresario.token));
+        expect(res.status).toBe(403);
+        expect(res.body.errors.code).toBe('FORBIDDEN_ROLE');
+      });
+
+      test('un token que dice "developer" no da permisos si la cuenta en la base es tutor', async () => {
+        const tutor = await registrar('tutor');
+        const forjado = signToken({ id: tutor.usuario.id, email: tutor.usuario.email, rol: 'developer', organizacionId: null });
+        const res = await request(app).get('/api/admin/users').set(auth(forjado));
+        expect(res.status).toBe(403);
+      });
     });
   });
 });

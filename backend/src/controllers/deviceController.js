@@ -50,6 +50,18 @@ export const deviceController = {
   /**
    * POST /api/devices/:deviceId/telemetry - Ubicación real enviada por el teléfono del niño
    */
+  /**
+   * GET /api/devices/status/:deviceId - Estado de vinculación para la app del niño (sin token)
+   */
+  estado(req, res, next) {
+    try {
+      const estado = deviceService.estadoDispositivo(req.params.deviceId);
+      return sendSuccess(res, 200, 'Estado del dispositivo', estado);
+    } catch (error) {
+      return next(error);
+    }
+  },
+
   async telemetria(req, res, next) {
     try {
       const { latitude, longitude } = req.body || {};

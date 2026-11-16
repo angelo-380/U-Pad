@@ -168,6 +168,20 @@ export const deviceService = {
   },
 
   /**
+   * Estado mínimo de vinculación para la app del niño (la consulta cada 2 s, sin token), así detecta
+   * que el padre lo desvinculó desde la web. Un dispositivo desconocido responde linked: false.
+   * Devuelve solo el id del padre (la app del niño ya lo conoce: lo usa para leer sus rutinas).
+   */
+  estadoDispositivo(deviceId) {
+    const row = db.prepare('SELECT parent_id FROM child_devices WHERE device_id = ?').get(deviceId);
+    return {
+      deviceId,
+      linked: Boolean(row?.parent_id),
+      parentId: row?.parent_id || '',
+    };
+  },
+
+  /**
    * Guarda la ubicación real que envía el teléfono del niño (la app Android la envía cada 5-10 s, sin token).
    * Solo se acepta para dispositivos vinculados a un tutor.
    */

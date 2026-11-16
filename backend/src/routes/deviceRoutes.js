@@ -13,6 +13,7 @@ export const LIMITES_DISPOSITIVOS = Object.freeze({
   PAIRING_POR_CUENTA: 10,
   PAIRING_POR_IP: 30,
   TELEMETRIA_POR_DISPOSITIVO: 30,
+  ESTADO_POR_DISPOSITIVO: 60,
 });
 
 export const limitePairingLink = crearLimiteIntentos({
@@ -40,6 +41,15 @@ export const limiteTelemetria = crearLimiteIntentos({
   claves: (req) => [`dispositivo:${req.params.deviceId}`],
   codigo: 'TELEMETRIA_RATE_LIMIT',
   mensaje: 'Demasiados envíos de ubicación para este dispositivo. Espera un minuto.',
+});
+
+// La app del niño consulta su estado cada 2 s (30/min); 60/min deja margen y frena el barrido de ids
+export const limiteEstadoDispositivo = crearLimiteIntentos({
+  ventanaMs: 60_000,
+  maximo: LIMITES_DISPOSITIVOS.ESTADO_POR_DISPOSITIVO,
+  claves: (req) => [`estado:${req.params.deviceId}`],
+  codigo: 'ESTADO_RATE_LIMIT',
+  mensaje: 'Demasiadas consultas de estado para este dispositivo. Espera un minuto.',
 });
 
 // reiniciar() de ambos límites de vinculación (lo usan los tests)
@@ -115,6 +125,9 @@ router.delete('/:id', (req, res, next) => {
 
 // Ubicación real que envía la app Android del niño (sin token; solo dispositivos vinculados)
 router.post('/:deviceId/telemetry', validarDeviceId, limiteTelemetria, deviceController.telemetria);
+
+// Estado de vinculación para la app del niño (sin token): detecta una desvinculación hecha desde la web
+router.get('/status/:deviceId', validarDeviceId, limiteEstadoDispositivo, deviceController.estado);
 
 // Todos los demás endpoints de gestión requieren usuario autenticado
 router.use(authenticate);
