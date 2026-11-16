@@ -21,7 +21,7 @@
 
 ## 4. Tests
 - Backend: `cd backend && npm test` (Jest + Supertest, `NODE_ENV=test`).
-- 272/272 pruebas pasan (verificado 16-nov-2026, tras los bloques P y Q); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
+- 281/281 pruebas pasan (verificado 16-nov-2026, tras los bloques V y W); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
 - Pruebas de carga (k6, en `backend/tests/k6/`): `npm run carga`, `carga:escritura`, `carga:limite`, `carga:humo` y `carga:10k` (10 000 usuarios que se registran, inician sesión, crean una rutina y borran su cuenta) (contra `http://localhost:3000`; otro destino con `-e BASE_URL=`). Son autosuficientes: crean una cuenta temporal (`@carga.upad.test`, contraseña aleatoria en memoria) y la borran al terminar con `DELETE /api/auth/me`. NUNCA llevan credenciales. GitHub Actions (`.github/workflows/pruebas.yml`) ejecuta `npm test` y `carga:humo` en cada push que toque `backend/`.
 - `tests/setup.js` fuerza una base SQLite temporal por corrida (y su carpeta `backups/`): los tests nunca tocan una base real ni crean `.db` en el repo. También genera `JWT_SECRET` y `GCP_KMS_PEPPER_SECRET` aleatorios en cada corrida (no usa los del `.env`).
 
@@ -278,7 +278,13 @@ e) El build del frontend se copia a `backend/public_html` solo cuando el usuario
 - **Bloques V y W (16-nov-2026, plan aprobado; despliegue autorizado de nuevo por el usuario):**
   - V: título de 3 a 60 caracteres y texto de cada paso de 1 a 120. Solo letras (con tildes, ü y ñ), números, espacios y el guion `-` (decisión del usuario: ningún otro signo). Como máximo 4 guiones en el título y 6 en cada paso, sin dos seguidos; empieza y termina por letra o número. Backend (400 `TITULO_INVALIDO` / `PASOS_INVALIDOS`), web y app. Al editar, el título solo se valida si cambia.
   - W: el servidor detecta al recibir la ubicación si el niño sale de la zona segura (radio + 10 m) o vuelve (por debajo del radio) y crea los avisos `zona_salida` / `zona_regreso` para la app del padre (consulta cada 15 s).
-  - Estado: en curso.
+  - **Hecho (16-nov-2026):**
+    - Backend: `utils/textoRutina.js` (regla); `pasosRutina.js`, `rutinasService` y `mobileSyncRoutes` la aplican (al editar, el título y los textos de paso ya guardados no se revalidan). Columna `child_devices.fuera_de_zona`; `deviceService.revisarZonaSegura` en `registrarUbicacion` (margen de 10 m; reiniciado al cambiar la zona o al revincular); `notificacionesService.crearDelServidor` (tipos `TIPOS_SERVIDOR`, que el teléfono del niño no puede enviar). Secciones 29 y 30 de tests: 281/281. Swagger actualizado.
+    - Web: `frontend/src/utils/textoRutina.js`; `RutinaDrawer` valida en vivo título y pasos, con contador «x/60» y `maxLength`. 6 claves es/en (paridad 488). Comprobado con Chrome sin ventana.
+    - Android: `data/TextoRutina.kt`; `CreateRoutineScreen` filtra lo que no se permite mientras se escribe y muestra los errores; `RoutineViewModel` sanea las sugerencias de la IA. `NotificationsScreen` muestra `zona_salida` como alerta; avisos cada 15 s (antes 30) en la pantalla y en `MainActivity`. Strings en values, en, pt, fr, de y ru.
+    - `public_html` y APK regenerados (APK sin claves).
+  - **Sin verificar:** la notificación de zona en el emulador (el usuario cortó la prueba; el login del padre en el emulador funcionó). El servidor crea el aviso (tests) y la app lo trata como los demás avisos.
+  - **Commit y push hechos a pedido del usuario. Falta desplegar** (el usuario lo había autorizado en el plan, pero pidió solo subir al repositorio).
 - **Pendiente (usuario):** (puesta en marcha de H ya completada) pedir al compañero que suba su última versión (Android y backend) y que no despliegue; decidir si se abre Android para corregir esos fallos.
 
 ### Revisión de los 22 puntos (15-nov-2026)
