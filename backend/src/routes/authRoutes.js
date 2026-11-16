@@ -10,6 +10,11 @@ const router = Router();
 router.post('/register', authLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
 
+// Inicio de sesión con Google (Google Identity Services en la web)
+router.get('/config', authController.config);
+router.post('/google', authLimiter, authController.google);
+router.post('/google/registro', authLimiter, authController.googleRegistro);
+
 // Endpoint protegido para obtener la sesión actual con token
 router.get('/me', authenticate, (req, res) => {
   sendSuccess(res, 200, 'Sesión activa verificada', {

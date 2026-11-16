@@ -25,12 +25,15 @@
   "author": "Equipo U-Pad",
   "license": "ISC",
   "dependencies": {
+    "@google-cloud/kms": "^5.7.0",
+    "@google-cloud/storage": "^7.22.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.3.1",
     "firebase-admin": "^12.2.0",
+    "google-auth-library": "^9.15.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "swagger-ui-express": "^5.0.1"

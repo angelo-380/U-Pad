@@ -4,6 +4,25 @@ import { AppError } from '../utils/AppError.js';
 
 const TURNOS_VALIDOS = ['MANANA', 'TARDE', 'NOCHE'];
 
+const sinValor = (valor) => valor === undefined || valor === null || (typeof valor === 'string' && valor.trim() === '');
+
+/**
+ * Valida que el niño asignado sea un dispositivo vinculado al dueño de la rutina.
+ * Devuelve el device_id limpio, o null si no se asigna ningún niño.
+ */
+const validarNino = (ninoId, propietarioId) => {
+  if (sinValor(ninoId)) return null;
+  const limpio = String(ninoId).trim();
+  const hijo = db.prepare('SELECT device_id FROM child_devices WHERE device_id = ? AND parent_id = ?').get(limpio, propietarioId);
+  if (!hijo) {
+    throw new AppError('El niño seleccionado no está vinculado a la cuenta del dueño de la rutina.', 400, {
+      code: 'NINO_INVALIDO',
+      field: 'ninoId',
+    });
+  }
+  return limpio;
+};
+
 export const rutinasService = {
   /**
    * Crea una nueva rutina en la base de datos relacional asociada al usuario y organización.
@@ -20,6 +39,14 @@ export const rutinasService = {
     }
 
     const cleanTitulo = titulo.trim();
+
+    // Niño asignado: el elegido (debe ser un hijo vinculado del usuario); si no se elige y el usuario
+    // tiene exactamente un hijo, se le asigna a él; en cualquier otro caso queda sin asignar.
+    let finalNinoId = validarNino(ninoId, usuarioActual.id);
+    if (sinValor(ninoId)) {
+      const hijos = db.prepare('SELECT device_id FROM child_devices WHERE parent_id = ? LIMIT 2').all(usuarioActual.id);
+      finalNinoId = hijos.length === 1 ? hijos[0].device_id : null;
+    }
 
     // Desduplicación atómica: si el usuario hace doble clic rápido o concurrente
     const existente = db.prepare(`
@@ -49,13 +76,6 @@ export const rutinasService = {
     const orgId = usuarioActual.organizacionId || null;
     const ahora = new Date().toISOString();
     const pasosJson = JSON.stringify(Array.isArray(pasos) ? pasos : []);
-
-    // Si no se proporcionó ninoId, asociar automáticamente al dispositivo del hijo vinculado
-    let finalNinoId = ninoId;
-    if (!finalNinoId) {
-      const linked = db.prepare('SELECT device_id FROM child_devices WHERE parent_id = ? LIMIT 1').get(usuarioActual.id);
-      finalNinoId = linked?.device_id || 'dev_child_default';
-    }
 
     db.prepare(`
       INSERT INTO rutinas (id, titulo, turno, ninoId, organizacionId, pasos, activa, creadoPor, creadoEn, actualizadoEn)
@@ -138,7 +158,7 @@ export const rutinasService = {
     // Soporte para paginación (page y limit)
     const isPaginated = filtros.page !== undefined || filtros.limit !== undefined;
     const page = Math.max(1, parseInt(filtros.page, 10) || 1);
-    const limit = Math.max(1, parseInt(filtros.limit, 10) || 6);
+    const limit = Math.min(100, Math.max(1, parseInt(filtros.limit, 10) || 6));
     const offset = (page - 1) * limit;
 
     let total = 0;
@@ -147,7 +167,7 @@ export const rutinasService = {
       total = countRow ? countRow.count : 0;
     }
 
-    let query = `SELECT * FROM rutinas ${whereClause} ORDER BY creadoEn DESC`;
+    let query = `SELECT * FROM rutinas ${whereClause} ORDER BY creadoEn DESC, rowid DESC`;
     const queryParams = [...params];
 
     if (isPaginated) {
@@ -267,8 +287,10 @@ export const rutinasService = {
       params.push(nuevoTurno);
     }
 
-    if (datosActualizados.ninoId !== undefined) {
-      nuevoNinoId = datosActualizados.ninoId;
+    // El niño se valida contra los hijos del CREADOR de la rutina (un empresario puede editar la de su tutor).
+    // Reenviar el mismo valor no se revalida, para no romper rutinas con datos antiguos.
+    if (datosActualizados.ninoId !== undefined && datosActualizados.ninoId !== rutinaExistente.ninoId) {
+      nuevoNinoId = validarNino(datosActualizados.ninoId, rutinaExistente.creadoPor);
       updates.push('ninoId = ?');
       params.push(nuevoNinoId);
     }

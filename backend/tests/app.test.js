@@ -1,14 +1,29 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import bcrypt from 'bcrypt';
+import jsonwebtoken from 'jsonwebtoken';
 import { DatabaseSync } from 'node:sqlite';
 import request from 'supertest';
 import app from '../src/app.js';
 import { signToken } from '../src/utils/jwt.js';
+import { secretosFaltantes, SECRETOS_OBLIGATORIOS } from '../src/config/secretos.js';
+import { limitePairingLink, limiteTelemetria, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
+import { establecerVerificadorGoogle } from '../src/utils/googleVerifier.js';
+import { descripcionPersistencia } from '../src/config/persistencia.js';
+import { crearAlmacenGcs, crearAlmacenLocal, establecerAlmacenBackups } from '../src/services/almacenBackups.js';
+import { backupService } from '../src/services/backupService.js';
+import { Readable } from 'node:stream';
+import { resolverPepperKms } from '../src/config/pepperKms.js';
 import {
   db,
   inicializarEsquema,
   crearDeveloperInicial,
   migrarRolAdmin,
   migrarOrganizaciones,
+  asegurarColumnasChildDevices,
   verifyPassword,
 } from '../src/config/database.js';
 import { rutinasService } from '../src/services/rutinasService.js';
@@ -32,6 +47,13 @@ const TIMESTAMP = Date.now();
 const passwordGenerada = () => `Aa1!${crypto.randomBytes(9).toString('hex')}`;
 
 describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', () => {
+  // Aislamiento: los límites de intentos (en memoria) se reinician antes de cada test,
+  // porque toda la suite comparte la IP 127.0.0.1.
+  beforeEach(() => {
+    limitePairingLink.reiniciar();
+    limiteTelemetria.reiniciar();
+  });
+
   let authToken = '';
 
   // No se elimina data de prueba: los documentos quedan en el emulador
@@ -252,7 +274,6 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
         .send({
           titulo: 'Rutina Visual de Mañana',
           turno: 'MANANA',
-          ninoId: 'nino_001',
           pasos: [
             { orden: 1, texto: 'Cepillarse los dientes', palabraClave: 'dientes' },
             { orden: 2, texto: 'Ponerse el uniforme', palabraClave: 'ropa' },
@@ -415,20 +436,27 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       expect(Array.isArray(res.body.data)).toBe(true);
     });
 
-    test('Dispositivos: POST /api/devices/pairing/link vincula una tablet con código', async () => {
+    test('Dispositivos: POST /api/devices/pairing/link vincula una tablet con el código que publicó', async () => {
+      // La tablet del niño publica primero su código (como hace la app Android)
+      const code = String(100000 + crypto.randomInt(900000));
+      const publicado = await request(app)
+        .post('/api/v1/devices/pairing/create')
+        .send({ code, deviceId: `dev_test_${crypto.randomUUID().slice(0, 8)}` });
+      expect(publicado.status).toBe(201);
+
       const res = await request(app)
         .post('/api/devices/pairing/link')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          code: '849201',
-          childName: 'Diego',
+          code,
+          childName: 'Niño de Prueba',
           deviceModel: 'Android Tablet Kiosk v14',
         });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.pairingCode).toBe('849201');
-      expect(res.body.data.childName).toBe('Diego');
+      expect(res.body.data.pairingCode).toBe(code);
+      expect(res.body.data.childName).toBe('Niño de Prueba');
     });
 
     test('Backups: Usuario tutor o empresario NO PUEDE generar backup (403 Forbidden)', async () => {
@@ -939,6 +967,21 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
         expect(res.body.data.kpis.totalRutinasEstructuradas).toBe(0);
         expect(res.body.data.kpis.totalEstudiantesInstitucion).toBe(0);
         expect(res.body.data.kpis.dispositivosKioskEnPerimetro).toBe(0);
+        expect(res.body.data.kpis.distribucionTurnos).toEqual({
+          manana: 0,
+          tarde: 0,
+          noche: 0,
+          porcentajes: { manana: 0, tarde: 0, noche: 0 },
+        });
+      });
+
+      test('los KPIs no incluyen métricas simuladas (adherencia ni indicadores de calidad: aún no hay registros de cumplimiento)', async () => {
+        const res = await kpis(a.token);
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.kpis).not.toHaveProperty('tasaCumplimientoAdherencia');
+        expect(res.body.data.kpis).not.toHaveProperty('adherenciaSemanal');
+        expect(res.body.data.kpis).not.toHaveProperty('indicadoresCalidad');
       });
 
       test('la rutina de un tutor suma a "Rutinas Institucionales" de su empresario y este la ve en su lista', async () => {
@@ -955,10 +998,16 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       });
 
       test('los niños vinculados por los tutores de la organización cuentan como estudiantes y kioscos', async () => {
+        const code = String(100000 + crypto.randomInt(900000));
+        const publicado = await request(app)
+          .post('/api/v1/devices/pairing/create')
+          .send({ code, deviceId: `dev_test_${crypto.randomUUID().slice(0, 8)}` });
+        expect(publicado.status).toBe(201);
+
         const vincular = await request(app)
           .post('/api/devices/pairing/link')
           .set(auth(tutorDeA.token))
-          .send({ code: String(100000 + crypto.randomInt(900000)), childName: 'Niño de Prueba', deviceModel: 'Tablet de Prueba' });
+          .send({ code, childName: 'Niño de Prueba', deviceModel: 'Tablet de Prueba' });
         expect(vincular.status).toBe(201);
 
         const res = await kpis(a.token);
@@ -1275,6 +1324,1357 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
         expect(orgDe(conexion, 'usuarios', 'e1')).toBe('org_p');
         expect(conexion.prepare('SELECT COUNT(*) AS total FROM organizaciones').get().total).toBe(1);
       });
+    });
+  });
+
+  describe('10. Hijos: código de vinculación de 60 s, varios hijos y desvincular', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const codigosUsados = new Set();
+    const codigoNuevo = () => {
+      let code;
+      do {
+        code = String(100000 + crypto.randomInt(900000));
+      } while (codigosUsados.has(code));
+      codigosUsados.add(code);
+      return code;
+    };
+    const deviceIdNuevo = () => `dev_test_${crypto.randomUUID().slice(0, 8)}`;
+
+    const registrarTutor = async () => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: 'Tutor Hijos',
+        email: `test-${TIMESTAMP}-hijos-${crypto.randomUUID().slice(0, 8)}@upad.test`,
+        password: passwordGenerada(),
+        rol: 'tutor',
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    // Simula la app Android del niño: publica SU propio código de 6 dígitos
+    const publicarCodigo = async (code = codigoNuevo(), deviceId = deviceIdNuevo()) => {
+      const res = await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+      expect(res.status).toBe(201);
+      return { code, deviceId, res };
+    };
+
+    const vincular = (token, code, childName = 'Niño de Prueba') =>
+      request(app).post('/api/devices/pairing/link').set(auth(token)).send({ code, childName });
+
+    const vincularHijo = async (token, childName) => {
+      const { code, deviceId } = await publicarCodigo();
+      const res = await vincular(token, code, childName);
+      expect(res.status).toBe(201);
+      return deviceId;
+    };
+
+    const vencerCodigo = (code) =>
+      db.prepare('UPDATE pairing_codes SET expires_at = ? WHERE code = ?').run(new Date(Date.now() - 1000).toISOString(), code);
+    const hijosDe = (parentId) =>
+      db.prepare('SELECT device_id FROM child_devices WHERE parent_id = ? ORDER BY device_id').all(parentId).map((r) => r.device_id);
+    const dispositivo = (deviceId) => db.prepare('SELECT * FROM child_devices WHERE device_id = ?').get(deviceId);
+    const crearRutina = (token, extra = {}) => request(app)
+      .post('/api/rutinas')
+      .set(auth(token))
+      .send({ titulo: `Rutina ${crypto.randomUUID().slice(0, 8)}`, turno: 'MANANA', pasos: [], ...extra });
+
+    describe('10.1 El código lo publica el teléfono del niño y caduca a los 60 s', () => {
+      test('el servidor guarda el código que envía la app (no inventa otro) con caducidad de 60 s', async () => {
+        const antes = Date.now();
+        const { code, deviceId, res } = await publicarCodigo();
+
+        expect(res.body.data.code).toBe(code);
+        expect(res.body.data.deviceId).toBe(deviceId);
+        expect(res.body.data.expiresInSeconds).toBe(60);
+
+        const fila = db.prepare('SELECT * FROM pairing_codes WHERE code = ?').get(code);
+        expect(fila.device_id).toBe(deviceId);
+        expect(fila.pairing_status).toBe('PENDING');
+        const vence = new Date(fila.expires_at).getTime();
+        expect(vence).toBeGreaterThanOrEqual(antes + 59_000);
+        expect(vence).toBeLessThanOrEqual(Date.now() + 61_000);
+      });
+
+      test('sin código ni deviceId el servidor genera ambos', async () => {
+        const res = await request(app).post('/api/v1/devices/pairing/create').send({});
+
+        expect(res.status).toBe(201);
+        expect(res.body.data.code).toMatch(/^\d{6}$/);
+        expect(res.body.data.deviceId).toBeTruthy();
+      });
+
+      test.each([['12345'], ['1234567'], ['abc123'], [123456]])('un código con formato inválido (%p) se rechaza con 400', async (code) => {
+        const res = await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId: deviceIdNuevo() });
+
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('PAIRING_CODE_FORMAT');
+      });
+
+      test('el polling del teléfono ve "esperando", luego "enlazado"; un código vencido sin usar da 404', async () => {
+        const tutor = await registrarTutor();
+        const { code, deviceId } = await publicarCodigo();
+
+        const esperando = await request(app).get(`/api/v1/devices/pairing/${code}`);
+        expect(esperando.status).toBe(200);
+        expect(esperando.body.data.estado).toBe('esperando');
+
+        expect((await vincular(tutor.token, code)).status).toBe(201);
+
+        const enlazado = await request(app).get(`/api/v1/devices/pairing/${code}`);
+        expect(enlazado.body.data.estado).toBe('enlazado');
+        expect(enlazado.body.data.parentId).toBe(tutor.usuario.id);
+        expect(enlazado.body.data.deviceId).toBe(deviceId);
+
+        const vencido = await publicarCodigo();
+        vencerCodigo(vencido.code);
+        expect((await request(app).get(`/api/v1/devices/pairing/${vencido.code}`)).status).toBe(404);
+      });
+    });
+
+    describe('10.2 Vincular', () => {
+      let tutor;
+
+      beforeAll(async () => {
+        tutor = await registrarTutor();
+      });
+
+      test('un código que nadie publicó se rechaza (404) y no crea ningún dispositivo', async () => {
+        const res = await vincular(tutor.token, codigoNuevo());
+
+        expect(res.status).toBe(404);
+        expect(res.body.errors.code).toBe('PAIRING_CODE_INVALID');
+        expect(hijosDe(tutor.usuario.id)).toEqual([]);
+      });
+
+      test('un código vencido se rechaza (410) y no crea ningún dispositivo', async () => {
+        const { code, deviceId } = await publicarCodigo();
+        vencerCodigo(code);
+
+        const res = await vincular(tutor.token, code);
+
+        expect(res.status).toBe(410);
+        expect(res.body.errors.code).toBe('PAIRING_CODE_EXPIRED');
+        expect(dispositivo(deviceId)).toBeUndefined();
+      });
+
+      test('un código ya usado no se puede volver a usar (409)', async () => {
+        const otro = await registrarTutor();
+        const { code } = await publicarCodigo();
+        expect((await vincular(tutor.token, code)).status).toBe(201);
+
+        const res = await vincular(otro.token, code);
+
+        expect(res.status).toBe(409);
+        expect(res.body.errors.code).toBe('PAIRING_CODE_USED');
+        expect(hijosDe(otro.usuario.id)).toEqual([]);
+      });
+
+      test('vincula el dispositivo real del código, sin valores sembrados (nombre, modelo ni ubicación)', async () => {
+        const { code, deviceId } = await publicarCodigo();
+
+        const res = await vincular(tutor.token, code, 'Lucía');
+
+        expect(res.status).toBe(201);
+        expect(res.body.data.deviceId).toBe(deviceId);
+        const fila = dispositivo(deviceId);
+        expect(fila.parent_id).toBe(tutor.usuario.id);
+        expect(fila.child_name).toBe('Lucía');
+        expect(fila.device_model).toBe('');
+        expect(fila.last_latitude).toBeNull();
+        expect(fila.last_longitude).toBeNull();
+      });
+
+      test('un tutor puede tener varios hijos vinculados: vincular otro no borra los anteriores', async () => {
+        const nuevo = await registrarTutor();
+        const primero = await vincularHijo(nuevo.token, 'Hijo Uno');
+        const segundo = await vincularHijo(nuevo.token, 'Hijo Dos');
+
+        expect(hijosDe(nuevo.usuario.id)).toEqual([primero, segundo].sort());
+
+        const lista = await request(app).get('/api/devices').set(auth(nuevo.token));
+        expect(lista.body.data.map((d) => d.deviceId).sort()).toEqual([primero, segundo].sort());
+      });
+
+      test('app Android del tutor: vincula sin token enviando parentId', async () => {
+        const nuevo = await registrarTutor();
+        const { code, deviceId } = await publicarCodigo();
+
+        const res = await request(app)
+          .post('/api/v1/devices/pairing/link')
+          .send({ code, parentId: nuevo.usuario.id });
+
+        expect(res.status).toBe(201);
+        expect(dispositivo(deviceId).parent_id).toBe(nuevo.usuario.id);
+      });
+    });
+
+    describe('10.3 Desvincular', () => {
+      test('el dueño desvincula UN hijo desde la web: se borra solo ese y sus rutinas quedan sin asignar', async () => {
+        const tutor = await registrarTutor();
+        const hijoA = await vincularHijo(tutor.token, 'Hijo A');
+        const hijoB = await vincularHijo(tutor.token, 'Hijo B');
+        const rutina = await crearRutina(tutor.token, { ninoId: hijoA });
+        expect(rutina.body.data.ninoId).toBe(hijoA);
+
+        const res = await request(app).delete(`/api/devices/${hijoA}`).set(auth(tutor.token));
+
+        expect(res.status).toBe(200);
+        expect(hijosDe(tutor.usuario.id)).toEqual([hijoB]);
+        expect(db.prepare('SELECT COUNT(*) AS total FROM pairing_codes WHERE device_id = ?').get(hijoA).total).toBe(0);
+        expect(db.prepare('SELECT ninoId FROM rutinas WHERE id = ?').get(rutina.body.data.id).ninoId).toBeNull();
+      });
+
+      test('otro usuario no puede desvincular un hijo ajeno (404) y el hijo sigue vinculado', async () => {
+        const duenio = await registrarTutor();
+        const intruso = await registrarTutor();
+        const hijo = await vincularHijo(duenio.token, 'Hijo Ajeno');
+
+        const res = await request(app).delete(`/api/devices/${hijo}`).set(auth(intruso.token));
+
+        expect(res.status).toBe(404);
+        expect(res.body.errors.code).toBe('DEVICE_NOT_FOUND');
+        expect(hijosDe(duenio.usuario.id)).toEqual([hijo]);
+      });
+
+      test('sin token ni parentId no se puede desvincular (401)', async () => {
+        const duenio = await registrarTutor();
+        const hijo = await vincularHijo(duenio.token, 'Hijo Protegido');
+
+        const res = await request(app).delete(`/api/devices/${hijo}`);
+
+        expect(res.status).toBe(401);
+        expect(hijosDe(duenio.usuario.id)).toEqual([hijo]);
+      });
+
+      test('app Android: desvincula sin token enviando ?parentId= del dueño', async () => {
+        const duenio = await registrarTutor();
+        const hijo = await vincularHijo(duenio.token, 'Hijo Móvil');
+
+        const res = await request(app).delete(`/api/v1/devices/${hijo}?parentId=${duenio.usuario.id}`);
+
+        expect(res.status).toBe(200);
+        expect(hijosDe(duenio.usuario.id)).toEqual([]);
+      });
+    });
+
+    describe('10.4 Hijo asignado a una rutina', () => {
+      test('con un solo hijo, la rutina se le asigna sola', async () => {
+        const tutor = await registrarTutor();
+        const hijo = await vincularHijo(tutor.token, 'Hijo Único');
+
+        const res = await crearRutina(tutor.token);
+
+        expect(res.status).toBe(201);
+        expect(res.body.data.ninoId).toBe(hijo);
+      });
+
+      test('sin hijos, la rutina queda sin asignar (sin un niño "por defecto")', async () => {
+        const tutor = await registrarTutor();
+
+        const res = await crearRutina(tutor.token);
+
+        expect(res.status).toBe(201);
+        expect(res.body.data.ninoId).toBeNull();
+      });
+
+      test('con varios hijos se asigna el elegido; si no se elige ninguno queda sin asignar', async () => {
+        const tutor = await registrarTutor();
+        await vincularHijo(tutor.token, 'Hijo Uno');
+        const segundo = await vincularHijo(tutor.token, 'Hijo Dos');
+
+        const elegido = await crearRutina(tutor.token, { ninoId: segundo });
+        expect(elegido.body.data.ninoId).toBe(segundo);
+
+        const sinElegir = await crearRutina(tutor.token);
+        expect(sinElegir.body.data.ninoId).toBeNull();
+      });
+
+      test('no se puede asignar una rutina al hijo de otro usuario (400), ni al crear ni al editar', async () => {
+        const tutor = await registrarTutor();
+        const otro = await registrarTutor();
+        const propio = await vincularHijo(tutor.token, 'Hijo Propio');
+        const ajeno = await vincularHijo(otro.token, 'Hijo Ajeno');
+
+        const alCrear = await crearRutina(tutor.token, { ninoId: ajeno });
+        expect(alCrear.status).toBe(400);
+        expect(alCrear.body.errors.code).toBe('NINO_INVALIDO');
+
+        const rutina = await crearRutina(tutor.token, { ninoId: propio });
+        const alEditar = await request(app).put(`/api/rutinas/${rutina.body.data.id}`).set(auth(tutor.token)).send({ ninoId: ajeno });
+        expect(alEditar.status).toBe(400);
+        expect(alEditar.body.errors.code).toBe('NINO_INVALIDO');
+      });
+
+      test('al editar se puede desasignar (ninoId: null) y reenviar el mismo ninoId no se revalida', async () => {
+        const tutor = await registrarTutor();
+        const hijo = await vincularHijo(tutor.token, 'Hijo Editable');
+        const rutina = await crearRutina(tutor.token, { ninoId: hijo });
+        const id = rutina.body.data.id;
+
+        // Datos antiguos: un ninoId que no es un dispositivo (p. ej. un nombre) se conserva al reenviarlo sin cambios
+        db.prepare('UPDATE rutinas SET ninoId = ? WHERE id = ?').run('Nombre Antiguo', id);
+        const sinCambio = await request(app).put(`/api/rutinas/${id}`).set(auth(tutor.token)).send({ titulo: 'Editada', ninoId: 'Nombre Antiguo' });
+        expect(sinCambio.status).toBe(200);
+
+        const desasignar = await request(app).put(`/api/rutinas/${id}`).set(auth(tutor.token)).send({ ninoId: null });
+        expect(desasignar.status).toBe(200);
+        expect(db.prepare('SELECT ninoId FROM rutinas WHERE id = ?').get(id).ninoId).toBeNull();
+      });
+    });
+  });
+
+  describe('11. GPS: ubicación real del niño y zona segura (máx. 200 m)', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+
+    const registrarTutor = async () => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: 'Tutor GPS',
+        email: `test-${TIMESTAMP}-gps-${crypto.randomUUID().slice(0, 8)}@upad.test`,
+        password: passwordGenerada(),
+        rol: 'tutor',
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    // Vincula un hijo como en producción: el teléfono publica su código y el tutor lo usa
+    const vincularHijo = async (token) => {
+      const code = String(100000 + crypto.randomInt(900000));
+      const deviceId = `dev_gps_${crypto.randomUUID().slice(0, 8)}`;
+      expect((await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId })).status).toBe(201);
+      expect((await request(app).post('/api/devices/pairing/link').set(auth(token)).send({ code, childName: 'Niño GPS' })).status).toBe(201);
+      return deviceId;
+    };
+
+    // Telemetría como la envía la app Android del niño: sin token
+    const enviarUbicacion = (deviceId, body) =>
+      request(app).post(`/api/v1/devices/${deviceId}/telemetry`).send(body);
+
+    const hijoEnListado = async (token, deviceId) => {
+      const res = await request(app).get('/api/devices').set(auth(token));
+      return res.body.data.find((d) => d.deviceId === deviceId);
+    };
+
+    const zonaSegura = (token, deviceId, body) =>
+      request(app).put(`/api/devices/${deviceId}/zona-segura`).set(auth(token)).send(body);
+
+    describe('11.1 Telemetría del teléfono del niño', () => {
+      test('la ubicación real que envía la app (sin token) se guarda y aparece en el listado del tutor', async () => {
+        const tutor = await registrarTutor();
+        const hijo = await vincularHijo(tutor.token);
+
+        // Recién vinculado no tiene ubicación (nada sembrado)
+        const antes = await hijoEnListado(tutor.token, hijo);
+        expect(antes.lastLatitude).toBeNull();
+        expect(antes.ubicacionActualizadaEn).toBeNull();
+
+        const res = await enviarUbicacion(hijo, { latitude: -16.398866, longitude: -71.536961 });
+        expect(res.status).toBe(200);
+
+        const despues = await hijoEnListado(tutor.token, hijo);
+        expect(despues.lastLatitude).toBeCloseTo(-16.398866, 6);
+        expect(despues.lastLongitude).toBeCloseTo(-71.536961, 6);
+        expect(Number.isNaN(new Date(despues.ubicacionActualizadaEn).getTime())).toBe(false);
+      });
+
+      test.each([
+        [{ latitude: 91, longitude: 0 }],
+        [{ latitude: 0, longitude: -181 }],
+        [{ latitude: 'abc', longitude: 10 }],
+        [{ latitude: 10 }],
+        [{}],
+      ])('coordenadas inválidas (%p) se rechazan con 400', async (body) => {
+        const tutor = await registrarTutor();
+        const hijo = await vincularHijo(tutor.token);
+
+        const res = await enviarUbicacion(hijo, body);
+
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('UBICACION_INVALIDA');
+      });
+
+      test('un dispositivo que no está vinculado no puede enviar ubicación (404)', async () => {
+        const res = await enviarUbicacion(`dev_desconocido_${crypto.randomUUID().slice(0, 8)}`, { latitude: 1, longitude: 1 });
+
+        expect(res.status).toBe(404);
+        expect(res.body.errors.code).toBe('DEVICE_NOT_FOUND');
+      });
+    });
+
+    describe('11.0 Migración de child_devices en bases antiguas', () => {
+      test('añade las columnas que faltan (nombre, hora de ubicación y zona segura) y es idempotente', () => {
+        const conexion = new DatabaseSync(':memory:');
+        conexion.exec('CREATE TABLE child_devices (device_id VARCHAR(128) PRIMARY KEY, parent_id VARCHAR(64))');
+
+        asegurarColumnasChildDevices(conexion);
+        asegurarColumnasChildDevices(conexion);
+
+        const columnas = conexion.prepare('PRAGMA table_info(child_devices)').all().map((c) => c.name);
+        expect(columnas).toEqual(expect.arrayContaining(['child_name', 'ubicacion_actualizada_en', 'zona_lat', 'zona_lng', 'zona_radio']));
+      });
+    });
+
+    describe('11.2 Zona segura (radio de 20 a 200 m)', () => {
+      test('el dueño guarda la zona segura de su hijo y aparece en el listado', async () => {
+        const tutor = await registrarTutor();
+        const hijo = await vincularHijo(tutor.token);
+
+        const res = await zonaSegura(tutor.token, hijo, { latitude: -12.1, longitude: -77.03, radio: 150 });
+
+        expect(res.status).toBe(200);
+        const fila = await hijoEnListado(tutor.token, hijo);
+        expect(fila.zonaSegura).toEqual({ latitude: -12.1, longitude: -77.03, radio: 150 });
+      });
+
+      test.each([[201], [500], [19], [0], [-5], [150.5], ['100']])('un radio fuera de 20 a 200 m (%p) se rechaza con 400', async (radio) => {
+        const tutor = await registrarTutor();
+        const hijo = await vincularHijo(tutor.token);
+
+        const res = await zonaSegura(tutor.token, hijo, { latitude: -12.1, longitude: -77.03, radio });
+
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('RADIO_INVALIDO');
+      });
+
+      test('coordenadas inválidas de la zona se rechazan con 400', async () => {
+        const tutor = await registrarTutor();
+        const hijo = await vincularHijo(tutor.token);
+
+        const res = await zonaSegura(tutor.token, hijo, { latitude: 100, longitude: 0, radio: 100 });
+
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('UBICACION_INVALIDA');
+      });
+
+      test('otro usuario no puede cambiar la zona segura de un hijo ajeno (404)', async () => {
+        const duenio = await registrarTutor();
+        const intruso = await registrarTutor();
+        const hijo = await vincularHijo(duenio.token);
+
+        const res = await zonaSegura(intruso.token, hijo, { latitude: 1, longitude: 1, radio: 100 });
+
+        expect(res.status).toBe(404);
+        expect(res.body.errors.code).toBe('DEVICE_NOT_FOUND');
+        expect((await hijoEnListado(duenio.token, hijo)).zonaSegura).toBeNull();
+      });
+
+      test('sin token no se puede cambiar la zona segura (401)', async () => {
+        const duenio = await registrarTutor();
+        const hijo = await vincularHijo(duenio.token);
+
+        const res = await request(app).put(`/api/devices/${hijo}/zona-segura`).send({ latitude: 1, longitude: 1, radio: 100 });
+
+        expect(res.status).toBe(401);
+      });
+
+      test('el dueño puede quitar la zona segura (zonaSegura: null)', async () => {
+        const tutor = await registrarTutor();
+        const hijo = await vincularHijo(tutor.token);
+        expect((await zonaSegura(tutor.token, hijo, { latitude: 1, longitude: 1, radio: 100 })).status).toBe(200);
+
+        const res = await request(app).put(`/api/devices/${hijo}/zona-segura`).set(auth(tutor.token)).send({ zonaSegura: null });
+
+        expect(res.status).toBe(200);
+        expect((await hijoEnListado(tutor.token, hijo)).zonaSegura).toBeNull();
+      });
+    });
+  });
+
+  describe('12. Developer Center: rutinas y usuarios (de la más reciente a la más antigua) con paginación', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const developerToken = () => signToken({ id: `dev12_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev12@upad.test`, rol: 'developer', organizacionId: null });
+    const etiqueta = `F${crypto.randomUUID().slice(0, 8)}`;
+
+    const registrar = async (rol, nombre) => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre,
+        email: `test-${TIMESTAMP}-f-${crypto.randomUUID().slice(0, 8)}@upad.test`,
+        password: passwordGenerada(),
+        rol,
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    const esDescendente = (fechas) => fechas.every((f, i) => i === 0 || fechas[i - 1] >= f);
+
+    let tutor;
+    beforeAll(async () => {
+      tutor = await registrar('tutor', `Tutor ${etiqueta}`);
+      for (const n of [1, 2, 3]) {
+        const res = await request(app)
+          .post('/api/rutinas')
+          .set(auth(tutor.token))
+          .send({ titulo: `Rutina ${etiqueta} ${n}`, turno: 'TARDE', pasos: [{ orden: 1, texto: 'Paso', palabraClave: 'paso' }] });
+        expect(res.status).toBe(201);
+      }
+    });
+
+    test('solo el developer puede listar todas las rutinas (tutor y empresario reciben 403)', async () => {
+      const empresario = await registrar('empresario', 'Colegio F');
+
+      expect((await request(app).get('/api/admin/rutinas').set(auth(tutor.token))).status).toBe(403);
+      expect((await request(app).get('/api/admin/rutinas').set(auth(empresario.token))).status).toBe(403);
+      expect((await request(app).get('/api/admin/rutinas')).status).toBe(401);
+    });
+
+    test('el developer ve todas las rutinas de la más reciente a la más antigua, con su creador', async () => {
+      const res = await request(app).get(`/api/admin/rutinas?search=${etiqueta}`).set(auth(developerToken()));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(3);
+      expect(esDescendente(res.body.data.map((r) => r.creadoEn))).toBe(true);
+      expect(res.body.data[0].titulo).toBe(`Rutina ${etiqueta} 3`);
+      const rutina = res.body.data[0];
+      expect(rutina.creadorNombre).toBe(`Tutor ${etiqueta}`);
+      expect(rutina.creadorEmail).toBe(tutor.usuario.email);
+      expect(rutina.pasosCount).toBe(1);
+      expect(rutina.turno).toBe('TARDE');
+      expect(res.body.pagination).toMatchObject({ page: 1, total: 3, totalPages: 1, hasNext: false, hasPrev: false });
+    });
+
+    test('la búsqueda también encuentra por correo del creador', async () => {
+      const res = await request(app).get(`/api/admin/rutinas?search=${encodeURIComponent(tutor.usuario.email)}`).set(auth(developerToken()));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.map((r) => r.creadorEmail)).toEqual([tutor.usuario.email, tutor.usuario.email, tutor.usuario.email]);
+    });
+
+    test('pagina correctamente (límite 2: página 2 trae la rutina más antigua)', async () => {
+      const pagina2 = await request(app).get(`/api/admin/rutinas?search=${etiqueta}&page=2&limit=2`).set(auth(developerToken()));
+
+      expect(pagina2.status).toBe(200);
+      expect(pagina2.body.data.map((r) => r.titulo)).toEqual([`Rutina ${etiqueta} 1`]);
+      expect(pagina2.body.pagination).toMatchObject({ page: 2, limit: 2, total: 3, totalPages: 2, hasNext: false, hasPrev: true });
+    });
+
+    test('el límite de página se acota a 100 (rutinas del developer y del tutor)', async () => {
+      const admin = await request(app).get('/api/admin/rutinas?limit=5000').set(auth(developerToken()));
+      expect(admin.body.pagination.limit).toBe(100);
+
+      const propias = await request(app).get('/api/rutinas?page=1&limit=5000').set(auth(tutor.token));
+      expect(propias.body.pagination.limit).toBe(100);
+    });
+
+    test('la lista de usuarios va de la más reciente a la más antigua y no expone el salt de la contraseña', async () => {
+      const res = await request(app).get('/api/admin/users?limit=100').set(auth(developerToken()));
+
+      expect(res.status).toBe(200);
+      expect(esDescendente(res.body.data.map((u) => u.creadoEn))).toBe(true);
+      for (const usuario of res.body.data) {
+        expect(usuario).not.toHaveProperty('saltPreview');
+        expect(usuario).not.toHaveProperty('password_salt');
+        expect(usuario).not.toHaveProperty('password_hash');
+      }
+    });
+  });
+
+  describe('13. Secretos obligatorios (sin valores de respaldo en el código)', () => {
+    const SRC = path.resolve(process.cwd(), 'src');
+
+    test('se exigen JWT_SECRET y GCP_KMS_PEPPER_SECRET; vacíos o en blanco cuentan como faltantes', () => {
+      expect(SECRETOS_OBLIGATORIOS).toEqual(['JWT_SECRET', 'GCP_KMS_PEPPER_SECRET']);
+      expect(secretosFaltantes({})).toEqual(['JWT_SECRET', 'GCP_KMS_PEPPER_SECRET']);
+      expect(secretosFaltantes({ JWT_SECRET: '   ', GCP_KMS_PEPPER_SECRET: 'x' })).toEqual(['JWT_SECRET']);
+      expect(secretosFaltantes({ JWT_SECRET: 'a', GCP_KMS_PEPPER_SECRET: 'b' })).toEqual([]);
+    });
+
+    test('el código ya no contiene valores de respaldo para los secretos', () => {
+      const jwtSrc = fs.readFileSync(path.join(SRC, 'utils/jwt.js'), 'utf8');
+      const dbSrc = fs.readFileSync(path.join(SRC, 'config/database.js'), 'utf8');
+      expect(jwtSrc).not.toMatch(/JWT_SECRET\s*\|\|/);
+      expect(dbSrc).not.toMatch(/GCP_KMS_PEPPER_SECRET\s*\|\|/);
+    });
+
+    test('el backend no arranca sin los secretos y avisa con sus nombres (sin crear la base)', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upad-sin-secretos-'));
+      const dbPath = path.join(dir, 'upad_relational.db');
+      const modulo = path.join(SRC, 'config/database.js');
+      // cwd en una carpeta vacía: dotenv no encuentra ningún .env que rellene los valores
+      const env = { PATH: process.env.PATH, DB_PATH: dbPath, JWT_SECRET: '', GCP_KMS_PEPPER_SECRET: '' };
+      const r = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', `await import(${JSON.stringify(modulo)});`], { cwd: dir, env, encoding: 'utf8' });
+
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain('JWT_SECRET');
+      expect(r.stderr).toContain('GCP_KMS_PEPPER_SECRET');
+      expect(fs.existsSync(dbPath)).toBe(false);
+    });
+
+    test('un token firmado con otra clave se rechaza (401)', async () => {
+      const falso = jsonwebtoken.sign(
+        { id: `falso_${TIMESTAMP}`, email: 'falso@upad.test', rol: 'developer', organizacionId: null },
+        crypto.randomBytes(32).toString('hex'),
+        { expiresIn: '1h' }
+      );
+      const res = await request(app).get('/api/admin/users').set('Authorization', `Bearer ${falso}`);
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('14. Sincronización móvil (/api/v1/mobile/sync-routines): token o compatibilidad endurecida', () => {
+    const URL = '/api/v1/mobile/sync-routines';
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const lector = () => new DatabaseSync(process.env.DB_PATH);
+    const rutinasDe = (userId) => lector().prepare('SELECT id, titulo, turno, creadoPor, organizacionId FROM rutinas WHERE creadoPor = ?').all(userId);
+
+    const registrar = async (rol = 'tutor', extra = {}) => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: rol === 'empresario' ? 'Colegio Movil' : 'Tutor Movil',
+        email: `test-${TIMESTAMP}-m-${crypto.randomUUID().slice(0, 8)}@upad.test`,
+        password: passwordGenerada(),
+        rol,
+        ...extra,
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    afterEach(() => {
+      delete process.env.MOBILE_SIN_TOKEN;
+    });
+
+    test('con token: la rutina se guarda a nombre del usuario del token y con su organización', async () => {
+      const empresario = await registrar('empresario');
+      const tutor = await registrar('tutor', { codigoOrganizacion: empresario.organizacion.codigo });
+      const titulo = `LAVAR MANOS ${crypto.randomUUID().slice(0, 6)}`;
+
+      const res = await request(app).post(URL).set(auth(tutor.token)).send({ actividad: titulo, palabraClave: 'lavar', turno: 'MAÑANA' });
+
+      expect(res.status).toBe(201);
+      const guardadas = rutinasDe(tutor.usuario.id);
+      expect(guardadas).toHaveLength(1);
+      expect(guardadas[0]).toMatchObject({ titulo, turno: 'MANANA', organizacionId: empresario.usuario.organizacionId });
+    });
+
+    test('con token y un userId ajeno: 403 y no se guarda nada', async () => {
+      const tutor = await registrar();
+      const otro = await registrar();
+
+      const res = await request(app).post(URL).set(auth(tutor.token)).send({ actividad: 'AJENA', turno: 'TARDE', userId: otro.usuario.id });
+
+      expect(res.status).toBe(403);
+      expect(rutinasDe(otro.usuario.id)).toHaveLength(0);
+      expect(rutinasDe(tutor.usuario.id)).toHaveLength(0);
+    });
+
+    test('token inválido: 401', async () => {
+      const res = await request(app).post(URL).set(auth('no-es-un-token')).send({ actividad: 'X', turno: 'TARDE' });
+      expect(res.status).toBe(401);
+    });
+
+    test('sin token (compatibilidad con el APK actual): exige un userId existente y nunca usa la cuenta semilla', async () => {
+      const tutor = await registrar();
+
+      const ok = await request(app).post(URL).send({ actividad: 'PEINARSE', turno: 'NOCHE', userId: tutor.usuario.id });
+      expect(ok.status).toBe(201);
+      expect(rutinasDe(tutor.usuario.id).map((r) => r.titulo)).toEqual(['PEINARSE']);
+
+      expect((await request(app).post(URL).send({ actividad: 'SIN USUARIO', turno: 'NOCHE' })).status).toBe(401);
+      expect((await request(app).post(URL).send({ actividad: 'INVENTADO', turno: 'NOCHE', userId: 'usr_no_existe_123' })).status).toBe(401);
+      expect((await request(app).post(URL).send({ actividad: 'LOCAL', turno: 'NOCHE', userId: 'padre_local_1' })).status).toBe(401);
+      expect(rutinasDe('usr_director_sol')).toHaveLength(0);
+    });
+
+    test('con MOBILE_SIN_TOKEN=false, sin token se rechaza aunque el userId exista', async () => {
+      const tutor = await registrar();
+      process.env.MOBILE_SIN_TOKEN = 'false';
+
+      const res = await request(app).post(URL).send({ actividad: 'BLOQUEADA', turno: 'TARDE', userId: tutor.usuario.id });
+
+      expect(res.status).toBe(401);
+      expect(res.body.errors.code).toBe('TOKEN_REQUERIDO');
+      expect(rutinasDe(tutor.usuario.id)).toHaveLength(0);
+    });
+
+    test('GET devuelve solo las rutinas del usuario; un userId desconocido sin token recibe una lista vacía', async () => {
+      const tutor = await registrar();
+      const otro = await registrar();
+      await request(app).post(URL).set(auth(tutor.token)).send({ actividad: 'MIA', turno: 'TARDE' });
+      await request(app).post(URL).set(auth(otro.token)).send({ actividad: 'DEL OTRO', turno: 'TARDE' });
+
+      const conToken = await request(app).get(URL).set(auth(tutor.token));
+      expect(conToken.status).toBe(200);
+      expect(conToken.body.data.map((r) => r.actividad)).toEqual(['MIA']);
+
+      const compat = await request(app).get(`${URL}?userId=${tutor.usuario.id}`);
+      expect(compat.body.data.map((r) => r.actividad)).toEqual(['MIA']);
+
+      const desconocido = await request(app).get(`${URL}?userId=usr_no_existe_123`);
+      expect(desconocido.status).toBe(200);
+      expect(desconocido.body.data).toEqual([]);
+    });
+
+    test('DELETE por actividad borra solo la rutina exacta del propio usuario (ni ajenas ni parecidas)', async () => {
+      const tutor = await registrar();
+      const otro = await registrar();
+      await request(app).post(URL).set(auth(tutor.token)).send({ actividad: 'COMER', turno: 'TARDE' });
+      await request(app).post(URL).set(auth(tutor.token)).send({ actividad: 'COMER FRUTA', turno: 'TARDE' });
+      await request(app).post(URL).set(auth(otro.token)).send({ actividad: 'COMER', turno: 'TARDE' });
+
+      const res = await request(app).delete(`${URL}?userId=${tutor.usuario.id}&actividad=COMER&turno=TARDE`);
+
+      expect(res.status).toBe(200);
+      expect(rutinasDe(tutor.usuario.id).map((r) => r.titulo)).toEqual(['COMER FRUTA']);
+      expect(rutinasDe(otro.usuario.id).map((r) => r.titulo)).toEqual(['COMER']);
+    });
+
+    test('DELETE por id no borra rutinas ajenas, y sin token ni userId responde 401', async () => {
+      const tutor = await registrar();
+      const otro = await registrar();
+      await request(app).post(URL).set(auth(otro.token)).send({ actividad: 'AJENA POR ID', turno: 'TARDE' });
+      const idAjena = rutinasDe(otro.usuario.id)[0].id;
+
+      await request(app).delete(`${URL}?id=${idAjena}`).set(auth(tutor.token));
+      expect(rutinasDe(otro.usuario.id)).toHaveLength(1);
+
+      expect((await request(app).delete(`${URL}?id=${idAjena}`)).status).toBe(401);
+      expect((await request(app).delete(`${URL}?actividad=AJENA%20POR%20ID`)).status).toBe(401);
+      expect(rutinasDe(otro.usuario.id)).toHaveLength(1);
+    });
+
+    test('PUT exige token siempre (la app no lo usa) y solo modifica las rutinas propias', async () => {
+      const tutor = await registrar();
+      await request(app).post(URL).set(auth(tutor.token)).send({ actividad: 'VESTIRSE', turno: 'TARDE' });
+      const id = rutinasDe(tutor.usuario.id)[0].id;
+
+      const sinToken = await request(app).put(URL).send({ id, actividad: 'HACKEADA', turno: 'TARDE', userId: tutor.usuario.id });
+      expect(sinToken.status).toBe(401);
+
+      const conToken = await request(app).put(URL).set(auth(tutor.token)).send({ id, actividad: 'VESTIRSE RAPIDO', turno: 'TARDE' });
+      expect(conToken.status).toBe(200);
+      expect(rutinasDe(tutor.usuario.id)[0].titulo).toBe('VESTIRSE RAPIDO');
+    });
+  });
+
+  describe('15. Límites de intentos en vinculación y telemetría; modo sin token', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const codigoAleatorio = () => String(crypto.randomInt(100000, 1000000));
+
+    const registrarTutor = async () => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: 'Tutor Limites',
+        email: `test-${TIMESTAMP}-l-${crypto.randomUUID().slice(0, 8)}@upad.test`,
+        password: passwordGenerada(),
+        rol: 'tutor',
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    const vincularHijo = async (tutor) => {
+      const code = codigoAleatorio();
+      const deviceId = `dev_lim_${crypto.randomUUID().slice(0, 8)}`;
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+      const res = await request(app).post('/api/devices/pairing/link').set(auth(tutor.token)).send({ code, childName: 'Limite' });
+      expect(res.status).toBe(201);
+      return deviceId;
+    };
+
+    beforeEach(() => {
+      limitePairingLink.reiniciar();
+      limiteTelemetria.reiniciar();
+    });
+
+    afterEach(() => {
+      delete process.env.MOBILE_SIN_TOKEN;
+    });
+
+    test(`vincular: máximo ${LIMITES_DISPOSITIVOS.PAIRING_POR_CUENTA} intentos por minuto por cuenta (luego 429); otra cuenta sigue pudiendo`, async () => {
+      const tutor = await registrarTutor();
+      const otro = await registrarTutor();
+
+      for (let i = 0; i < LIMITES_DISPOSITIVOS.PAIRING_POR_CUENTA; i += 1) {
+        const r = await request(app).post('/api/devices/pairing/link').set(auth(tutor.token)).send({ code: codigoAleatorio(), childName: 'X' });
+        expect(r.status).toBe(404);
+      }
+      const bloqueado = await request(app).post('/api/devices/pairing/link').set(auth(tutor.token)).send({ code: codigoAleatorio(), childName: 'X' });
+      expect(bloqueado.status).toBe(429);
+      expect(bloqueado.body.errors.code).toBe('PAIRING_RATE_LIMIT');
+
+      const otroIntento = await request(app).post('/api/devices/pairing/link').set(auth(otro.token)).send({ code: codigoAleatorio(), childName: 'X' });
+      expect(otroIntento.status).toBe(404);
+    });
+
+    test(`vincular: máximo ${LIMITES_DISPOSITIVOS.PAIRING_POR_IP} intentos por minuto por IP aunque cambie la cuenta (detrás del proxy de Cloud Run)`, async () => {
+      const ip = '203.0.113.77';
+      for (let i = 0; i < LIMITES_DISPOSITIVOS.PAIRING_POR_IP; i += 1) {
+        await request(app).post('/api/v1/devices/pairing/link').set('X-Forwarded-For', ip).send({ code: codigoAleatorio(), parentId: `usr_falso_${i}` });
+      }
+      const bloqueado = await request(app).post('/api/v1/devices/pairing/link').set('X-Forwarded-For', ip).send({ code: codigoAleatorio(), parentId: 'usr_falso_otro' });
+      expect(bloqueado.status).toBe(429);
+
+      const otraIp = await request(app).post('/api/v1/devices/pairing/link').set('X-Forwarded-For', '203.0.113.78').send({ code: codigoAleatorio(), parentId: 'usr_falso_otro' });
+      expect(otraIp.status).not.toBe(429);
+    });
+
+    test('el polling del teléfono (GET /pairing/:code) no tiene límite', async () => {
+      const code = codigoAleatorio();
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId: `dev_poll_${crypto.randomUUID().slice(0, 8)}` });
+      for (let i = 0; i < LIMITES_DISPOSITIVOS.PAIRING_POR_IP + 5; i += 1) {
+        expect((await request(app).get(`/api/v1/devices/pairing/${code}`)).status).toBe(200);
+      }
+    });
+
+    test(`telemetría: máximo ${LIMITES_DISPOSITIVOS.TELEMETRIA_POR_DISPOSITIVO} envíos por minuto por dispositivo; otro dispositivo no se ve afectado`, async () => {
+      const tutor = await registrarTutor();
+      const hijo = await vincularHijo(tutor);
+      const hermano = await vincularHijo(tutor);
+      const ubicacion = { latitude: -16.4, longitude: -71.5 };
+
+      for (let i = 0; i < LIMITES_DISPOSITIVOS.TELEMETRIA_POR_DISPOSITIVO; i += 1) {
+        expect((await request(app).post(`/api/v1/devices/${hijo}/telemetry`).send(ubicacion)).status).toBe(200);
+      }
+      const bloqueado = await request(app).post(`/api/v1/devices/${hijo}/telemetry`).send(ubicacion);
+      expect(bloqueado.status).toBe(429);
+      expect(bloqueado.body.errors.code).toBe('TELEMETRIA_RATE_LIMIT');
+
+      expect((await request(app).post(`/api/v1/devices/${hermano}/telemetry`).send(ubicacion)).status).toBe(200);
+    });
+
+    test('telemetría: un deviceId con formato inválido se rechaza (400)', async () => {
+      const res = await request(app).post(`/api/v1/devices/${'x'.repeat(200)}/telemetry`).send({ latitude: 1, longitude: 1 });
+      expect(res.status).toBe(400);
+      expect(res.body.errors.code).toBe('DEVICE_ID_INVALIDO');
+    });
+
+    test('con MOBILE_SIN_TOKEN=false, vincular y desvincular con parentId (sin token) dan 401; con token siguen funcionando', async () => {
+      const tutor = await registrarTutor();
+      const hijo = await vincularHijo(tutor);
+      process.env.MOBILE_SIN_TOKEN = 'false';
+
+      const code = codigoAleatorio();
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId: `dev_nt_${crypto.randomUUID().slice(0, 8)}` });
+      const link = await request(app).post('/api/v1/devices/pairing/link').send({ code, parentId: tutor.usuario.id });
+      expect(link.status).toBe(401);
+      expect(link.body.errors.code).toBe('TOKEN_REQUERIDO');
+
+      const unlink = await request(app).delete(`/api/v1/devices/${hijo}?parentId=${tutor.usuario.id}`);
+      expect(unlink.status).toBe(401);
+
+      const conToken = await request(app).delete(`/api/devices/${hijo}`).set(auth(tutor.token));
+      expect(conToken.status).toBe(200);
+    });
+  });
+
+  describe('16. Sin afirmaciones falsas sobre Google Cloud / KMS en las respuestas del backend', () => {
+    const FALSAS = /Google Cloud|GCP|KMS/i;
+    const developer = () => signToken({ id: `dev16_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev16@upad.test`, rol: 'developer', organizacionId: null });
+
+    test.each(['/', '/health', '/api/v1/health'])('%s no menciona Google Cloud, GCP ni KMS', async (ruta) => {
+      const res = await request(app).get(ruta).set('Accept', 'application/json');
+      expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).not.toMatch(FALSAS);
+    });
+
+    test('la consola SQL de backups responde sin mencionar Google Cloud, GCP ni KMS (ni al aceptar ni al rechazar)', async () => {
+      const ok = await request(app).post('/api/admin/backups/sql-query').set('Authorization', `Bearer ${developer()}`).send({ query: 'SELECT 1 AS uno' });
+      expect(ok.status).toBe(200);
+      expect(JSON.stringify(ok.body)).not.toMatch(FALSAS);
+
+      const rechazo = await request(app).post('/api/admin/backups/sql-query').set('Authorization', `Bearer ${developer()}`).send({ query: 'DELETE FROM usuarios' });
+      expect(rechazo.status).toBe(400);
+      expect(JSON.stringify(rechazo.body)).not.toMatch(FALSAS);
+    });
+  });
+
+  describe('17. Inicio de sesión con Google (verificador simulado)', () => {
+    const CLIENT_ID = `test-${TIMESTAMP}.apps.googleusercontent.com`;
+    const credenciales = new Map();
+    const lector = () => new DatabaseSync(process.env.DB_PATH);
+
+    /** Crea una credencial simulada de Google con el perfil indicado. */
+    const credencialGoogle = ({ email, sub = `g_${crypto.randomUUID()}`, name = 'Persona Google', emailVerified = true } = {}) => {
+      const credential = `cred_${crypto.randomUUID()}`;
+      credenciales.set(credential, { sub, email, name, email_verified: emailVerified, aud: CLIENT_ID });
+      return credential;
+    };
+    const correo = () => `test-${TIMESTAMP}-g-${crypto.randomUUID().slice(0, 8)}@gmail.test`;
+
+    beforeAll(() => {
+      establecerVerificadorGoogle(async (credential, audiencia) => {
+        const payload = credenciales.get(credential);
+        if (!payload || payload.aud !== audiencia) throw new Error('token de Google inválido');
+        return payload;
+      });
+    });
+    beforeEach(() => {
+      process.env.GOOGLE_CLIENT_ID = CLIENT_ID;
+    });
+    afterAll(() => {
+      establecerVerificadorGoogle(null);
+      delete process.env.GOOGLE_CLIENT_ID;
+    });
+
+    test('GET /api/auth/config entrega el client ID público (o null si no está configurado)', async () => {
+      expect((await request(app).get('/api/auth/config')).body.data).toEqual({ googleClientId: CLIENT_ID });
+      delete process.env.GOOGLE_CLIENT_ID;
+      expect((await request(app).get('/api/auth/config')).body.data).toEqual({ googleClientId: null });
+    });
+
+    test('sin GOOGLE_CLIENT_ID el login con Google responde 503', async () => {
+      delete process.env.GOOGLE_CLIENT_ID;
+      const res = await request(app).post('/api/auth/google').send({ credential: credencialGoogle({ email: correo() }) });
+      expect(res.status).toBe(503);
+      expect(res.body.errors.code).toBe('GOOGLE_NO_CONFIGURADO');
+    });
+
+    test('credencial inválida o correo sin verificar: 401', async () => {
+      const invalida = await request(app).post('/api/auth/google').send({ credential: 'no-es-de-google' });
+      expect(invalida.status).toBe(401);
+      expect(invalida.body.errors.code).toBe('GOOGLE_TOKEN_INVALIDO');
+
+      const sinVerificar = await request(app).post('/api/auth/google').send({ credential: credencialGoogle({ email: correo(), emailVerified: false }) });
+      expect(sinVerificar.status).toBe(401);
+      expect(sinVerificar.body.errors.code).toBe('GOOGLE_EMAIL_NO_VERIFICADO');
+    });
+
+    test('correo nuevo: pide completar el registro y no crea ninguna cuenta', async () => {
+      const email = correo();
+      const res = await request(app).post('/api/auth/google').send({ credential: credencialGoogle({ email, name: 'Ana Google' }) });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ requiereRegistro: true, perfil: { nombre: 'Ana Google', email } });
+      expect(lector().prepare('SELECT COUNT(*) AS n FROM usuarios WHERE email = ?').get(email).n).toBe(0);
+    });
+
+    test('registro de empresario: exige el nombre de la institución y crea su organización', async () => {
+      const email = correo();
+      const sub = `g_${crypto.randomUUID()}`;
+
+      const sinNombre = await request(app).post('/api/auth/google/registro').send({ credential: credencialGoogle({ email, sub }), rol: 'empresario' });
+      expect(sinNombre.status).toBe(400);
+      expect(sinNombre.body.errors.code).toBe('NOMBRE_INSTITUCION_REQUERIDO');
+
+      const res = await request(app).post('/api/auth/google/registro').send({ credential: credencialGoogle({ email, sub }), rol: 'empresario', nombreInstitucion: 'Colegio Google' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.token).toEqual(expect.any(String));
+      expect(res.body.data.usuario).toMatchObject({ email, rol: 'empresario', nombre: 'Colegio Google' });
+      expect(res.body.data.organizacion).toMatchObject({ nombre: 'Colegio Google', codigo: expect.any(String) });
+      expect(lector().prepare('SELECT google_sub FROM usuarios WHERE email = ?').get(email).google_sub).toBe(sub);
+    });
+
+    test('registro de tutor: con código válido se une a la organización; con código inválido no se crea la cuenta', async () => {
+      const empresario = await request(app).post('/api/auth/google/registro').send({ credential: credencialGoogle({ email: correo() }), rol: 'empresario', nombreInstitucion: 'Colegio Codigo' });
+      const codigo = empresario.body.data.organizacion.codigo;
+
+      const emailMal = correo();
+      const mal = await request(app).post('/api/auth/google/registro').send({ credential: credencialGoogle({ email: emailMal }), rol: 'tutor', codigoOrganizacion: 'ZZZZ-ZZZZ' });
+      expect(mal.status).toBe(400);
+      expect(mal.body.errors.code).toBe('ORGANIZACION_CODIGO_INVALIDO');
+      expect(lector().prepare('SELECT COUNT(*) AS n FROM usuarios WHERE email = ?').get(emailMal).n).toBe(0);
+
+      const ok = await request(app).post('/api/auth/google/registro').send({ credential: credencialGoogle({ email: correo(), name: 'Tutor G' }), rol: 'tutor', codigoOrganizacion: codigo });
+      expect(ok.status).toBe(201);
+      expect(ok.body.data.usuario).toMatchObject({ rol: 'tutor', nombre: 'Tutor G', organizacionId: empresario.body.data.usuario.organizacionId });
+    });
+
+    test('no se puede registrar un developer con Google, ni un correo que ya existe', async () => {
+      const dev = await request(app).post('/api/auth/google/registro').send({ credential: credencialGoogle({ email: correo() }), rol: 'developer' });
+      expect(dev.status).toBe(400);
+      expect(dev.body.errors.code).toBe('INVALID_ROLE');
+
+      const email = correo();
+      await request(app).post('/api/auth/register').send({ nombre: 'Ya Existe', email, password: passwordGenerada(), rol: 'tutor' });
+      const repetido = await request(app).post('/api/auth/google/registro').send({ credential: credencialGoogle({ email }), rol: 'tutor' });
+      expect(repetido.status).toBe(409);
+      expect(repetido.body.errors.code).toBe('EMAIL_ALREADY_EXISTS');
+    });
+
+    test('una cuenta existente (registrada con contraseña) entra con Google y queda enlazada a ese Google', async () => {
+      const email = correo();
+      const password = passwordGenerada();
+      await request(app).post('/api/auth/register').send({ nombre: 'Con Password', email, password, rol: 'tutor' });
+      const sub = `g_${crypto.randomUUID()}`;
+
+      const res = await request(app).post('/api/auth/google').send({ credential: credencialGoogle({ email, sub }) });
+      expect(res.status).toBe(200);
+      expect(res.body.data.token).toEqual(expect.any(String));
+      expect(res.body.data.usuario).toMatchObject({ email, rol: 'tutor' });
+      expect(lector().prepare('SELECT google_sub FROM usuarios WHERE email = ?').get(email).google_sub).toBe(sub);
+
+      // Sigue pudiendo entrar con su contraseña
+      expect((await request(app).post('/api/auth/login').send({ email, password })).status).toBe(200);
+
+      // Otra cuenta de Google con el mismo correo (otro sub) no puede apropiarse de ella
+      const otroSub = await request(app).post('/api/auth/google').send({ credential: credencialGoogle({ email, sub: `g_${crypto.randomUUID()}` }) });
+      expect(otroSub.status).toBe(401);
+      expect(otroSub.body.errors.code).toBe('GOOGLE_CUENTA_DISTINTA');
+    });
+
+    test('una cuenta creada con Google no tiene contraseña utilizable y una cuenta desactivada no entra (403)', async () => {
+      const email = correo();
+      const sub = `g_${crypto.randomUUID()}`;
+      await request(app).post('/api/auth/google/registro').send({ credential: credencialGoogle({ email, sub }), rol: 'tutor' });
+
+      expect((await request(app).post('/api/auth/login').send({ email, password: passwordGenerada() })).status).toBe(401);
+
+      db.prepare('UPDATE usuarios SET activo = 0 WHERE email = ?').run(email);
+      const desactivada = await request(app).post('/api/auth/google').send({ credential: credencialGoogle({ email, sub }) });
+      expect(desactivada.status).toBe(403);
+      expect(desactivada.body.errors.code).toBe('ACCOUNT_INACTIVE');
+    });
+  });
+
+  describe('18. Persistencia de la base (Litestream) y despliegue sin datos locales', () => {
+    const leer = (relativa) => fs.readFileSync(path.resolve(process.cwd(), relativa), 'utf8');
+
+    test('descripcionPersistencia: Litestream activo, Cloud Run sin réplica (temporal) o local', () => {
+      expect(descripcionPersistencia({ LITESTREAM_ACTIVO: '1', K_SERVICE: 'upad' })).toBe('Cloud Storage (Litestream)');
+      expect(descripcionPersistencia({ K_SERVICE: 'upad' })).toBe('disco temporal');
+      expect(descripcionPersistencia({})).toBe('local');
+    });
+
+    test.each(['/health', '/api/v1/health'])('%s informa dónde vive la base (persistencia)', async (ruta) => {
+      const res = await request(app).get(ruta);
+      expect(res.status).toBe(200);
+      expect(res.body.data.persistencia).toBe('local');
+    });
+
+    test('el Dockerfile no copia ninguna base local y arranca con scripts/arranque.sh (Litestream con checksum)', () => {
+      const dockerfile = leer('Dockerfile');
+      expect(dockerfile).not.toMatch(/COPY[^\n]*\.db/);
+      expect(dockerfile).toMatch(/sha256sum -c/);
+      expect(dockerfile).toMatch(/scripts\/arranque\.sh/);
+      expect(dockerfile).toMatch(/DB_PATH=\/data\//);
+    });
+
+    test('.dockerignore y .gcloudignore excluyen las bases, los backups y los .env', () => {
+      for (const archivo of ['.dockerignore', '.gcloudignore']) {
+        const lineas = leer(archivo).split('\n').map((l) => l.trim());
+        for (const patron of ['*.db', '*.db-wal', '*.db-shm', 'backups', '.env', '.env.*']) {
+          expect([archivo, lineas.includes(patron)]).toEqual([archivo, true]);
+        }
+      }
+    });
+
+    test('arranque.sh: sintaxis válida, restaura antes de arrancar y avisa si no hay bucket', () => {
+      const script = leer('scripts/arranque.sh');
+      expect(spawnSync('sh', ['-n', 'scripts/arranque.sh'], { cwd: process.cwd() }).status).toBe(0);
+      expect(script.indexOf('litestream restore')).toBeGreaterThan(-1);
+      expect(script.indexOf('litestream restore')).toBeLessThan(script.indexOf('litestream replicate'));
+      expect(script).toMatch(/-if-replica-exists/);
+      expect(script).toMatch(/LITESTREAM_ACTIVO=1/);
+      // Litestream reconoce Cloud Storage con el esquema gs:// (no gcs://)
+      expect(script).toMatch(/gs:\/\/\$\{UPAD_BUCKET\}\/db/);
+      expect(script).not.toMatch(/gcs:\/\//);
+    });
+
+    test('database.js ya no busca la base en rutas heredadas ni personales', () => {
+      const fuente = leer('src/config/database.js');
+      expect(fuente).not.toMatch(/angeloricasca/);
+      expect(fuente).not.toMatch(/cloud\/upad_relational\.db/);
+    });
+  });
+
+  describe('19. Backups en Cloud Storage (almacén simulado en memoria)', () => {
+    const BUCKET = 'upad-pruebas';
+    const objetos = new Map();
+    const storageSimulado = {
+      bucket: (nombre) => {
+        expect(nombre).toBe(BUCKET);
+        return {
+          upload: async (origen, { destination }) => {
+            objetos.set(destination, { datos: fs.readFileSync(origen), actualizado: new Date().toISOString() });
+          },
+          getFiles: async ({ prefix }) => [
+            [...objetos.entries()]
+              .filter(([clave]) => clave.startsWith(prefix))
+              .map(([clave, o]) => ({ name: clave, metadata: { size: String(o.datos.length), updated: o.actualizado } })),
+          ],
+          file: (clave) => ({
+            exists: async () => [objetos.has(clave)],
+            getMetadata: async () => [{ size: String(objetos.get(clave).datos.length) }],
+            createReadStream: () => Readable.from([objetos.get(clave).datos]),
+          }),
+        };
+      },
+    };
+    const developer = () => signToken({ id: `dev19_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev19@upad.test`, rol: 'developer', organizacionId: null });
+    const tutor = () => signToken({ id: `tut19_${TIMESTAMP}`, email: `test-${TIMESTAMP}-tut19@upad.test`, rol: 'tutor', organizacionId: null });
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+
+    beforeEach(() => {
+      objetos.clear();
+      establecerAlmacenBackups(crearAlmacenGcs(BUCKET, storageSimulado));
+    });
+    afterAll(() => establecerAlmacenBackups(null));
+
+    test('GET /api/admin/backups/info dice dónde se guardan (solo developer)', async () => {
+      const res = await request(app).get('/api/admin/backups/info').set(auth(developer()));
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ almacenamiento: 'cloud-storage', ubicacion: `gs://${BUCKET}/backups/` });
+      expect((await request(app).get('/api/admin/backups/info').set(auth(tutor()))).status).toBe(403);
+    });
+
+    test('crear un backup lo sube al bucket (backups/) y no deja copias en el disco', async () => {
+      const res = await request(app).post('/api/admin/backups').set(auth(developer()));
+      expect(res.status).toBe(201);
+      const { filename } = res.body.data;
+      expect(res.body.data.filePath).toBe(`gs://${BUCKET}/backups/${filename}`);
+      expect(objetos.has(`backups/${filename}`)).toBe(true);
+      expect(objetos.get(`backups/${filename}`).datos.subarray(0, 15).toString()).toBe('SQLite format 3');
+      const enDisco = fs.readdirSync(os.tmpdir()).filter((f) => f.includes(filename));
+      expect(enDisco).toEqual([]);
+    });
+
+    test('listar y descargar leen del bucket', async () => {
+      const creado = await request(app).post('/api/admin/backups').set(auth(developer()));
+      const { filename } = creado.body.data;
+
+      const lista = await request(app).get('/api/admin/backups').set(auth(developer()));
+      expect(lista.status).toBe(200);
+      expect(lista.body.data).toEqual([
+        expect.objectContaining({ filename, sizeBytes: expect.any(Number), sizeFormatted: expect.any(String), fechaModificacion: expect.any(String) }),
+      ]);
+
+      const descarga = await request(app)
+        .get(`/api/admin/backups/${filename}`)
+        .set(auth(developer()))
+        .buffer(true)
+        .parse((res, cb) => {
+          const partes = [];
+          res.on('data', (c) => partes.push(c));
+          res.on('end', () => cb(null, Buffer.concat(partes)));
+        });
+      expect(descarga.status).toBe(200);
+      expect(descarga.headers['content-disposition']).toContain(filename);
+      expect(descarga.body.subarray(0, 15).toString()).toBe('SQLite format 3');
+    });
+
+    test('dos backups seguidos (mismo milisegundo) tienen nombre e id distintos', async () => {
+      const [a, b] = await Promise.all([
+        backupService.crearBackup({ rol: 'developer', email: 'dev@upad.test' }),
+        backupService.crearBackup({ rol: 'developer', email: 'dev@upad.test' }),
+      ]);
+      expect(a.filename).not.toBe(b.filename);
+      expect(a.id).not.toBe(b.id);
+      expect(objetos.size).toBe(2);
+    });
+
+    test('descargar un backup inexistente da 404 y no se puede salir de backups/', async () => {
+      expect((await request(app).get('/api/admin/backups/no_existe.db').set(auth(developer()))).status).toBe(404);
+      expect((await request(app).get('/api/admin/backups/..%2F..%2Fdb').set(auth(developer()))).status).toBe(404);
+    });
+
+    test('backup automático: se crea si no hay ninguno o el último tiene más de 12 h; si no, no', async () => {
+      const ahora = Date.now();
+      const primero = await backupService.backupAutomaticoSiCorresponde({ ahora });
+      expect(primero).toEqual(expect.objectContaining({ tipo: 'AUTOMATICO' }));
+      expect(objetos.size).toBe(1);
+
+      expect(await backupService.backupAutomaticoSiCorresponde({ ahora: ahora + 60 * 60 * 1000 })).toBeNull();
+      expect(objetos.size).toBe(1);
+
+      const tarde = await backupService.backupAutomaticoSiCorresponde({ ahora: ahora + 13 * 60 * 60 * 1000 });
+      expect(tarde).toEqual(expect.objectContaining({ tipo: 'AUTOMATICO' }));
+    });
+
+    test('sin bucket, el almacén local guarda en la carpeta de backups e informa «disco»', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upad-bkp-'));
+      establecerAlmacenBackups(crearAlmacenLocal(dir));
+      const info = await request(app).get('/api/admin/backups/info').set(auth(developer()));
+      expect(info.body.data).toEqual({ almacenamiento: 'disco', ubicacion: dir });
+
+      const creado = await request(app).post('/api/admin/backups').set(auth(developer()));
+      expect(fs.existsSync(path.join(dir, creado.body.data.filename))).toBe(true);
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+  });
+
+  describe('20. Pepper cifrado con Cloud KMS (descifrador simulado)', () => {
+    const CLAVE = 'projects/p/locations/us-central1/keyRings/upad/cryptoKeys/pepper';
+    const pepperClaro = () => crypto.randomBytes(32).toString('hex');
+
+    test('sin variables de KMS usa GCP_KMS_PEPPER_SECRET como hasta ahora (no llama a KMS)', async () => {
+      const env = { GCP_KMS_PEPPER_SECRET: 'valor-local' };
+      const descifrar = jest.fn();
+      expect(await resolverPepperKms(env, { descifrar })).toEqual({ origen: 'entorno' });
+      expect(descifrar).not.toHaveBeenCalled();
+      expect(env.GCP_KMS_PEPPER_SECRET).toBe('valor-local');
+    });
+
+    test('con PEPPER_KMS_CIFRADO y PEPPER_KMS_CLAVE descifra con esa clave y deja el pepper solo en memoria', async () => {
+      const claro = pepperClaro();
+      const cifrado = Buffer.from(`cifrado:${claro}`);
+      const env = { PEPPER_KMS_CIFRADO: cifrado.toString('base64'), PEPPER_KMS_CLAVE: CLAVE, GCP_KMS_PEPPER_SECRET: 'texto-plano-viejo' };
+      const descifrar = jest.fn(async ({ nombreClave, cifrado: recibido }) => {
+        expect(nombreClave).toBe(CLAVE);
+        expect(Buffer.compare(recibido, cifrado)).toBe(0);
+        return Buffer.from(claro);
+      });
+      const consola = jest.spyOn(console, 'log').mockImplementation(() => {});
+      const aviso = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      expect(await resolverPepperKms(env, { descifrar })).toEqual({ origen: 'kms' });
+      expect(env.GCP_KMS_PEPPER_SECRET).toBe(claro);
+      const impreso = [...consola.mock.calls, ...aviso.mock.calls].flat().join(' ');
+      expect(impreso).not.toContain(claro);
+      consola.mockRestore();
+      aviso.mockRestore();
+    });
+
+    test.each([
+      [{ PEPPER_KMS_CIFRADO: 'YWJj' }, 'PEPPER_KMS_CLAVE'],
+      [{ PEPPER_KMS_CLAVE: CLAVE }, 'PEPPER_KMS_CIFRADO'],
+    ])('si falta una de las dos variables de KMS, falla nombrando la que falta (%o)', async (env, falta) => {
+      await expect(resolverPepperKms(env, { descifrar: jest.fn() })).rejects.toThrow(falta);
+    });
+
+    test('si KMS falla o devuelve un pepper vacío, falla (el backend no arranca) y no deja pepper', async () => {
+      const env = { PEPPER_KMS_CIFRADO: 'YWJj', PEPPER_KMS_CLAVE: CLAVE };
+      await expect(resolverPepperKms(env, { descifrar: async () => { throw new Error('PERMISSION_DENIED'); } })).rejects.toThrow('PERMISSION_DENIED');
+      await expect(resolverPepperKms(env, { descifrar: async () => Buffer.from('   ') })).rejects.toThrow(/vac/);
+      expect(env.GCP_KMS_PEPPER_SECRET).toBeUndefined();
+    });
+
+    test('server.js no arranca si la configuración de KMS está incompleta (proceso hijo)', () => {
+      const dbPath = path.join(os.tmpdir(), `upad-kms-${crypto.randomUUID()}.db`);
+      const r = spawnSync(process.execPath, ['src/server.js'], {
+        cwd: process.cwd(),
+        env: { PATH: process.env.PATH, DB_PATH: dbPath, PORT: '0', JWT_SECRET: 'x'.repeat(32), PEPPER_KMS_CIFRADO: 'YWJj', PEPPER_KMS_CLAVE: '' },
+        encoding: 'utf8',
+        timeout: 20000,
+      });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('PEPPER_KMS_CLAVE');
+      expect(r.stdout).not.toContain('Servidor Express');
+      expect(fs.existsSync(dbPath)).toBe(false);
+    });
+
+    test('el script cifrarPepper.js existe, es válido y nunca imprime el pepper en claro', () => {
+      expect(spawnSync(process.execPath, ['--check', 'scripts/cifrarPepper.js'], { cwd: process.cwd() }).status).toBe(0);
+      const fuente = fs.readFileSync(path.resolve(process.cwd(), 'scripts/cifrarPepper.js'), 'utf8');
+      expect(fuente).not.toMatch(/console\.log\([^)]*pepper\b/i);
+      expect(fuente).not.toMatch(/writeFile/);
+    });
+  });
+
+  describe('21. Rotación del pepper con migración al iniciar sesión y fin del hash débil K6', () => {
+    const hashHeredado = (password, salt, pepperValor, rondas) =>
+      crypto.pbkdf2Sync(`${password}${salt}${pepperValor}`, salt, rondas, 64, 'sha512').toString('hex');
+    const fila = (email) => db.prepare('SELECT id, password_hash, password_salt, hash_version FROM usuarios WHERE email = ?').get(email);
+    const insertarHeredada = ({ email, password, pepperValor, rondas = 100000, hashVersion = null }) => {
+      const salt = crypto.randomBytes(16).toString('hex');
+      const id = `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      db.prepare(`
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn, hash_version)
+        VALUES (?, 'Heredada', ?, ?, ?, 'tutor', NULL, 1, ?, ?)
+      `).run(id, email, hashHeredado(password, salt, pepperValor, rondas), salt, new Date().toISOString(), hashVersion);
+      return id;
+    };
+    const correo = (prefijo = 'rot') => `test-${TIMESTAMP}-${prefijo}-${crypto.randomUUID().slice(0, 8)}@upad.test`;
+    const login = (email, password) => request(app).post('/api/auth/login').send({ email, password });
+
+    afterEach(() => {
+      delete process.env.PEPPER_ANTERIOR;
+    });
+
+    test('las cuentas nuevas quedan en la versión 2 (pepper actual, 100 000 rondas), aunque la contraseña empiece por K6Pass', async () => {
+      const email = correo('k6nueva');
+      const password = `K6Pass${passwordGenerada()}`;
+      const res = await request(app).post('/api/auth/register').send({ nombre: 'Nueva', email, password, rol: 'tutor' });
+      expect(res.status).toBe(201);
+      const f = fila(email);
+      expect(f.hash_version).toBe(2);
+      expect(verifyPassword(password, f.password_salt, f.password_hash)).toBe(true);
+    });
+
+    test('una cuenta con el pepper ANTERIOR entra y se vuelve a cifrar con el actual (nuevo salt, versión 2)', async () => {
+      const viejo = crypto.randomBytes(32).toString('hex');
+      process.env.PEPPER_ANTERIOR = viejo;
+      const email = correo();
+      const password = passwordGenerada();
+      insertarHeredada({ email, password, pepperValor: viejo });
+      const antes = fila(email);
+
+      expect((await login(email, password)).status).toBe(200);
+      const despues = fila(email);
+      expect(despues.hash_version).toBe(2);
+      expect(despues.password_salt).not.toBe(antes.password_salt);
+      expect(verifyPassword(password, despues.password_salt, despues.password_hash)).toBe(true);
+
+      // Ya migrada: sigue entrando aunque el pepper anterior desaparezca
+      delete process.env.PEPPER_ANTERIOR;
+      expect((await login(email, password)).status).toBe(200);
+    });
+
+    test('una contraseña incorrecta en una cuenta heredada da 401 y no migra nada', async () => {
+      const viejo = crypto.randomBytes(32).toString('hex');
+      process.env.PEPPER_ANTERIOR = viejo;
+      const email = correo();
+      insertarHeredada({ email, password: passwordGenerada(), pepperValor: viejo });
+      const antes = fila(email);
+
+      expect((await login(email, passwordGenerada())).status).toBe(401);
+      expect(fila(email)).toEqual(antes);
+    });
+
+    test('las cuentas antiguas con el pepper actual (sin PEPPER_ANTERIOR) también entran y se migran', async () => {
+      const email = correo();
+      const password = passwordGenerada();
+      insertarHeredada({ email, password, pepperValor: process.env.GCP_KMS_PEPPER_SECRET });
+      expect((await login(email, password)).status).toBe(200);
+      expect(fila(email).hash_version).toBe(2);
+    });
+
+    test('una cuenta K6 antigua (1000 rondas) entra una vez y pasa a 100 000 rondas', async () => {
+      const email = `test_k6_${crypto.randomUUID().slice(0, 8)}@upad.test`;
+      const password = passwordGenerada();
+      insertarHeredada({ email, password, pepperValor: process.env.GCP_KMS_PEPPER_SECRET, rondas: 1000 });
+
+      expect((await login(email, password)).status).toBe(200);
+      const f = fila(email);
+      expect(f.hash_version).toBe(2);
+      expect(verifyPassword(password, f.password_salt, f.password_hash)).toBe(true);
+    });
+
+    test('una cuenta en versión 2 no acepta el pepper anterior ni las 1000 rondas', async () => {
+      const viejo = crypto.randomBytes(32).toString('hex');
+      process.env.PEPPER_ANTERIOR = viejo;
+      const email = correo();
+      const password = passwordGenerada();
+      insertarHeredada({ email, password, pepperValor: viejo, hashVersion: 2 });
+      expect((await login(email, password)).status).toBe(401);
+    });
+
+    test('una cuenta bcrypt heredada entra y se migra a la versión 2', async () => {
+      const email = correo('bcrypt');
+      const password = passwordGenerada();
+      const id = `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      db.prepare(`
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
+        VALUES (?, 'Bcrypt', ?, ?, '', 'tutor', NULL, 1, ?)
+      `).run(id, email, await bcrypt.hash(password, 4), new Date().toISOString());
+
+      expect((await login(email, password)).status).toBe(200);
+      const f = fila(email);
+      expect(f.hash_version).toBe(2);
+      expect(verifyPassword(password, f.password_salt, f.password_hash)).toBe(true);
+    });
+
+    test('el developer al crear una cuenta o cambiar su contraseña la deja en la versión 2', async () => {
+      const dev = signToken({ id: `dev21_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev21@upad.test`, rol: 'developer', organizacionId: null });
+      const email = correo('admin');
+      const creado = await request(app).post('/api/admin/users').set('Authorization', `Bearer ${dev}`)
+        .send({ nombre: 'Desde Admin', email, password: passwordGenerada(), rol: 'tutor' });
+      expect(creado.status).toBe(201);
+      expect(fila(email).hash_version).toBe(2);
+
+      const viejo = crypto.randomBytes(32).toString('hex');
+      const otroEmail = correo('admin2');
+      const id = insertarHeredada({ email: otroEmail, password: passwordGenerada(), pepperValor: viejo });
+      const nueva = passwordGenerada();
+      const editado = await request(app).put(`/api/admin/users/${id}`).set('Authorization', `Bearer ${dev}`)
+        .send({ nombre: 'Heredada', email: otroEmail, rol: 'tutor', activo: true, password: nueva });
+      expect(editado.status).toBe(200);
+      const f = fila(otroEmail);
+      expect(f.hash_version).toBe(2);
+      expect(verifyPassword(nueva, f.password_salt, f.password_hash)).toBe(true);
+    });
+
+    test('el registro ya no copia el hash a la tabla heredada users', () => {
+      const fuente = fs.readFileSync(path.resolve(process.cwd(), 'src/services/authService.js'), 'utf8');
+      expect(fuente).not.toMatch(/INSERT INTO users/);
     });
   });
 });

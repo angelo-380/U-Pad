@@ -1,0 +1,6 @@
+# Replicación continua de la base SQLite hacia Cloud Storage (la usa scripts/arranque.sh).
+# Litestream expande las variables de entorno al leer este archivo.
+dbs:
+  - path: ${DB_PATH}
+    replica:
+      url: ${LITESTREAM_REPLICA_URL}

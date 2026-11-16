@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
-import bcrypt from 'bcrypt';
-import { db, hashPassword, verifyPassword, hashPasswordAsync, verifyPasswordAsync } from '../config/database.js';
+import { db, hashPasswordAsync, verificarPasswordUsuario, migrarHashUsuario, HASH_VERSION_ACTUAL } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
 import { signToken } from '../utils/jwt.js';
 import { ROLES, ROLES_REGISTRO_PUBLICO, normalizarRol } from '../utils/roles.js';
@@ -32,13 +31,13 @@ function formatLockoutTime(seconds) {
 }
 
 /**
- * Servicio de Autenticación para U-Pad (Google Cloud Relational DB + PBKDF2/KMS Pepper + JWT).
+ * Servicio de Autenticación para U-Pad (SQLite + PBKDF2 con salt y pepper de entorno + JWT).
  */
 export const authService = {
   /**
-   * Registra un nuevo usuario con hashing seguro PBKDF2 + Cloud KMS Pepper.
+   * Registra un nuevo usuario con hashing seguro PBKDF2 + salt + pepper (variable de entorno).
    */
-  async register({ nombre, email, password, rol = 'empresario', codigoOrganizacion = null }) {
+  async register({ nombre, email, password, rol = 'empresario', codigoOrganizacion = null, googleSub = null }) {
     const emailNormalizado = email.toLowerCase().trim();
 
     // 1. Lista permitida (allowlist) de roles para registro público: 'empresario' y 'tutor'.
@@ -96,8 +95,8 @@ export const authService = {
       });
     }
 
-    // 4. Hashear la contraseña con PBKDF2 + Salt + Cloud KMS Pepper (asíncrono para alto rendimiento)
-    const { hash, salt } = await hashPasswordAsync(password, null, emailNormalizado);
+    // 4. Hashear la contraseña con PBKDF2 + salt + pepper de entorno (asíncrono para alto rendimiento)
+    const { hash, salt } = await hashPasswordAsync(password);
     const userId = `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
     const creadoEn = new Date().toISOString();
 
@@ -113,9 +112,9 @@ export const authService = {
       }
 
       db.prepare(`
-        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-      `).run(userId, nombre.trim(), emailNormalizado, hash, salt, rolNormalizado, organizacionId, creadoEn);
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn, google_sub, hash_version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      `).run(userId, nombre.trim(), emailNormalizado, hash, salt, rolNormalizado, organizacionId, creadoEn, googleSub, HASH_VERSION_ACTUAL);
 
       db.exec('COMMIT');
     } catch (error) {
@@ -123,21 +122,6 @@ export const authService = {
       throw error;
     }
 
-    // Sincronizar en la tabla users para compatibilidad con la app móvil
-    try {
-      db.prepare(`
-        INSERT INTO users (id, email, password_hash, full_name, role)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO NOTHING
-      `).run(
-        userId,
-        emailNormalizado,
-        hash,
-        nombre.trim(),
-        // Valor legado de la tabla `users` (compatibilidad con la app móvil): tutor -> PARENT, empresario -> ADMIN
-        rolNormalizado === 'tutor' ? 'PARENT' : 'ADMIN'
-      );
-    } catch (e) {}
 
     // 6. Generar token JWT
     const tokenPayload = {
@@ -243,16 +227,20 @@ export const authService = {
       });
     }
 
-    // 4. Comparar contraseñas: verificar PBKDF2 + Pepper KMS (asíncrono) o fallback a bcrypt
-    let passwordValido = false;
-    if (user.password_hash.startsWith('$2')) {
-      passwordValido = await bcrypt.compare(password, user.password_hash);
-    } else {
-      passwordValido = await verifyPasswordAsync(password, user.password_salt, user.password_hash, emailNormalizado);
-    }
+    // 4. Comparar contraseñas (versión actual o heredada; ver verificarPasswordUsuario)
+    const { valido: passwordValido, requiereMigracion } = await verificarPasswordUsuario(user, password);
 
     if (!passwordValido) {
       recordFailedAttempt();
+    }
+
+    // Rotación del pepper / fin del hash débil: una cuenta heredada se vuelve a cifrar en la versión actual
+    if (requiereMigracion) {
+      try {
+        await migrarHashUsuario(db, user.id, password);
+      } catch (e) {
+        console.warn(`[U-Pad] No se pudo migrar el hash de la cuenta ${user.id}: ${e.message}`);
+      }
     }
 
     // 5. Credenciales válidas: resetear contador de bloqueos
@@ -279,5 +267,73 @@ export const authService = {
         activo: Boolean(user.activo),
       },
     };
+  },
+
+  /**
+   * Inicio de sesión con una cuenta de Google ya verificada ({ sub, email }).
+   * Busca la cuenta por su Google enlazado o por correo; si no existe devuelve null (hay que registrarse).
+   * Una cuenta ya enlazada a OTRO Google no se puede usar con este.
+   */
+  async loginGoogle({ sub, email }) {
+    const user =
+      db.prepare('SELECT * FROM usuarios WHERE google_sub = ?').get(sub) ||
+      db.prepare('SELECT * FROM usuarios WHERE email = ?').get(email);
+    if (!user) return null;
+
+    if (user.google_sub && user.google_sub !== sub) {
+      throw new AppError('Este correo ya está enlazado a otra cuenta de Google.', 401, { code: 'GOOGLE_CUENTA_DISTINTA' });
+    }
+    if (Number(user.activo) === 0) {
+      throw new AppError('Tu cuenta se encuentra desactivada. Contacta al administrador.', 403, { code: 'ACCOUNT_INACTIVE' });
+    }
+    if (!user.google_sub) {
+      db.prepare('UPDATE usuarios SET google_sub = ? WHERE id = ?').run(sub, user.id);
+    }
+
+    const token = signToken({ id: user.id, email: user.email, rol: user.rol, organizacionId: user.organizacionId || null });
+    return {
+      token,
+      usuario: {
+        id: user.id,
+        nombre: user.nombre,
+        email: user.email,
+        rol: user.rol,
+        organizacionId: user.organizacionId || null,
+        activo: Boolean(user.activo),
+      },
+    };
+  },
+
+  /**
+   * Primer ingreso con Google: crea la cuenta con las mismas reglas que el registro normal
+   * (roles públicos, organización propia del empresario, código opcional del tutor).
+   * La contraseña es aleatoria y nadie la conoce: la cuenta solo entra con Google.
+   */
+  async registroGoogle({ sub, email, nombre }, { rol, nombreInstitucion, codigoOrganizacion } = {}) {
+    const rolNormalizado = rol === undefined || rol === null ? ROLES.EMPRESARIO : normalizarRol(rol);
+    let nombreCuenta = nombre;
+    if (rolNormalizado === ROLES.EMPRESARIO) {
+      const institucion = typeof nombreInstitucion === 'string' ? nombreInstitucion.trim().slice(0, 100) : '';
+      if (!institucion) {
+        throw new AppError('El nombre de la institución es obligatorio.', 400, {
+          field: 'nombreInstitucion',
+          code: 'NOMBRE_INSTITUCION_REQUERIDO',
+        });
+      }
+      nombreCuenta = institucion;
+    }
+
+    if (db.prepare('SELECT id FROM usuarios WHERE google_sub = ?').get(sub)) {
+      throw new AppError('Esta cuenta de Google ya está registrada.', 409, { code: 'GOOGLE_YA_REGISTRADO' });
+    }
+
+    return this.register({
+      nombre: nombreCuenta,
+      email,
+      password: crypto.randomBytes(32).toString('base64url'),
+      rol,
+      codigoOrganizacion,
+      googleSub: sub,
+    });
   },
 };

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 
 // Guardar valor de RATE_LIMIT_AUTH_MAX si fue provisto en el entorno de ejecución
@@ -19,7 +20,9 @@ delete process.env.DEV_PASSWORD;
 delete process.env.DEV_NAME;
 
 process.env.NODE_ENV = 'test';
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_secret_upad_2026_super_seguro_min_32_chars';
+// Secretos: valores aleatorios en cada corrida (nunca los del .env ni valores escritos en el código)
+process.env.JWT_SECRET = crypto.randomBytes(48).toString('base64url');
+process.env.GCP_KMS_PEPPER_SECRET = crypto.randomBytes(32).toString('base64url');
 process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
 // Conectar al mismo emulador de Firestore y project ID utilizados por el backend

@@ -1,26 +1,21 @@
 import dotenv from 'dotenv';
+import { exigirSecretosAlArrancar, leerSecreto } from './secretos.js';
 dotenv.config();
+
+// Sin JWT_SECRET ni GCP_KMS_PEPPER_SECRET el backend no arranca (y no se abre ni crea la base)
+exigirSecretosAlArrancar();
 
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'node:crypto';
+import bcrypt from 'bcrypt';
 import { validarPassword } from '../utils/passwordPolicy.js';
 import { crearOrganizacion } from '../utils/organizaciones.js';
 
-// Buscar la única base de datos relacional de Google Cloud
-const cloudDbPath1 = path.resolve(process.cwd(), '../cloud/upad_relational.db');
-const cloudDbPath2 = path.resolve(process.cwd(), 'cloud/upad_relational.db');
-const cloudDbPath3 = '/Users/angeloricasca/Projects/Cloud/U-Pad/cloud/upad_relational.db';
-const defaultDb = path.resolve(process.cwd(), 'upad_relational.db');
-
-export const DB_PATH = process.env.DB_PATH || (
-  fs.existsSync(cloudDbPath1) ? cloudDbPath1 : (
-    fs.existsSync(cloudDbPath2) ? cloudDbPath2 : (
-      fs.existsSync(cloudDbPath3) ? cloudDbPath3 : defaultDb
-    )
-  )
-);
+// Ruta de la base de datos SQLite: DB_PATH o, si no se define, upad_relational.db en la carpeta actual.
+// En el contenedor es /data/upad_relational.db y Litestream la replica a Cloud Storage (scripts/arranque.sh).
+export const DB_PATH = process.env.DB_PATH || path.resolve(process.cwd(), 'upad_relational.db');
 
 const dbDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dbDir)) {
@@ -37,25 +32,26 @@ try {
   db.exec('PRAGMA cache_size = -64000;');
 } catch (e) {}
 
-// Configuración de llaves de Google Cloud KMS para Pepper Master Key
-export const KMS_PEPPER = process.env.GCP_KMS_PEPPER_SECRET || 'UpadSecureGcpKmsPepper2026_EnterpriseKey!#';
+// Pepper de las contraseñas: se lee del entorno (GCP_KMS_PEPPER_SECRET). Hoy es una variable de entorno,
+// no Cloud KMS (ver CLAUDE.md, 9d). Sin valor por defecto en el código.
+const pepper = () => leerSecreto('GCP_KMS_PEPPER_SECRET');
 
 /**
  * Hashing de contraseñas de alta seguridad:
- * PBKDF2 (100,000 rondas, sha512) + Salt criptográfico + Llave Maestra Pepper de Google Cloud KMS
+ * PBKDF2 (100,000 rondas, sha512) + salt criptográfico + pepper (variable de entorno GCP_KMS_PEPPER_SECRET)
  */
 export function hashPassword(password, salt = null) {
   if (!salt) {
     salt = crypto.randomBytes(16).toString('hex');
   }
-  const combined = `${password}${salt}${KMS_PEPPER}`;
+  const combined = `${password}${salt}${pepper()}`;
   const hash = crypto.pbkdf2Sync(combined, salt, 100000, 64, 'sha512').toString('hex');
   return { hash, salt };
 }
 
 export function verifyPassword(password, salt, storedHash) {
   if (!storedHash) return false;
-  const combined = `${password}${salt}${KMS_PEPPER}`;
+  const combined = `${password}${salt}${pepper()}`;
   const calculated = crypto.pbkdf2Sync(combined, salt, 100000, 64, 'sha512').toString('hex');
   try {
     return crypto.timingSafeEqual(Buffer.from(calculated, 'hex'), Buffer.from(storedHash, 'hex'));
@@ -64,41 +60,88 @@ export function verifyPassword(password, salt, storedHash) {
   }
 }
 
-/**
- * Versión asíncrona para pruebas de estrés masivo (libuv threadpool):
- * No bloquea el Event Loop cuando entran 500+ peticiones en 5 segundos.
- * Optimizado para cuentas de test sintético (K6Pass / test_k6_) manteniendo PBKDF2 + Pepper + Salt.
- */
-export function hashPasswordAsync(password, salt = null, email = '') {
-  return new Promise((resolve, reject) => {
-    if (!salt) {
-      salt = crypto.randomBytes(16).toString('hex');
-    }
-    const combined = `${password}${salt}${KMS_PEPPER}`;
-    const isTestK6 = (email && email.includes('test_k6_')) || (password && password.startsWith('K6Pass'));
-    const rounds = isTestK6 ? 1000 : 100000;
-    crypto.pbkdf2(combined, salt, rounds, 64, 'sha512', (err, derivedKey) => {
-      if (err) return reject(err);
-      resolve({ hash: derivedKey.toString('hex'), salt });
-    });
+// Versión actual del hash: 2 = PBKDF2 (100 000 rondas, sha512) + salt + pepper ACTUAL.
+// Las filas sin versión (NULL) son heredadas: se verifican con el pepper anterior/actual y las rondas
+// antiguas, y se vuelven a cifrar en la versión 2 al iniciar sesión (verificarPasswordUsuario).
+export const HASH_VERSION_ACTUAL = 2;
+const RONDAS = 100000;
+const RONDAS_K6_HEREDADAS = 1000; // solo para VERIFICAR cuentas antiguas de las pruebas de carga
+
+const pbkdf2Async = (password, salt, pepperValor, rondas) =>
+  new Promise((resolve, reject) => {
+    crypto.pbkdf2(`${password}${salt}${pepperValor}`, salt, rondas, 64, 'sha512', (err, clave) =>
+      err ? reject(err) : resolve(clave)
+    );
   });
+
+const coincide = (calculado, hashHex) => {
+  try {
+    const guardado = Buffer.from(hashHex, 'hex');
+    return guardado.length === calculado.length && crypto.timingSafeEqual(calculado, guardado);
+  } catch (e) {
+    return false;
+  }
+};
+
+/** Hash asíncrono (no bloquea el event loop). Siempre 100 000 rondas y el pepper actual. */
+export async function hashPasswordAsync(password, salt = null) {
+  const saltFinal = salt || crypto.randomBytes(16).toString('hex');
+  const clave = await pbkdf2Async(password, saltFinal, pepper(), RONDAS);
+  return { hash: clave.toString('hex'), salt: saltFinal };
 }
 
-export function verifyPasswordAsync(password, salt, storedHash, email = '') {
-  return new Promise((resolve) => {
-    if (!storedHash) return resolve(false);
-    const combined = `${password}${salt}${KMS_PEPPER}`;
-    const isTestK6 = (email && email.includes('test_k6_')) || (password && password.startsWith('K6Pass'));
-    const rounds = isTestK6 ? 1000 : 100000;
-    crypto.pbkdf2(combined, salt, rounds, 64, 'sha512', (err, derivedKey) => {
-      if (err) return resolve(false);
-      try {
-        resolve(crypto.timingSafeEqual(Buffer.from(derivedKey.toString('hex'), 'hex'), Buffer.from(storedHash, 'hex')));
-      } catch (e) {
-        resolve(false);
+export async function verifyPasswordAsync(password, salt, storedHash) {
+  if (!storedHash) return false;
+  try {
+    return coincide(await pbkdf2Async(password, salt, pepper(), RONDAS), storedHash);
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Verifica la contraseña de una fila de `usuarios`. Devuelve { valido, requiereMigracion }.
+ * - Versión 2: solo el pepper actual y 100 000 rondas.
+ * - Heredadas (sin versión): PEPPER_ANTERIOR (si existe) y el actual; 1000 rondas solo para las cuentas
+ *   de pruebas de carga (correo con test_k6_ o contraseña K6Pass…), como hacía el código anterior.
+ * - bcrypt heredado ($2…).
+ * Si una heredada es válida, requiereMigracion = true (ver migrarHashUsuario).
+ */
+export async function verificarPasswordUsuario(usuario, password) {
+  const hash = usuario?.password_hash;
+  if (!hash || typeof password !== 'string') return { valido: false, requiereMigracion: false };
+
+  if (hash.startsWith('$2')) {
+    const valido = await bcrypt.compare(password, hash);
+    return { valido, requiereMigracion: valido };
+  }
+
+  if (Number(usuario.hash_version) === HASH_VERSION_ACTUAL) {
+    return { valido: await verifyPasswordAsync(password, usuario.password_salt, hash), requiereMigracion: false };
+  }
+
+  const anterior = (process.env.PEPPER_ANTERIOR || '').trim();
+  const peppers = [...new Set([anterior, pepper()].filter(Boolean))];
+  const email = usuario.email || '';
+  const rondas = [RONDAS];
+  if (email.includes('test_k6_') || password.startsWith('K6Pass')) rondas.push(RONDAS_K6_HEREDADAS);
+
+  for (const pepperValor of peppers) {
+    for (const r of rondas) {
+      if (coincide(await pbkdf2Async(password, usuario.password_salt, pepperValor, r), hash)) {
+        return { valido: true, requiereMigracion: true };
       }
-    });
-  });
+    }
+  }
+  return { valido: false, requiereMigracion: false };
+}
+
+/** Vuelve a cifrar la contraseña (ya verificada) en la versión actual, con un salt nuevo. */
+export async function migrarHashUsuario(conexion, usuarioId, password) {
+  const { hash, salt } = await hashPasswordAsync(password);
+  conexion
+    .prepare('UPDATE usuarios SET password_hash = ?, password_salt = ?, hash_version = ? WHERE id = ?')
+    .run(hash, salt, HASH_VERSION_ACTUAL, usuarioId);
 }
 
 // Inicializar esquemas requeridos por la plataforma web y la nube si no existen
@@ -149,11 +192,15 @@ export function inicializarEsquema(conexion) {
   CREATE TABLE IF NOT EXISTS child_devices (
     device_id VARCHAR(128) PRIMARY KEY,
     parent_id VARCHAR(64),
-    child_name VARCHAR(128) DEFAULT 'Diego',
-    device_model VARCHAR(128) NOT NULL DEFAULT 'Android Tablet (Samsung Galaxy Tab A8)',
+    child_name VARCHAR(128),
+    device_model VARCHAR(128) NOT NULL DEFAULT '',
     is_kiosk_active INTEGER NOT NULL DEFAULT 1,
-    last_latitude REAL DEFAULT -12.0431,
-    last_longitude REAL DEFAULT -77.0402,
+    last_latitude REAL,
+    last_longitude REAL,
+    ubicacion_actualizada_en TEXT,
+    zona_lat REAL,
+    zona_lng REAL,
+    zona_radio INTEGER,
     last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -180,18 +227,46 @@ export function inicializarEsquema(conexion) {
   CREATE INDEX IF NOT EXISTS idx_usuarios_organizacion ON usuarios(organizacionId);
   CREATE INDEX IF NOT EXISTS idx_rutinas_organizacion ON rutinas(organizacionId);
 `);
+  asegurarColumnasChildDevices(conexion);
+  asegurarColumnasUsuarios(conexion);
+}
+
+/**
+ * Añade a usuarios las columnas nuevas en bases creadas antes (google_sub: id de la cuenta de Google
+ * enlazada, único cuando existe; hash_version: versión del hash de la contraseña). Idempotente.
+ */
+export function asegurarColumnasUsuarios(conexion) {
+  const existentes = new Set(conexion.prepare('PRAGMA table_info(usuarios)').all().map((c) => c.name));
+  if (!existentes.has('google_sub')) {
+    conexion.exec('ALTER TABLE usuarios ADD COLUMN google_sub TEXT');
+  }
+  if (!existentes.has('hash_version')) {
+    conexion.exec('ALTER TABLE usuarios ADD COLUMN hash_version INTEGER');
+  }
+  conexion.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_google_sub ON usuarios(google_sub) WHERE google_sub IS NOT NULL');
+}
+
+/**
+ * Añade a child_devices las columnas que faltan en bases creadas con versiones anteriores
+ * (nombre del niño, hora de la última ubicación y zona segura). Idempotente.
+ */
+export function asegurarColumnasChildDevices(conexion) {
+  const existentes = new Set(conexion.prepare('PRAGMA table_info(child_devices)').all().map((c) => c.name));
+  const columnas = [
+    ['child_name', 'VARCHAR(128)'],
+    ['ubicacion_actualizada_en', 'TEXT'],
+    ['zona_lat', 'REAL'],
+    ['zona_lng', 'REAL'],
+    ['zona_radio', 'INTEGER'],
+  ];
+  for (const [nombre, tipo] of columnas) {
+    if (!existentes.has(nombre)) {
+      conexion.exec(`ALTER TABLE child_devices ADD COLUMN ${nombre} ${tipo}`);
+    }
+  }
 }
 
 inicializarEsquema(db);
-
-try {
-  const cols = db.pragma('table_info(child_devices)');
-  if (!cols.some(c => c.name === 'child_name')) {
-    db.exec("ALTER TABLE child_devices ADD COLUMN child_name VARCHAR(128) DEFAULT 'Diego'");
-  }
-} catch (e) {
-  // column check/add completed
-}
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -343,9 +418,9 @@ export function crearDeveloperInicial(conexion, entorno = process.env, consola =
   const userId = `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
 
   conexion.prepare(`
-    INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
-    VALUES (?, ?, ?, ?, ?, 'developer', NULL, 1, ?)
-  `).run(userId, nombre, email, hash, salt, new Date().toISOString());
+    INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn, hash_version)
+    VALUES (?, ?, ?, ?, ?, 'developer', NULL, 1, ?, ?)
+  `).run(userId, nombre, email, hash, salt, new Date().toISOString(), HASH_VERSION_ACTUAL);
 
   consola.log(`[U-Pad] Cuenta developer inicial creada: ${email}`);
   return true;

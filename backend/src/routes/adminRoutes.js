@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
-import { db, hashPassword } from '../config/database.js';
+import { db, hashPassword, HASH_VERSION_ACTUAL } from '../config/database.js';
 import { authenticate, authorizeRoles } from '../middlewares/authMiddleware.js';
 import { sendSuccess } from '../utils/responseHandler.js';
 import { AppError } from '../utils/AppError.js';
@@ -59,7 +59,7 @@ const validarOrganizacionExistente = (organizacionId) => {
 /**
  * GET /api/admin/users
  * Lista todos los usuarios registrados en el sistema de manera paginada y con contador de rutinas.
- * Para el developer, incluye las columnas raw de base de datos como un SELECT completo.
+ * Nunca expone el hash ni el salt de la contraseña. Orden: del más reciente al más antiguo.
  */
 router.get('/users', (req, res, next) => {
   try {
@@ -98,11 +98,10 @@ router.get('/users', (req, res, next) => {
         u.organizacionId,
         u.activo,
         u.creadoEn,
-        u.password_salt as saltPreview,
         (SELECT COUNT(*) FROM rutinas r WHERE r.creadoPor = u.id) as rutinasCount
       FROM usuarios u
       ${whereClause}
-      ORDER BY u.creadoEn DESC
+      ORDER BY u.creadoEn DESC, u.rowid DESC
       LIMIT ? OFFSET ?
     `;
 
@@ -163,9 +162,9 @@ router.post('/users', (req, res, next) => {
       }
 
       db.prepare(`
-        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-      `).run(userId, nombre.trim(), cleanEmail, hash, salt, rolValidado, organizacionFinal, now);
+        INSERT INTO usuarios (id, nombre, email, password_hash, password_salt, rol, organizacionId, activo, creadoEn, hash_version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+      `).run(userId, nombre.trim(), cleanEmail, hash, salt, rolValidado, organizacionFinal, now, HASH_VERSION_ACTUAL);
 
       db.exec('COMMIT');
     } catch (error) {
@@ -227,9 +226,9 @@ router.put('/users/:userId', (req, res, next) => {
         const { hash, salt } = hashPassword(password.trim());
         db.prepare(`
           UPDATE usuarios
-          SET nombre = ?, email = ?, rol = ?, organizacionId = ?, activo = ?, password_hash = ?, password_salt = ?
+          SET nombre = ?, email = ?, rol = ?, organizacionId = ?, activo = ?, password_hash = ?, password_salt = ?, hash_version = ?
           WHERE id = ?
-        `).run(newNombre, cleanEmail, newRol, newOrg, newActivo, hash, salt, userId);
+        `).run(newNombre, cleanEmail, newRol, newOrg, newActivo, hash, salt, HASH_VERSION_ACTUAL, userId);
       } else {
         db.prepare(`
           UPDATE usuarios
@@ -290,6 +289,70 @@ router.delete('/users/:userId', (req, res, next) => {
       statusCode: 200,
       message: `Usuario ${existing.email} eliminado definitivamente del sistema`,
       data: { userId, deleted: true },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/rutinas
+ * Lista TODAS las rutinas del sistema, de la más reciente a la más antigua, paginadas (límite máximo 100).
+ * Búsqueda opcional (?search=) por título, nombre o correo del creador. Incluye datos del creador.
+ */
+router.get('/rutinas', (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
+    const offset = (page - 1) * limit;
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
+    let whereClause = ' WHERE 1=1';
+    const params = [];
+    if (search) {
+      whereClause += ' AND (r.titulo LIKE ? OR u.nombre LIKE ? OR u.email LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    const desde = 'FROM rutinas r LEFT JOIN usuarios u ON u.id = r.creadoPor';
+    const total = db.prepare(`SELECT COUNT(*) AS total ${desde} ${whereClause}`).get(...params)?.total || 0;
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    const filas = db.prepare(`
+      SELECT
+        r.id,
+        r.titulo,
+        r.turno,
+        r.organizacionId,
+        r.pasos,
+        r.activa,
+        r.creadoPor,
+        r.creadoEn,
+        u.nombre AS creadorNombre,
+        u.email AS creadorEmail,
+        u.rol AS creadorRol
+      ${desde}
+      ${whereClause}
+      ORDER BY r.creadoEn DESC, r.rowid DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    const rutinas = filas.map(({ pasos, ...r }) => {
+      let lista = [];
+      try {
+        lista = JSON.parse(pasos || '[]');
+      } catch (e) {
+        lista = [];
+      }
+      return { ...r, activa: Boolean(r.activa), pasosCount: Array.isArray(lista) ? lista.length : 0 };
+    });
+
+    return res.status(200).json({
+      status: 'success',
+      statusCode: 200,
+      message: 'Rutinas del sistema obtenidas exitosamente',
+      data: rutinas,
+      pagination: { page, limit, total, totalPages, hasNext: page < totalPages, hasPrev: page > 1 },
     });
   } catch (error) {
     next(error);

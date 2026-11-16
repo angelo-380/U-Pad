@@ -1,4 +1,13 @@
+# Nunca subir bases locales, backups ni secretos a la imagen
 node_modules
 tests
 reports
+backups
+emulator-data
+coverage
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
 .env
+.env.*

@@ -19,6 +19,7 @@ import { generalLimiter } from './middlewares/rateLimiter.js';
 import { notFoundHandler } from './middlewares/notFoundHandler.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { sendSuccess } from './utils/responseHandler.js';
+import { descripcionPersistencia } from './config/persistencia.js';
 import { AppError } from './utils/AppError.js';
 
 dotenv.config();
@@ -32,9 +33,15 @@ const FRONTEND_DIST = distCandidates.find(d => fs.existsSync(d)) || path.resolve
 
 const app = express();
 
+// Cloud Run pone un proxy delante: confiar en un salto para que req.ip sea la IP real del cliente
+// (la usan los límites de intentos). Sin esto, todos los clientes comparten la IP del proxy.
+app.set('trust proxy', 1);
+
 // Middlewares de seguridad de cabeceras y parsing
 app.use(helmet({
   contentSecurityPolicy: false,
+  // La ventana emergente de «Continuar con Google» necesita comunicarse con la página que la abrió
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
 }));
 
 // Configuración de CORS permitiendo orígenes locales, IP de red local y clientes nativos
@@ -85,20 +92,22 @@ app.get('/', (req, res, next) => {
   // Para pruebas automáticas de supertest / peticiones API
   sendSuccess(res, 200, 'Sitio en desarrollo - U-Pad Backend API v1.0 (Entrega 25%)', {
     status: 'operational',
-    cloudPlatform: 'Google Cloud Platform (GCP)',
+    plataforma: process.env.K_SERVICE ? 'Cloud Run' : 'local',
     environment: process.env.NODE_ENV || 'development',
     documentation: '/api/docs',
     timestamp: new Date().toISOString()
   });
 });
 
-// Ruta de health check y verificación de conexión a Google Cloud Database
+// Health check: verifica que la base de datos SQLite responde
 app.get('/health', (req, res, next) => {
   try {
     const check = db.prepare('SELECT 1 as alive').get();
-    sendSuccess(res, 200, 'Servicio en línea y conectado a Google Cloud Platform', {
+    sendSuccess(res, 200, 'Servicio en línea y base de datos SQLite accesible', {
       database: 'connected',
-      cloudPlatform: 'Google Cloud Platform (GCP)',
+      plataforma: process.env.K_SERVICE ? 'Cloud Run' : 'local',
+      persistencia: descripcionPersistencia(),
+      pepper: process.env.UPAD_PEPPER_ORIGEN || 'variable de entorno',
       emulator: false,
       timestamp: new Date().toISOString()
     });
@@ -112,11 +121,13 @@ app.get('/api/v1/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
     statusCode: 200,
-    message: 'U-Pad Google Cloud Engine operational.',
+    message: 'U-Pad backend operational.',
     data: {
       service: 'upad-backend-service',
       environment: process.env.NODE_ENV || 'production',
-      cloudPlatform: 'Google Cloud Platform (GCP)',
+      plataforma: process.env.K_SERVICE ? 'Cloud Run' : 'local',
+      persistencia: descripcionPersistencia(),
+      pepper: process.env.UPAD_PEPPER_ORIGEN || 'variable de entorno',
     },
     error: null,
     timestamp: Date.now()
@@ -146,94 +157,8 @@ app.use('/api/v1', mobileSyncRoutes);
 // ==============================================================================
 // RUTAS PARA EMPAREJAMIENTO Y TELEMETRÍA MÓVIL (U-Pad Child & Parent)
 // ==============================================================================
-app.post('/api/v1/devices/pairing/create', (req, res) => {
-  const code = req.body.code || Math.floor(100000 + Math.random() * 900000).toString();
-  const deviceId = req.body.deviceId || 'dev_child_1';
-  try {
-    db.prepare(`
-      INSERT INTO pairing_codes (code, device_id, pairing_status)
-      VALUES (?, ?, 'PENDING')
-      ON CONFLICT(code) DO UPDATE SET device_id = excluded.device_id, pairing_status = 'PENDING', parent_id = NULL
-    `).run(code, deviceId);
-  } catch (e) {}
-  res.status(200).json({
-    status: 'success',
-    code,
-    deviceId,
-    data: { code, deviceId, status: 'PENDING' }
-  });
-});
-
-app.post('/api/v1/devices/pairing/link', (req, res) => {
-  const code = (req.body.code || req.body.pairing_code || '').trim().toUpperCase();
-  const parentId = req.body.parentId || req.body.parent_id;
-  const childName = req.body.childName || req.body.child_name || 'Diego';
-  const deviceModel = req.body.deviceModel || req.body.device_model || 'Android Tablet (Samsung Galaxy Tab A8)';
-
-  let deviceId = null;
-  try {
-    const row = db.prepare('SELECT device_id FROM pairing_codes WHERE UPPER(code) = ?').get(code);
-    deviceId = row?.device_id || `dev_child_${code.toLowerCase()}`;
-
-    db.prepare(`
-      INSERT INTO pairing_codes (code, device_id, parent_id, pairing_status)
-      VALUES (?, ?, ?, 'LINKED')
-      ON CONFLICT(code) DO UPDATE SET 
-        parent_id = excluded.parent_id,
-        pairing_status = 'LINKED'
-    `).run(code, deviceId, parentId);
-
-    db.prepare(`
-      INSERT INTO child_devices (device_id, parent_id, child_name, device_model, is_kiosk_active, last_seen_at)
-      VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
-      ON CONFLICT(device_id) DO UPDATE SET
-        parent_id = excluded.parent_id,
-        child_name = excluded.child_name,
-        device_model = excluded.device_model,
-        last_seen_at = CURRENT_TIMESTAMP
-    `).run(deviceId, parentId, childName, deviceModel);
-  } catch (e) {
-    console.error('Error linking pairing code:', e);
-  }
-
-  res.status(200).json({
-    status: 'success',
-    message: 'Device linked successfully.',
-    data: { code, parentId, deviceId, childName, linked: true }
-  });
-});
-
-app.get('/api/v1/devices/pairing/:code', (req, res) => {
-  const code = (req.params.code || '').trim().toUpperCase();
-  let pairingInfo = null;
-  try {
-    pairingInfo = db.prepare('SELECT code, device_id, parent_id, pairing_status FROM pairing_codes WHERE UPPER(code) = ?').get(code);
-  } catch (e) {}
-  if (!pairingInfo) {
-    return res.status(404).json({
-      status: 'error',
-      statusCode: 404,
-      error: { code: 'CODE_NOT_FOUND', message: 'Pairing code not found or expired.' }
-    });
-  }
-  res.status(200).json({
-    status: 'success',
-    data: {
-      code: pairingInfo.code,
-      deviceId: pairingInfo.device_id,
-      parentId: pairingInfo.parent_id || '',
-      estado: (pairingInfo.pairing_status === 'LINKED' || pairingInfo.parent_id) ? 'enlazado' : 'esperando'
-    }
-  });
-});
-
-app.all('/api/v1/devices/:deviceId/telemetry', (req, res) => {
-  res.status(200).json({
-    status: 'success',
-    data: { deviceId: req.params.deviceId, latitude: -12.046374, longitude: -77.042793 }
-  });
-});
-
+// La vinculación (/api/v1/devices/pairing/*) y la telemetría (/api/v1/devices/:deviceId/telemetry)
+// las atiende deviceRoutes, montado arriba en /api/v1/devices.
 // Ruta de prueba para verificar respuestas HTTP controladas (Requisito del documento)
 app.get('/api/test-status/:code', (req, res, next) => {
   const code = parseInt(req.params.code, 10);

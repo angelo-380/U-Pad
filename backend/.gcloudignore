@@ -1,0 +1,16 @@
+# gcloud run deploy --source: archivos que NO se suben a Cloud Build
+.git
+.gitignore
+# Nunca subir bases locales, backups ni secretos a la imagen
+node_modules
+tests
+reports
+backups
+emulator-data
+coverage
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+.env
+.env.*

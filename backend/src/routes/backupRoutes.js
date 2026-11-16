@@ -13,12 +13,13 @@ router.use(authorizeRoles('developer'));
 
 router.get('/', backupController.listar);
 router.post('/', backupController.crear);
+router.get('/info', backupController.info);
 router.get('/descargar/:filename', backupController.descargar);
 router.get('/:filename', backupController.descargar);
 
 /**
  * POST /api/admin/backups/sql-query
- * Ejecuta consultas directas sobre la base de datos en Google Cloud Run en tiempo real
+ * Consola de solo lectura sobre la base de datos SQLite del servidor (SELECT, PRAGMA y EXPLAIN)
  * para demostración y verificación ante el profesor/evaluador.
  */
 router.post('/sql-query', (req, res, next) => {
@@ -32,15 +33,15 @@ router.post('/sql-query', (req, res, next) => {
     // Solo permitir consultas de lectura o inspección segura (SELECT, PRAGMA, EXPLAIN)
     const upper = cleanQuery.toUpperCase();
     if (!upper.startsWith('SELECT') && !upper.startsWith('PRAGMA') && !upper.startsWith('EXPLAIN')) {
-      throw new AppError('Por seguridad de Cloud, solo se permiten sentencias SELECT y PRAGMA en el visor en vivo.', 400);
+      throw new AppError('Por seguridad, la consola de backups solo permite sentencias SELECT, PRAGMA y EXPLAIN.', 400);
     }
 
     const rows = db.prepare(cleanQuery).all();
-    return sendSuccess(res, 200, 'Consulta ejecutada en Google Cloud Database', {
+    return sendSuccess(res, 200, 'Consulta ejecutada', {
       rowCount: rows.length,
       rows,
       executedAt: new Date().toISOString(),
-      engine: 'Google Cloud Relational Engine (node:sqlite / PBKDF2 KMS Pepper)'
+      engine: 'SQLite (node:sqlite)'
     });
   } catch (error) {
     next(new AppError(`Error al ejecutar consulta SQL: ${error.message}`, 400));

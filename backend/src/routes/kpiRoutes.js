@@ -15,8 +15,9 @@ router.use(authorizeRoles('empresario', 'developer'));
  * Proporciona un resumen gerencial e indicadores clave (KPIs) de UNA organización.
  * - empresario: siempre la suya (la del token; nunca un valor enviado por el cliente).
  * - developer: agregado de todas las organizaciones, o la indicada con ?organizacionId=.
- * Las cifras de rutinas, estudiantes (niños vinculados) y kioscos son datos reales (0 si no hay).
- * La adherencia semanal y los indicadores de calidad siguen siendo SIMULADOS (aún no hay datos reales).
+ * Todas las cifras son datos reales: rutinas, distribución por turno, estudiantes (niños vinculados) y kioscos (0 si no hay).
+ * No se devuelven métricas de cumplimiento o adherencia: el backend aún no recibe registros de rutinas completadas
+ * (la app Android los guarda solo en el dispositivo), y no se inventan cifras.
  * PROTECCIÓN DE PRIVACIDAD: No expone ningún dato personal identificable (PII) de alumnos o tutores.
  */
 router.get('/kpis', (req, res, next) => {
@@ -95,7 +96,6 @@ router.get('/kpis', (req, res, next) => {
       kpis: {
         totalEstudiantesInstitucion: totalEstudiantes,
         totalRutinasEstructuradas: totalRutinas,
-        tasaCumplimientoAdherencia: 94.6, // SIMULADO: % de adherencia semanal agregada
         dispositivosKioskEnPerimetro: dispositivosKiosco,
         distribucionTurnos: {
           manana: mananaCount,
@@ -107,21 +107,6 @@ router.get('/kpis', (req, res, next) => {
             noche: Math.round((nocheCount / Math.max(1, totalRutinas)) * 100),
           },
         },
-        // SIMULADO: aún no existen datos reales de sesiones ni adherencia
-        adherenciaSemanal: [
-          { dia: 'Lunes', tasa: 92.4, sesiones: 135 },
-          { dia: 'Martes', tasa: 94.1, sesiones: 138 },
-          { dia: 'Miércoles', tasa: 95.8, sesiones: 140 },
-          { dia: 'Jueves', tasa: 93.6, sesiones: 137 },
-          { dia: 'Viernes', tasa: 96.5, sesiones: 141 },
-        ],
-        // SIMULADO
-        indicadoresCalidad: [
-          { titulo: 'Predictibilidad Visual Escolar', valor: '98%', estado: 'Excelente' },
-          { titulo: 'Reducción de Ansiedad en Transición', valor: '89%', estado: 'Óptimo' },
-          { titulo: 'Adherencia a Pictogramas ARASAAC', valor: '96%', estado: 'Sobresaliente' },
-          { titulo: 'Disponibilidad de Servidor en la Nube', valor: '99.9%', estado: 'Alta Disponibilidad' },
-        ],
       },
       politicaPrivacidad: {
         cumplimiento: 'Estricto cumplimiento de anonimización de datos de menores TEA',

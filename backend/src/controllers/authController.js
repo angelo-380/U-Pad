@@ -2,6 +2,7 @@ import { authService } from '../services/authService.js';
 import { sendCreated, sendSuccess } from '../utils/responseHandler.js';
 import { AppError } from '../utils/AppError.js';
 import { validarPassword } from '../utils/passwordPolicy.js';
+import { googleClientId, verificarCredencialGoogle } from '../utils/googleVerifier.js';
 
 export const authController = {
   /**
@@ -68,6 +69,46 @@ export const authController = {
       const result = await authService.login({ email, password });
 
       return sendSuccess(res, 200, 'Inicio de sesión exitoso', result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * GET /api/auth/config: configuración pública de autenticación (client ID de Google, no es un secreto).
+   */
+  config(req, res) {
+    return sendSuccess(res, 200, 'Configuración de autenticación', { googleClientId: googleClientId() });
+  },
+
+  /**
+   * POST /api/auth/google { credential }: entra con Google o indica que falta completar el registro.
+   */
+  async google(req, res, next) {
+    try {
+      const perfil = await verificarCredencialGoogle(req.body?.credential);
+      const result = await authService.loginGoogle(perfil);
+      if (!result) {
+        return sendSuccess(res, 200, 'Completa tu registro', {
+          requiereRegistro: true,
+          perfil: { nombre: perfil.nombre, email: perfil.email },
+        });
+      }
+      return sendSuccess(res, 200, 'Inicio de sesión exitoso', result);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * POST /api/auth/google/registro { credential, rol, nombreInstitucion?, codigoOrganizacion? }
+   */
+  async googleRegistro(req, res, next) {
+    try {
+      const perfil = await verificarCredencialGoogle(req.body?.credential);
+      const { rol, nombreInstitucion, codigoOrganizacion } = req.body || {};
+      const result = await authService.registroGoogle(perfil, { rol, nombreInstitucion, codigoOrganizacion });
+      return sendCreated(res, 'Usuario registrado exitosamente', result);
     } catch (error) {
       next(error);
     }

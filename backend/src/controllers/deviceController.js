@@ -35,12 +35,12 @@ export const deviceController = {
   },
 
   /**
-   * POST /api/devices/pairing/create - Genera un código de vinculación para una tablet
+   * POST /api/devices/pairing/create - Registra el código que muestra el teléfono del niño (caduca a los 60 s)
    */
   async generarCodigo(req, res, next) {
     try {
-      const { deviceId } = req.body;
-      const resultado = await deviceService.generarCodigo(deviceId);
+      const { code, deviceId } = req.body || {};
+      const resultado = await deviceService.generarCodigo({ code, deviceId });
       return sendCreated(res, 'Código de emparejamiento generado exitosamente', resultado);
     } catch (error) {
       next(error);
@@ -48,12 +48,37 @@ export const deviceController = {
   },
 
   /**
-   * DELETE /api/devices/:id - Desvincula y elimina un dispositivo
+   * POST /api/devices/:deviceId/telemetry - Ubicación real enviada por el teléfono del niño
+   */
+  async telemetria(req, res, next) {
+    try {
+      const { latitude, longitude } = req.body || {};
+      const resultado = await deviceService.registrarUbicacion(req.params.deviceId, { latitude, longitude });
+      return sendSuccess(res, 200, 'Ubicación registrada', resultado);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * PUT /api/devices/:deviceId/zona-segura - Zona segura del hijo (radio de 20 a 200 m), solo el dueño
+   */
+  async zonaSegura(req, res, next) {
+    try {
+      const resultado = await deviceService.guardarZonaSegura(req.params.deviceId, req.user.id, req.body || {});
+      return sendSuccess(res, 200, 'Zona segura actualizada', resultado);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * DELETE /api/devices/:id - Desvincula UN dispositivo del usuario (dueño por token, o ?parentId= desde la app)
    */
   async desvincular(req, res, next) {
     try {
       const { id } = req.params;
-      const parentId = req.user?.id || req.query.parentId || req.body?.parentId;
+      const parentId = req.user?.id || req.query.parentId || req.body?.parentId || null;
       const resultado = await deviceService.desvincular(id, parentId);
       return sendSuccess(res, 200, 'Dispositivo desvinculado exitosamente', resultado);
     } catch (error) {
