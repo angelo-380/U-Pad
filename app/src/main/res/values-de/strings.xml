@@ -262,4 +262,10 @@
     <string name="institution_code_label">Code Ihrer Einrichtung</string>
     <string name="institution_join">Beitreten</string>
     <string name="institution_hint">Fragen Sie die Leitung Ihrer Schule oder Klinik.</string>
+    <string name="rutina_texto_ayuda">Nur Buchstaben, Zahlen, Leerzeichen und Bindestrich (-).</string>
+    <string name="rutina_texto_signos">Nur Buchstaben, Zahlen, Leerzeichen und der Bindestrich (-) sind erlaubt.</string>
+    <string name="rutina_texto_longitud">Muss %1$d bis %2$d Zeichen lang sein.</string>
+    <string name="rutina_texto_bordes">Muss mit einem Buchstaben oder einer Zahl beginnen und enden.</string>
+    <string name="rutina_texto_guiones_seguidos">Zwei Bindestriche hintereinander sind nicht erlaubt.</string>
+    <string name="rutina_texto_guiones_max">Höchstens %1$d Bindestriche.</string>
 </resources>

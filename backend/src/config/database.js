@@ -278,7 +278,7 @@ export function asegurarColumnasUsuarios(conexion) {
 
 /**
  * Añade a child_devices las columnas que faltan en bases creadas con versiones anteriores
- * (nombre del niño, hora de la última ubicación y zona segura). Idempotente.
+ * (nombre del niño, hora de la última ubicación, zona segura y si está fuera de ella). Idempotente.
  */
 export function asegurarColumnasChildDevices(conexion) {
   const existentes = new Set(conexion.prepare('PRAGMA table_info(child_devices)').all().map((c) => c.name));
@@ -288,6 +288,8 @@ export function asegurarColumnasChildDevices(conexion) {
     ['zona_lat', 'REAL'],
     ['zona_lng', 'REAL'],
     ['zona_radio', 'INTEGER'],
+    // Estado respecto a la zona segura para avisar al padre solo en los cambios: 1 fuera, 0 dentro, NULL sin calcular
+    ['fuera_de_zona', 'INTEGER'],
   ];
   for (const [nombre, tipo] of columnas) {
     if (!existentes.has(nombre)) {

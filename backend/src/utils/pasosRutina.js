@@ -1,4 +1,5 @@
 import { AppError } from './AppError.js';
+import { motivoPasoInvalido } from './textoRutina.js';
 
 /**
  * Pasos de una rutina (puntos 12-14 del docente): cada paso tiene su texto, la palabra para buscar su pictograma
@@ -26,8 +27,10 @@ const textoDe = (paso) => {
 /**
  * Valida y normaliza los pasos que envía un cliente. Sin pasos (lista vacía o ausente), la rutina tiene un único
  * paso con su título. Lanza 400 PASOS_INVALIDOS si algo no cumple las reglas.
+ * `textosConservados` (al editar): textos de pasos que la rutina ya tenía; no se les aplica la regla de caracteres
+ * (textoRutina.js), para que una rutina antigua con signos se pueda seguir editando.
  */
-export const normalizarPasos = (pasos, tituloRespaldo) => {
+export const normalizarPasos = (pasos, tituloRespaldo, { textosConservados } = {}) => {
   if (pasos !== undefined && pasos !== null && !Array.isArray(pasos)) {
     throw errorPasos('Los pasos deben enviarse como una lista.');
   }
@@ -44,6 +47,10 @@ export const normalizarPasos = (pasos, tituloRespaldo) => {
     const texto = typeof textoDe(paso) === 'string' ? textoDe(paso).trim().replace(/\s+/g, ' ') : '';
     if (!texto || texto.length > TEXTO_PASO_MAX) {
       throw errorPasos(`El paso ${indice + 1} necesita un texto de 1 a ${TEXTO_PASO_MAX} caracteres.`, { paso: indice + 1 });
+    }
+    if (!textosConservados?.has(texto)) {
+      const motivo = motivoPasoInvalido(texto, indice + 1);
+      if (motivo) throw errorPasos(motivo, { paso: indice + 1 });
     }
 
     const crudo = paso && typeof paso === 'object' ? paso.duracionMinutos : undefined;

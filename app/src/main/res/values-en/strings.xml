@@ -262,4 +262,10 @@
     <string name="institution_code_label">Your institution code</string>
     <string name="institution_join">Join</string>
     <string name="institution_hint">Ask the director of your school or clinic: your routines and children will count in their dashboard.</string>
+    <string name="rutina_texto_ayuda">Letters, numbers, spaces and hyphens (-) only.</string>
+    <string name="rutina_texto_signos">Only letters, numbers, spaces and the hyphen (-) are allowed.</string>
+    <string name="rutina_texto_longitud">Must be %1$d to %2$d characters long.</string>
+    <string name="rutina_texto_bordes">Must start and end with a letter or a number.</string>
+    <string name="rutina_texto_guiones_seguidos">Two hyphens in a row are not allowed.</string>
+    <string name="rutina_texto_guiones_max">At most %1$d hyphens.</string>
 </resources>

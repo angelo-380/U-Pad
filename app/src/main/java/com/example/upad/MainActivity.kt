@@ -262,7 +262,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Avisos del niño para el padre (GET /api/v1/notificaciones cada 30 s): la primera consulta solo marca el punto
+     * Avisos del niño para el padre (GET /api/v1/notificaciones cada 15 s): la primera consulta solo marca el punto
      * de partida; después, cada aviso nuevo sin leer se muestra como notificación del sistema.
      */
     /** Arranca (una vez por cuenta) la consulta de avisos y la escucha del plan del padre con sesión. */
@@ -302,7 +302,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 try {
-                    Thread.sleep(30_000L)
+                    // Cada 15 s: el aviso de salida de la zona segura (bloque W) llega en unos 25 s como máximo
+                    Thread.sleep(15_000L)
                 } catch (e: InterruptedException) {
                     break
                 }

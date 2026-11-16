@@ -3,11 +3,14 @@ import { db } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
 
 /**
- * Avisos del teléfono del niño para su padre («completó una tarea», «completó la rutina»).
+ * Avisos para el padre: los que publica el teléfono del niño («completó una tarea», «completó la rutina») y los que
+ * crea el servidor al recibir su ubicación («salió de la zona segura», «volvió a la zona segura»).
  * El niño los publica sin token (como la telemetría) y el servidor decide el padre: el dueño del dispositivo.
  * El padre los consulta con su token. Se guardan 30 días.
  */
 export const TIPOS_NOTIFICACION = Object.freeze(['tarea_completada', 'rutina_completada']);
+// Avisos que solo crea el servidor (al recibir la ubicación); el teléfono del niño no puede enviarlos
+export const TIPOS_SERVIDOR = Object.freeze(['zona_salida', 'zona_regreso']);
 export const MAX_TITULO = 120;
 export const MAX_DESCRIPCION = 500;
 export const MAX_LISTADO = 50;
@@ -29,6 +32,16 @@ export const notificacionesService = {
     if (!dispositivo) {
       throw new AppError('Dispositivo no vinculado.', 404, { code: 'DEVICE_NOT_FOUND' });
     }
+    return this.guardar(deviceId, dispositivo.parent_id, { tipo, titulo: tituloLimpio, descripcion });
+  },
+
+  /** Aviso creado por el servidor (salida o regreso a la zona segura) para el padre indicado. */
+  crearDelServidor(deviceId, padreId, { tipo, titulo, descripcion }) {
+    if (!TIPOS_SERVIDOR.includes(tipo)) throw new Error(`Tipo de aviso del servidor no válido: ${tipo}`);
+    return this.guardar(deviceId, padreId, { tipo, titulo: textoLimpio(titulo, MAX_TITULO), descripcion });
+  },
+
+  guardar(deviceId, padreId, { tipo, titulo, descripcion }) {
 
     // Limpieza: los avisos de más de 30 días se borran
     const limite = new Date(Date.now() - DIAS_RETENCION * 24 * 60 * 60 * 1000).toISOString();
@@ -36,10 +49,10 @@ export const notificacionesService = {
 
     const notificacion = {
       id: `ntf_${Date.now().toString(16)}_${crypto.randomBytes(4).toString('hex')}`,
-      padreId: dispositivo.parent_id,
+      padreId,
       deviceId,
       tipo,
-      titulo: tituloLimpio,
+      titulo,
       descripcion: textoLimpio(descripcion, MAX_DESCRIPCION),
       creadoEn: new Date().toISOString(),
       leida: false,
@@ -50,7 +63,7 @@ export const notificacionesService = {
     `).run(notificacion.id, notificacion.padreId, deviceId, tipo, notificacion.titulo, notificacion.descripcion, notificacion.creadoEn);
 
     // Al niño no se le devuelve el id del padre
-    const { padreId, ...publica } = notificacion;
+    const { padreId: _padre, ...publica } = notificacion;
     return publica;
   },
 

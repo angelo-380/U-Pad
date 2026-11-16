@@ -262,4 +262,10 @@
     <string name="institution_code_label">Código da sua instituição</string>
     <string name="institution_join">Entrar</string>
     <string name="institution_hint">Peça ao diretor da sua escola ou clínica.</string>
+    <string name="rutina_texto_ayuda">Apenas letras, números, espaços e hífen (-).</string>
+    <string name="rutina_texto_signos">Apenas letras, números, espaços e o hífen (-) são permitidos.</string>
+    <string name="rutina_texto_longitud">Deve ter de %1$d a %2$d caracteres.</string>
+    <string name="rutina_texto_bordes">Deve começar e terminar com uma letra ou um número.</string>
+    <string name="rutina_texto_guiones_seguidos">Não são permitidos dois hífens seguidos.</string>
+    <string name="rutina_texto_guiones_max">No máximo %1$d hífens.</string>
 </resources>

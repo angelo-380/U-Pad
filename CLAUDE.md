@@ -63,6 +63,7 @@ Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y 
 ## 7. Android
 - Desde el 16-nov-2026 (decisión del usuario) se puede modificar `app/` SOLO dentro del bloque L (correcciones críticas de integración con el backend; ver sección 10), con plan aprobado. Fuera de eso sigue sin tocarse.
 - Desde el 16-nov-2026 (plan de la segunda ronda del docente, aprobado) también se puede modificar `app/` en los bloques S (niño) y T (padre), sin tocar Gradle.
+- Desde el 16-nov-2026 (plan aprobado) también en los bloques V (título y pasos con caracteres limitados) y W (aviso de salida de la zona segura), sin tocar Gradle.
 - No modificar la configuración de compilación (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradle.properties`, `gradlew*`) salvo indicación expresa. Excepción autorizada (16-nov-2026): quitar Firebase y el plugin `google-services` en el bloque L (Firebase ya no existe; el equipo lo confirmó). También autorizado (16-nov-2026, bloque N): sustituir `maps-compose` por `org.osmdroid:osmdroid-android` y quitar `MAPS_API_KEY`.
 - La APK de la raíz (`UPad_Cloud_Ready.apk`) se regenera con `build-apk.sh` (lo ejecuta el usuario: en esta Mac no hay SDK de Android). Antes de commitearla, comprobar que no lleve claves (el repositorio de GitHub es público).
 - El backend es la fuente de verdad: Android se adapta a sus contratos, no al revés.
@@ -274,6 +275,10 @@ e) El build del frontend se copia a `backend/public_html` solo cuando el usuario
     - El usuario quitó `RATE_LIMIT_AUTH_MAX` de su `.env`.
     - Manual del equipo actualizado con esta ronda.
   - **Falta (equipo):** pruebas con dos teléfonos siguiendo el manual; añadir los usuarios de prueba de OAuth.
+- **Bloques V y W (16-nov-2026, plan aprobado; despliegue autorizado de nuevo por el usuario):**
+  - V: título de 3 a 60 caracteres y texto de cada paso de 1 a 120. Solo letras (con tildes, ü y ñ), números, espacios y el guion `-` (decisión del usuario: ningún otro signo). Como máximo 4 guiones en el título y 6 en cada paso, sin dos seguidos; empieza y termina por letra o número. Backend (400 `TITULO_INVALIDO` / `PASOS_INVALIDOS`), web y app. Al editar, el título solo se valida si cambia.
+  - W: el servidor detecta al recibir la ubicación si el niño sale de la zona segura (radio + 10 m) o vuelve (por debajo del radio) y crea los avisos `zona_salida` / `zona_regreso` para la app del padre (consulta cada 15 s).
+  - Estado: en curso.
 - **Pendiente (usuario):** (puesta en marcha de H ya completada) pedir al compañero que suba su última versión (Android y backend) y que no despliegue; decidir si se abre Android para corregir esos fallos.
 
 ### Revisión de los 22 puntos (15-nov-2026)

@@ -1271,6 +1271,9 @@ object LocalDataManager {
 
     const val AVISO_TAREA_COMPLETADA = "tarea_completada"
     const val AVISO_RUTINA_COMPLETADA = "rutina_completada"
+    // Los crea el servidor al recibir la ubicación del niño (bloque W)
+    const val AVISO_ZONA_SALIDA = "zona_salida"
+    const val AVISO_ZONA_REGRESO = "zona_regreso"
 
     /** El teléfono del niño avisa a su padre (el servidor decide quién es el padre). */
     fun enviarAvisoAlPadre(deviceId: String, tipo: String, titulo: String, descripcion: String) {

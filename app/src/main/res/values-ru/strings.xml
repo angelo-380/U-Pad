@@ -262,4 +262,10 @@
     <string name="institution_code_label">Код вашего учреждения</string>
     <string name="institution_join">Присоединиться</string>
     <string name="institution_hint">Спросите у директора вашей школы или клиники.</string>
+    <string name="rutina_texto_ayuda">Только буквы, цифры, пробелы и дефис (-).</string>
+    <string name="rutina_texto_signos">Допускаются только буквы, цифры, пробелы и дефис (-).</string>
+    <string name="rutina_texto_longitud">Должно быть от %1$d до %2$d символов.</string>
+    <string name="rutina_texto_bordes">Должно начинаться и заканчиваться буквой или цифрой.</string>
+    <string name="rutina_texto_guiones_seguidos">Два дефиса подряд не допускаются.</string>
+    <string name="rutina_texto_guiones_max">Не более %1$d дефисов.</string>
 </resources>

@@ -98,7 +98,10 @@ fun CreateRoutineScreen(
     val duracionTotal = if (pasosEditor.isEmpty()) minutosValidos(minutosActividad) ?: 0
         else pasosEditor.sumOf { minutosValidos(it.second) ?: 0 }
     val pasosCorrectos = if (pasosEditor.isEmpty()) minutosValidos(minutosActividad) != null
-        else pasosEditor.all { it.first.isNotBlank() && minutosValidos(it.second) != null }
+        else pasosEditor.all { com.example.upad.data.TextoRutina.motivoPaso(it.first) == null && minutosValidos(it.second) != null }
+    // Bloque V: el nombre solo admite letras, números, espacios y guion (3 a 60 caracteres)
+    val motivoNombre = if (nombreActividad.isBlank()) null else com.example.upad.data.TextoRutina.motivoTitulo(nombreActividad)
+    val nombreValido = nombreActividad.isNotBlank() && motivoNombre == null
 
     // Para quién es la actividad (punto 5): null = todos mis hijos
     var hijoElegido by remember { mutableStateOf<String?>(null) }
@@ -428,7 +431,19 @@ fun CreateRoutineScreen(
 
                                 OutlinedTextField(
                                     value = nombreActividad,
-                                    onValueChange = { nombreActividad = it },
+                                    onValueChange = { nombreActividad = com.example.upad.data.TextoRutina.filtrar(it, com.example.upad.data.TextoRutina.TITULO_MAX) },
+                                    isError = motivoNombre != null,
+                                    supportingText = {
+                                        Row(modifier = Modifier.fillMaxWidth()) {
+                                            Text(
+                                                text = motivoNombre?.let { stringResource(it.resId, *it.args.toTypedArray()) }
+                                                    ?: stringResource(id = R.string.rutina_texto_ayuda),
+                                                fontSize = 11.sp,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text("${nombreActividad.length}/${com.example.upad.data.TextoRutina.TITULO_MAX}", fontSize = 11.sp)
+                                        }
+                                    },
                                     placeholder = {
                                         Text(
                                             stringResource(id = R.string.add_activity_placeholder),
@@ -477,6 +492,7 @@ fun CreateRoutineScreen(
                                     }
                                 } else {
                                     pasosEditor.forEachIndexed { indice, (texto, minutos) ->
+                                        val motivoTexto = if (texto.isBlank()) null else com.example.upad.data.TextoRutina.motivoPaso(texto)
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             modifier = Modifier.padding(vertical = 3.dp)
@@ -484,9 +500,10 @@ fun CreateRoutineScreen(
                                             Text("${indice + 1}.", fontWeight = FontWeight.Bold, color = colorAcabadoPrincipal, modifier = Modifier.width(22.dp))
                                             OutlinedTextField(
                                                 value = texto,
-                                                onValueChange = { v -> pasosEditor[indice] = v.take(120) to minutos },
+                                                onValueChange = { v -> pasosEditor[indice] = com.example.upad.data.TextoRutina.filtrar(v, com.example.upad.data.TextoRutina.PASO_MAX) to minutos },
                                                 placeholder = { Text(stringResource(id = R.string.step_text_placeholder), fontSize = 12.sp) },
-                                                isError = texto.isBlank(),
+                                                isError = texto.isBlank() || motivoTexto != null,
+                                                supportingText = motivoTexto?.let { m -> { Text(stringResource(m.resId, *m.args.toTypedArray()), fontSize = 10.sp) } },
                                                 singleLine = true,
                                                 modifier = Modifier.weight(1f),
                                                 shape = RoundedCornerShape(12.dp)
@@ -614,7 +631,7 @@ fun CreateRoutineScreen(
 
                                 Button(
                                     onClick = {
-                                        if (nombreActividad.isNotBlank() && pasosCorrectos) {
+                                        if (nombreValido && pasosCorrectos) {
                                             viewModel.agregarActividadAutomatica(
                                                 userId = currentUserId,
                                                 turn = routineTurn,
@@ -635,7 +652,7 @@ fun CreateRoutineScreen(
                                             diasSeleccionados.clear()
                                         }
                                     },
-                                    enabled = nombreActividad.isNotBlank() && pasosCorrectos,
+                                    enabled = nombreValido && pasosCorrectos,
                                     modifier = Modifier.fillMaxWidth().height(45.dp),
                                     shape = RoundedCornerShape(14.dp),
                                     colors = ButtonDefaults.buttonColors(

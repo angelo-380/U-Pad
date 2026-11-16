@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArasaacPictogram } from '../common/ArasaacPictogram.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
+import { errorTitulo, errorPaso, limpiarTexto, signosNoPermitidos, TITULO_MAX, PASO_TEXTO_MAX } from '../../utils/textoRutina.js';
 import {
   X,
   Plus,
@@ -43,6 +44,9 @@ export const RutinaDrawer = ({
   const [ninoId, setNinoId] = useState('');
   // Niño asignado al abrir en modo edición: si no cambia, no se reenvía (datos antiguos o rutinas de un tutor)
   const [ninoIdInicial, setNinoIdInicial] = useState('');
+  // Al editar: el título y los textos de paso que ya tenía la rutina no se revalidan (rutinas antiguas con signos)
+  const [tituloInicial, setTituloInicial] = useState('');
+  const [textosIniciales, setTextosIniciales] = useState(() => new Set());
   const [pasos, setPasos] = useState([pasoVacio(1)]);
 
   // Estados de validación
@@ -57,6 +61,8 @@ export const RutinaDrawer = ({
     if (isOpen) {
       if (mode === 'edit' && initialData) {
         setTitulo(initialData.titulo || '');
+        setTituloInicial(initialData.titulo || '');
+        setTextosIniciales(new Set((initialData.pasos || []).map((p) => limpiarTexto(p.texto || ''))));
         setTurno(initialData.turno || 'MANANA');
         setNinoId(initialData.ninoId || '');
         setNinoIdInicial(initialData.ninoId || '');
@@ -74,6 +80,8 @@ export const RutinaDrawer = ({
         }
       } else {
         setTitulo('');
+        setTituloInicial('');
+        setTextosIniciales(new Set());
         setTurno(initialData?.turno || 'MANANA');
         setNinoId('');
         setNinoIdInicial('');
@@ -101,15 +109,29 @@ export const RutinaDrawer = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, loading, onClose]);
 
+  // Mensaje de error del título o de un paso (null si vale). Misma regla que el backend: letras, números,
+  // espacios y guion. Lo ya guardado al editar no se revalida.
+  const mensajeTitulo = (valor) => {
+    if (!valor.trim()) return t('drawer_error_title_required');
+    if (mode === 'edit' && limpiarTexto(valor) === limpiarTexto(tituloInicial)) return null;
+    const error = errorTitulo(valor);
+    return error ? t(error.clave, error.vars) : null;
+  };
+  const mensajePaso = (valor) => {
+    if (!valor.trim()) return t('drawer_error_step_required');
+    if (textosIniciales.has(limpiarTexto(valor))) return null;
+    const error = errorPaso(valor);
+    return error ? t(error.clave, error.vars) : null;
+  };
+  // En vivo: tras tocar el campo, o en cuanto se escribe un signo no permitido
+  const tituloError = touched.titulo || signosNoPermitidos(titulo).length > 0 ? mensajeTitulo(titulo) : null;
+
   // Validación de formulario
   const validate = () => {
     const newErrors = {};
 
-    if (!titulo.trim()) {
-      newErrors.titulo = t('drawer_error_title_required');
-    } else if (titulo.trim().length < 3) {
-      newErrors.titulo = t('drawer_error_title_min');
-    }
+    const errorDelTitulo = mensajeTitulo(titulo);
+    if (errorDelTitulo) newErrors.titulo = errorDelTitulo;
 
     if (!['MANANA', 'TARDE', 'NOCHE'].includes(turno)) {
       newErrors.turno = t('drawer_error_shift');
@@ -119,9 +141,8 @@ export const RutinaDrawer = ({
     const pasosErrors = [];
     pasos.forEach((paso, idx) => {
       const pError = {};
-      if (!paso.texto.trim()) {
-        pError.texto = t('drawer_error_step_required');
-      }
+      const errorDelTexto = mensajePaso(paso.texto);
+      if (errorDelTexto) pError.texto = errorDelTexto;
       if (!minutosValidos(paso.duracionMinutos)) {
         pError.duracionMinutos = t('drawer_error_step_minutes', { min: MINUTOS_MIN, max: MINUTOS_MAX });
       }
@@ -281,19 +302,29 @@ export const RutinaDrawer = ({
                 onChange={(e) => setTitulo(e.target.value)}
                 onBlur={() => setTouched({ ...touched, titulo: true })}
                 disabled={loading}
+                maxLength={TITULO_MAX}
+                aria-invalid={Boolean(tituloError)}
+                aria-describedby="rutina-titulo-ayuda"
                 placeholder={t('drawer_field_title_placeholder')}
                 className={`w-full px-4 py-3 min-h-[44px] rounded-xl text-sm border font-medium transition-tea bg-white ${
-                  touched.titulo && errors.titulo
+                  tituloError
                     ? 'border-rose-400 focus:ring-rose-500'
                     : 'border-tea-border focus:ring-brand-600'
                 } focus-visible:outline-none focus-visible:ring-2`}
               />
-              {touched.titulo && errors.titulo && (
-                <p className="text-xs text-rose-600 font-semibold flex items-center gap-1 mt-1">
-                  <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>{errors.titulo}</span>
-                </p>
-              )}
+              <div id="rutina-titulo-ayuda" className="flex items-start justify-between gap-3 mt-1">
+                {tituloError ? (
+                  <p className="text-xs text-rose-600 font-semibold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+                    <span>{tituloError}</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-tea-subtle">{t('rutina_texto_ayuda')}</p>
+                )}
+                <span className="text-xs text-tea-subtle tabular-nums flex-shrink-0">
+                  {titulo.length}/{TITULO_MAX}
+                </span>
+              </div>
             </div>
 
             {/* Campo: Selector de Turno */}
@@ -411,6 +442,8 @@ export const RutinaDrawer = ({
               <div className="space-y-3">
                 {pasos.map((paso, index) => {
                   const stepError = errors.pasos && errors.pasos[index];
+                  const textoPasoError =
+                    touched.pasos || signosNoPermitidos(paso.texto).length > 0 ? mensajePaso(paso.texto) : null;
                   return (
                     <div
                       key={index}
@@ -478,14 +511,16 @@ export const RutinaDrawer = ({
                               value={paso.texto}
                               onChange={(e) => handlePasoChange(index, 'texto', e.target.value)}
                               disabled={loading}
+                              maxLength={PASO_TEXTO_MAX}
+                              aria-invalid={Boolean(textoPasoError)}
                               placeholder={t('drawer_step_text_placeholder')}
                               className={`w-full px-3 py-2 text-xs rounded-xl border bg-white ${
-                                stepError?.texto ? 'border-rose-400' : 'border-tea-border'
+                                textoPasoError ? 'border-rose-400' : 'border-tea-border'
                               } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600`}
                             />
-                            {stepError?.texto && (
+                            {textoPasoError && (
                               <p className="text-[11px] text-rose-600 font-medium mt-0.5">
-                                {stepError.texto}
+                                {textoPasoError}
                               </p>
                             )}
                           </div>

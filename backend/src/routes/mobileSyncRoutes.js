@@ -5,6 +5,7 @@ import { AppError } from '../utils/AppError.js';
 import { compatibilidadMovilActiva } from '../utils/compatMovil.js';
 import { normalizarPasos, leerPasos, duracionTotal } from '../utils/pasosRutina.js';
 import { validarNino } from '../services/rutinasService.js';
+import { limpiarTexto, validarTitulo } from '../utils/textoRutina.js';
 
 const router = express.Router();
 
@@ -101,10 +102,10 @@ const actividadValida = (actividad) => {
  * Pasos que envía la app: la lista nueva `pasos[]` ({texto, palabraClave?, duracionMinutos?, pictogramaId?})
  * o el formato antiguo de una sola actividad (`palabraClave` y `duracionMinutos` opcionales).
  */
-const pasosDelCuerpo = (cuerpo, titulo) => {
-  if (Array.isArray(cuerpo?.pasos) && cuerpo.pasos.length > 0) return normalizarPasos(cuerpo.pasos, titulo);
+const pasosDelCuerpo = (cuerpo, titulo, opciones = {}) => {
+  if (Array.isArray(cuerpo?.pasos) && cuerpo.pasos.length > 0) return normalizarPasos(cuerpo.pasos, titulo, opciones);
   const palabraClave = typeof cuerpo?.palabraClave === 'string' && cuerpo.palabraClave.trim() ? cuerpo.palabraClave.trim() : titulo;
-  return normalizarPasos([{ texto: titulo, palabraClave, duracionMinutos: cuerpo?.duracionMinutos, pictogramaId: cuerpo?.pictogramaId }], titulo);
+  return normalizarPasos([{ texto: titulo, palabraClave, duracionMinutos: cuerpo?.duracionMinutos, pictogramaId: cuerpo?.pictogramaId }], titulo, opciones);
 };
 
 /** ninoId enviado por la app: undefined = no cambiar; '' / null / 'TODOS' = para todos los hijos; si no, un hijo propio. */
@@ -124,7 +125,8 @@ const ninoDelCuerpo = (cuerpo, usuarioId) => {
 router.post('/mobile/sync-routines', identificarUsuarioMovil(), (req, res, next) => {
   try {
     const usuario = req.usuarioMovil;
-    const titulo = actividadValida(req.body?.actividad);
+    // Título nuevo: misma regla que la web (letras, números, espacios y guion; 3 a 60 caracteres)
+    const titulo = validarTitulo(actividadValida(req.body?.actividad), 'actividad');
     const turnoNormalizado = normalizarTurno(req.body?.turno);
 
     const existente = db.prepare(`
@@ -261,9 +263,20 @@ router.put('/mobile/sync-routines', identificarUsuarioMovil({ compatibilidad: fa
   try {
     const usuario = req.usuarioMovil;
     const { id } = req.body || {};
-    const actividad = actividadValida(req.body?.actividad);
+    let actividad = actividadValida(req.body?.actividad);
     const turnoNormalizado = normalizarTurno(req.body?.turno);
-    const pasos = JSON.stringify(pasosDelCuerpo(req.body, actividad));
+
+    // La rutina que se edita: su título y sus pasos actuales no se revalidan (rutinas antiguas con signos)
+    const actual = id
+      ? db.prepare('SELECT titulo, pasos FROM rutinas WHERE id = ? AND creadoPor = ?').get(String(id), usuario.id)
+      : db.prepare('SELECT titulo, pasos FROM rutinas WHERE UPPER(titulo) = UPPER(?) AND turno = ? AND creadoPor = ? AND activa = 1 LIMIT 1')
+          .get(actividad, turnoNormalizado, usuario.id);
+    if (id && (!actual || limpiarTexto(actividad) !== limpiarTexto(actual.titulo))) {
+      actividad = validarTitulo(actividad, 'actividad');
+    }
+    const textosConservados = new Set(leerPasos(actual?.pasos, actual?.titulo || '').map((paso) => limpiarTexto(paso.texto)));
+    if (actual) textosConservados.add(limpiarTexto(actual.titulo));
+    const pasos = JSON.stringify(pasosDelCuerpo(req.body, actividad, { textosConservados }));
     const ninoId = ninoDelCuerpo(req.body, usuario.id); // undefined = no se cambia
     const actualizadoEn = new Date().toISOString();
 

@@ -954,8 +954,16 @@ class RoutineViewModel(
         val uidValido = obtenerUidSeguro(userId)
 
         viewModelScope.launch {
-            val titulo = textoCompleto.trim()
-            val pasosBase = pasos.filter { it.texto.isNotBlank() }.ifEmpty {
+            // Bloque V: solo letras, números, espacios y guion. Lo escrito por el padre ya viene filtrado; las
+            // sugerencias de la IA se sanean aquí. Un título que queda inválido no se envía.
+            val titulo = com.example.upad.data.TextoRutina.sanear(textoCompleto, com.example.upad.data.TextoRutina.TITULO_MAX)
+            if (com.example.upad.data.TextoRutina.motivoTitulo(titulo) != null) {
+                android.util.Log.w("RoutineViewModel", "Actividad descartada: el título no cumple la regla de caracteres")
+                return@launch
+            }
+            val pasosBase = pasos
+                .map { it.copy(texto = com.example.upad.data.TextoRutina.sanear(it.texto, com.example.upad.data.TextoRutina.PASO_MAX)) }
+                .filter { it.texto.isNotBlank() }.ifEmpty {
                 listOf(PasoTarea(texto = titulo, palabraClave = titulo.lowercase(), duracionMinutos = duracionMinutos))
             }
             // Pictograma de cada paso (fuera del hilo principal)

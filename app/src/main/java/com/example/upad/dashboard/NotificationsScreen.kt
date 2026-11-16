@@ -103,7 +103,7 @@ fun NotificationsScreen(
     val notificationsList = remember { mutableStateListOf<NotificationItem>() }
     var loadingNotifications by remember { mutableStateOf(true) }
 
-    // Avisos que envía el teléfono del niño (servidor), consultados al abrir y cada 30 s; al verlos se marcan como leídos
+    // Avisos que envía el teléfono del niño (servidor), consultados al abrir y cada 15 s; al verlos se marcan como leídos
     LaunchedEffect(padreId) {
         while (true) {
             val avisos = withContext(Dispatchers.IO) { com.example.upad.data.LocalDataManager.obtenerAvisos() }
@@ -117,13 +117,18 @@ fun NotificationsScreen(
                             title = aviso.titulo,
                             description = listOfNotNull(aviso.nombreHijo, aviso.descripcion.takeIf { it.isNotBlank() }).joinToString(" · "),
                             time = formatRelativeTime(aviso.creadoEnMs),
-                            type = if (aviso.tipo == com.example.upad.data.LocalDataManager.AVISO_RUTINA_COMPLETADA) NotificationType.SUCCESS else NotificationType.INFO
+                            type = when (aviso.tipo) {
+                                com.example.upad.data.LocalDataManager.AVISO_ZONA_SALIDA -> NotificationType.WARNING
+                                com.example.upad.data.LocalDataManager.AVISO_RUTINA_COMPLETADA,
+                                com.example.upad.data.LocalDataManager.AVISO_ZONA_REGRESO -> NotificationType.SUCCESS
+                                else -> NotificationType.INFO
+                            }
                         )
                     )
                 }
                 if (avisos.any { !it.leida }) com.example.upad.data.LocalDataManager.marcarAvisosLeidos()
             }
-            delay(30_000L)
+            delay(15_000L)
         }
     }
 

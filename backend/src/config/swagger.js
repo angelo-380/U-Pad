@@ -47,7 +47,7 @@ export const swaggerSpec = {
         required: ['orden', 'texto'],
         properties: {
           orden: { type: 'integer', example: 1 },
-          texto: { type: 'string', example: 'Lavarse las manos', description: '1 a 120 caracteres' },
+          texto: { type: 'string', example: 'Lavarse las manos', description: '1 a 120 caracteres; mismos caracteres que el título, máx. 6 guiones' },
           palabraClave: { type: 'string', example: 'lavar', description: 'Palabra para buscar el pictograma (por defecto, el texto)' },
           duracionMinutos: { type: 'integer', minimum: 1, maximum: 120, example: 5, description: 'Minutos del paso (por defecto 5)' },
           pictogramaId: { type: 'integer', example: 8975, description: 'Opcional: pictograma de ARASAAC elegido' },
@@ -57,7 +57,11 @@ export const swaggerSpec = {
         type: 'object',
         required: ['titulo'],
         properties: {
-          titulo: { type: 'string', example: 'Rutina de Mañana - Escuela' },
+          titulo: {
+            type: 'string',
+            example: 'Rutina de Mañana - Escuela',
+            description: '3 a 60 caracteres: solo letras (con tildes, ü y ñ), números, espacios y el guion (máx. 4, sin dos seguidos; empieza y termina con letra o número). Si no → 400 TITULO_INVALIDO.',
+          },
           turno: { type: 'string', enum: ['MANANA', 'TARDE', 'NOCHE'], example: 'MANANA' },
           ninoId: {
             type: 'string',

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { db } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
+import { notificacionesService } from './notificacionesService.js';
 
 /** Vida de un código de vinculación (como un código MFA). */
 export const PAIRING_TTL_MS = 60_000;
@@ -12,6 +13,58 @@ const REGEX_CODIGO = /^\d{6}$/;
 /** Radio permitido de la zona segura, en metros (punto 4 del docente: 200 m como máximo). */
 export const RADIO_ZONA_MIN = 20;
 export const RADIO_ZONA_MAX = 200;
+// Margen contra el ruido del GPS en el borde: se avisa la salida pasado el radio + 10 m y el regreso por debajo del radio
+export const MARGEN_SALIDA_ZONA = 10;
+
+/** Distancia en metros entre dos coordenadas (fórmula del haversine). */
+export const distanciaMetros = (lat1, lng1, lat2, lng2) => {
+  const rad = (grados) => (grados * Math.PI) / 180;
+  const dLat = rad(lat2 - lat1);
+  const dLng = rad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+/**
+ * Compara la ubicación nueva con la zona segura y avisa al padre solo cuando el niño cambia de estado
+ * (dentro → fuera: «salió»; fuera → dentro: «volvió»). Devuelve 'dentro', 'fuera' o null si no hay zona.
+ */
+const revisarZonaSegura = (deviceId, latitude, longitude) => {
+  const hijo = db.prepare(`
+    SELECT parent_id, child_name, zona_lat, zona_lng, zona_radio, fuera_de_zona FROM child_devices WHERE device_id = ?
+  `).get(deviceId);
+  if (!hijo || hijo.zona_lat === null || hijo.zona_lng === null || hijo.zona_radio === null) return null;
+
+  const distancia = Math.round(distanciaMetros(hijo.zona_lat, hijo.zona_lng, latitude, longitude));
+  const radio = Number(hijo.zona_radio);
+  const estaba = hijo.fuera_de_zona === null ? null : Number(hijo.fuera_de_zona);
+  const nombre = hijo.child_name || 'Tu hijo';
+
+  if (distancia > radio + MARGEN_SALIDA_ZONA) {
+    if (estaba !== 1) {
+      db.prepare('UPDATE child_devices SET fuera_de_zona = 1 WHERE device_id = ?').run(deviceId);
+      notificacionesService.crearDelServidor(deviceId, hijo.parent_id, {
+        tipo: 'zona_salida',
+        titulo: `${nombre} salió de la zona segura`,
+        descripcion: `Está a ${distancia} m del centro de la zona (radio de ${radio} m).`,
+      });
+    }
+    return 'fuera';
+  }
+  if (distancia <= radio) {
+    if (estaba === 1) {
+      notificacionesService.crearDelServidor(deviceId, hijo.parent_id, {
+        tipo: 'zona_regreso',
+        titulo: `${nombre} volvió a la zona segura`,
+        descripcion: `Está a ${distancia} m del centro de la zona (radio de ${radio} m).`,
+      });
+    }
+    if (estaba !== 0) db.prepare('UPDATE child_devices SET fuera_de_zona = 0 WHERE device_id = ?').run(deviceId);
+    return 'dentro';
+  }
+  // Entre el radio y el margen: se mantiene el estado anterior
+  return estaba === 1 ? 'fuera' : 'dentro';
+};
 
 const coordenadaValida = (valor, limite) => typeof valor === 'number' && Number.isFinite(valor) && Math.abs(valor) <= limite;
 
@@ -132,6 +185,7 @@ export const deviceService = {
         child_name = excluded.child_name,
         device_model = excluded.device_model,
         is_kiosk_active = 0,
+        fuera_de_zona = NULL,
         last_seen_at = CURRENT_TIMESTAMP
     `).run(deviceId, parentId, cleanChildName, cleanModel);
 
@@ -220,7 +274,8 @@ export const deviceService = {
       throw new AppError('Dispositivo no vinculado.', 404, { code: 'DEVICE_NOT_FOUND' });
     }
 
-    return { deviceId, latitude, longitude, ubicacionActualizadaEn: ahora };
+    const zona = revisarZonaSegura(deviceId, latitude, longitude);
+    return { deviceId, latitude, longitude, ubicacionActualizadaEn: ahora, zona };
   },
 
   /**
@@ -241,7 +296,7 @@ export const deviceService = {
     }
 
     const resultado = db.prepare(`
-      UPDATE child_devices SET zona_lat = ?, zona_lng = ?, zona_radio = ?
+      UPDATE child_devices SET zona_lat = ?, zona_lng = ?, zona_radio = ?, fuera_de_zona = NULL
       WHERE device_id = ? AND parent_id = ?
     `).run(quitar ? null : latitude, quitar ? null : longitude, quitar ? null : radio, deviceId, parentId);
 

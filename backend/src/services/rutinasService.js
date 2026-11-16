@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { db } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
 import { normalizarPasos, leerPasos, duracionTotal } from '../utils/pasosRutina.js';
+import { limpiarTexto, validarTitulo } from '../utils/textoRutina.js';
 
 const TURNOS_VALIDOS = ['MANANA', 'TARDE', 'NOCHE'];
 
@@ -45,7 +46,7 @@ export const rutinasService = {
       );
     }
 
-    const cleanTitulo = titulo.trim();
+    const cleanTitulo = validarTitulo(titulo);
     const pasosNormalizados = normalizarPasos(pasos, cleanTitulo);
 
     // Niño asignado: el elegido (debe ser un hijo vinculado del usuario). Sin elegir (null) la rutina es
@@ -245,10 +246,14 @@ export const rutinasService = {
     let nuevosPasos = rutinaExistente.pasos;
     let nuevaActiva = rutinaExistente.activa;
 
-    if (datosActualizados.titulo) {
-      nuevoTitulo = datosActualizados.titulo.trim();
-      updates.push('titulo = ?');
-      params.push(nuevoTitulo);
+    // El título solo se valida si cambia: una rutina antigua con signos se puede seguir editando
+    if (datosActualizados.titulo !== undefined && datosActualizados.titulo !== null) {
+      const enviado = limpiarTexto(String(datosActualizados.titulo));
+      if (enviado !== limpiarTexto(rutinaExistente.titulo)) {
+        nuevoTitulo = validarTitulo(enviado);
+        updates.push('titulo = ?');
+        params.push(nuevoTitulo);
+      }
     }
 
     if (datosActualizados.turno) {
@@ -270,7 +275,8 @@ export const rutinasService = {
     }
 
     if (datosActualizados.pasos !== undefined && datosActualizados.pasos !== null) {
-      nuevosPasos = normalizarPasos(datosActualizados.pasos, nuevoTitulo);
+      const textosConservados = new Set((rutinaExistente.pasos || []).map((paso) => limpiarTexto(paso.texto)));
+      nuevosPasos = normalizarPasos(datosActualizados.pasos, nuevoTitulo, { textosConservados });
       updates.push('pasos = ?');
       params.push(JSON.stringify(nuevosPasos));
     }

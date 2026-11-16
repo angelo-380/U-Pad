@@ -262,4 +262,10 @@
     <string name="institution_code_label">Code de votre établissement</string>
     <string name="institution_join">Rejoindre</string>
     <string name="institution_hint">Demandez-le au directeur de votre école ou clinique.</string>
+    <string name="rutina_texto_ayuda">Lettres, chiffres, espaces et tiret (-) uniquement.</string>
+    <string name="rutina_texto_signos">Seuls les lettres, chiffres, espaces et le tiret (-) sont autorisés.</string>
+    <string name="rutina_texto_longitud">Doit contenir de %1$d à %2$d caractères.</string>
+    <string name="rutina_texto_bordes">Doit commencer et finir par une lettre ou un chiffre.</string>
+    <string name="rutina_texto_guiones_seguidos">Deux tirets de suite ne sont pas autorisés.</string>
+    <string name="rutina_texto_guiones_max">Au maximum %1$d tirets.</string>
 </resources>

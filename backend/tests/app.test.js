@@ -3828,4 +3828,217 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       expect(bloqueado.body.errors.code).toBe('CUMPLIMIENTO_RATE_LIMIT');
     });
   });
+
+  describe('29. Título y pasos solo con letras, números, espacios y guion (bloque V)', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const SYNC = '/api/v1/mobile/sync-routines';
+    const registrarTutor = async () => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: 'Tutor V',
+        email: `test-${TIMESTAMP}-v-${crypto.randomUUID().slice(0, 8)}@upad.test`,
+        password: passwordGenerada(),
+        rol: 'tutor',
+      });
+      expect(res.status).toBe(201);
+      return { token: res.body.data.token, id: res.body.data.usuario.id };
+    };
+    const crear = (token, cuerpo) => request(app).post('/api/rutinas').set(auth(token)).send({ turno: 'MANANA', ...cuerpo });
+
+    test('acepta letras con tildes y ñ, números, espacios y hasta 4 guiones; junta los espacios', async () => {
+      const tutor = await registrarTutor();
+      const res = await crear(tutor.token, {
+        titulo: '  Baño   y piñata - Mañana 2 ',
+        pasos: [{ texto: 'Lavarse las manos - paso 1' }, { texto: 'Pingüino' }],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data.titulo).toBe('Baño y piñata - Mañana 2');
+
+      const cuatro = await crear(tutor.token, { titulo: 'a-b-c-d-e' });
+      expect(cuatro.status).toBe(201);
+    });
+
+    test('títulos inválidos → 400 TITULO_INVALIDO sin crear la rutina', async () => {
+      const tutor = await registrarTutor();
+      const casos = [
+        'Ab', // menos de 3
+        'x'.repeat(61), // más de 60
+        'Rutina #1',
+        'Hola!',
+        '¿Desayuno?',
+        'Comer, dormir',
+        'Rutina.',
+        'Mañana (escuela)',
+        'Rutina @ casa',
+        'Cosas 😀',
+        'Rutina--larga', // dos guiones seguidos
+        'Rutina - - larga',
+        '-Rutina', // empieza con guion
+        'Rutina-', // termina con guion
+        'a-b-c-d-e-f', // 5 guiones
+      ];
+      for (const titulo of casos) {
+        const res = await crear(tutor.token, { titulo });
+        expect([titulo, res.status, res.body.errors?.code]).toEqual([titulo, 400, 'TITULO_INVALIDO']);
+      }
+      const lista = await request(app).get('/api/rutinas').set(auth(tutor.token));
+      const rutinas = Array.isArray(lista.body.data) ? lista.body.data : lista.body.data.rutinas;
+      expect(rutinas).toHaveLength(0);
+    });
+
+    test('pasos con signos → 400 PASOS_INVALIDOS (máximo 6 guiones por paso)', async () => {
+      const tutor = await registrarTutor();
+      for (const texto of ['Lavarse las manos!', 'Paso: uno', 'a-b-c-d-e-f-g-h', 'Uno--dos', '¡Comer!']) {
+        const res = await crear(tutor.token, { titulo: 'Rutina valida', pasos: [{ texto }] });
+        expect([texto, res.status, res.body.errors?.code]).toEqual([texto, 400, 'PASOS_INVALIDOS']);
+        expect(res.body.message).toMatch(/paso 1/i);
+      }
+      expect((await crear(tutor.token, { titulo: 'Rutina valida', pasos: [{ texto: 'a-b-c-d-e-f-g' }] })).status).toBe(201);
+    });
+
+    test('al editar, el título y los pasos antiguos con signos se conservan; los nuevos se validan', async () => {
+      const tutor = await registrarTutor();
+      const res = await crear(tutor.token, { titulo: 'Rutina antigua', pasos: [{ texto: 'Paso antiguo' }] });
+      const id = res.body.data.id;
+      // Datos guardados antes de la regla
+      db.prepare('UPDATE rutinas SET titulo = ?, pasos = ? WHERE id = ?')
+        .run('¡Rutina vieja!', JSON.stringify([{ orden: 1, texto: '¡Hola!', palabraClave: 'hola', duracionMinutos: 5 }]), id);
+
+      const mismo = await request(app).put(`/api/rutinas/${id}`).set(auth(tutor.token))
+        .send({ titulo: '¡Rutina vieja!', turno: 'TARDE', pasos: [{ texto: '¡Hola!', duracionMinutos: 7 }] });
+      expect(mismo.status).toBe(200);
+      expect(mismo.body.data.titulo).toBe('¡Rutina vieja!');
+      expect(mismo.body.data.duracionTotalMinutos).toBe(7);
+
+      const nuevoPaso = await request(app).put(`/api/rutinas/${id}`).set(auth(tutor.token))
+        .send({ pasos: [{ texto: '¡Hola!' }, { texto: 'Otro paso?' }] });
+      expect(nuevoPaso.status).toBe(400);
+      expect(nuevoPaso.body.errors.code).toBe('PASOS_INVALIDOS');
+
+      const nuevoTitulo = await request(app).put(`/api/rutinas/${id}`).set(auth(tutor.token)).send({ titulo: 'Rutina nueva!' });
+      expect(nuevoTitulo.status).toBe(400);
+      expect(nuevoTitulo.body.errors.code).toBe('TITULO_INVALIDO');
+
+      const corregido = await request(app).put(`/api/rutinas/${id}`).set(auth(tutor.token)).send({ titulo: 'Rutina nueva' });
+      expect(corregido.status).toBe(200);
+      expect(corregido.body.data.titulo).toBe('Rutina nueva');
+    });
+
+    test('la app (sincronización móvil) aplica la misma regla al crear y al editar', async () => {
+      const tutor = await registrarTutor();
+      const malo = await request(app).post(SYNC).set(auth(tutor.token)).send({ actividad: 'Comer!!', turno: 'MANANA' });
+      expect(malo.status).toBe(400);
+      expect(malo.body.errors.code).toBe('TITULO_INVALIDO');
+
+      const pasoMalo = await request(app).post(SYNC).set(auth(tutor.token))
+        .send({ actividad: 'Comer', turno: 'MANANA', pasos: [{ texto: 'Sentarse;', duracionMinutos: 2 }] });
+      expect(pasoMalo.status).toBe(400);
+      expect(pasoMalo.body.errors.code).toBe('PASOS_INVALIDOS');
+
+      const bueno = await request(app).post(SYNC).set(auth(tutor.token))
+        .send({ actividad: 'PONERSE EL PIJAMA', turno: 'NOCHE', pasos: [{ texto: 'Ponerse el pijama', duracionMinutos: 2 }] });
+      expect(bueno.status).toBe(201);
+
+      const editarMal = await request(app).put(SYNC).set(auth(tutor.token)).send({ id: bueno.body.id, actividad: 'Pijama?', turno: 'NOCHE' });
+      expect(editarMal.status).toBe(400);
+      expect(editarMal.body.errors.code).toBe('TITULO_INVALIDO');
+      const editarBien = await request(app).put(SYNC).set(auth(tutor.token))
+        .send({ id: bueno.body.id, actividad: 'PONERSE EL PIJAMA', turno: 'NOCHE', pasos: [{ texto: 'Ponerse el pijama', duracionMinutos: 4 }] });
+      expect(editarBien.status).toBe(200);
+      expect(editarBien.body.actualizadas).toBe(1);
+    });
+  });
+
+  describe('30. Aviso al padre cuando el niño sale o vuelve a la zona segura (bloque W)', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    // Centro de la zona y desplazamientos aproximados en metros hacia el norte (1° de latitud ≈ 111 195 m)
+    const CENTRO = { latitude: -12.0464, longitude: -77.0428 };
+    const aMetros = (metros) => ({ latitude: CENTRO.latitude + metros / 111195, longitude: CENTRO.longitude });
+
+    const preparar = async (nombre = 'Lucía') => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: 'Tutor W',
+        email: `test-${TIMESTAMP}-w-${crypto.randomUUID().slice(0, 8)}@upad.test`,
+        password: passwordGenerada(),
+        rol: 'tutor',
+      });
+      const token = res.body.data.token;
+      const code = String(crypto.randomInt(100000, 1000000));
+      const deviceId = `dev_w_${crypto.randomUUID().slice(0, 8)}`;
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+      expect((await request(app).post('/api/devices/pairing/link').set(auth(token)).send({ code, childName: nombre })).status).toBe(201);
+      return { token, deviceId };
+    };
+    const fijarZona = (token, deviceId, radio = 100) =>
+      request(app).put(`/api/devices/${deviceId}/zona-segura`).set(auth(token)).send({ ...CENTRO, radio });
+    const ubicar = (deviceId, metros) => request(app).post(`/api/v1/devices/${deviceId}/telemetry`).send(aMetros(metros));
+    const avisos = async (token) => (await request(app).get('/api/notificaciones').set(auth(token))).body.data.notificaciones;
+
+    test('sale de la zona → un aviso «salió»; seguir fuera no repite; volver → aviso «volvió»', async () => {
+      const { token, deviceId } = await preparar();
+      expect((await fijarZona(token, deviceId)).status).toBe(200);
+
+      expect((await ubicar(deviceId, 20)).body.data.zona).toBe('dentro');
+      expect(await avisos(token)).toHaveLength(0);
+
+      const fuera = await ubicar(deviceId, 300);
+      expect(fuera.status).toBe(200);
+      expect(fuera.body.data.zona).toBe('fuera');
+      let lista = await avisos(token);
+      expect(lista).toHaveLength(1);
+      expect(lista[0]).toMatchObject({ tipo: 'zona_salida', titulo: 'Lucía salió de la zona segura', leida: false });
+      expect(lista[0].descripcion).toMatch(/Está a 30\d m del centro de la zona \(radio de 100 m\)/);
+
+      await ubicar(deviceId, 320);
+      await ubicar(deviceId, 400);
+      expect(await avisos(token)).toHaveLength(1);
+
+      await ubicar(deviceId, 50);
+      lista = await avisos(token);
+      expect(lista).toHaveLength(2);
+      expect(lista[0]).toMatchObject({ tipo: 'zona_regreso', titulo: 'Lucía volvió a la zona segura' });
+    });
+
+    test('el borde (radio a radio + 10 m) no genera avisos de ida y vuelta', async () => {
+      const { token, deviceId } = await preparar();
+      await fijarZona(token, deviceId);
+      await ubicar(deviceId, 50);
+      for (const metros of [105, 98, 108, 101]) await ubicar(deviceId, metros);
+      expect(await avisos(token)).toHaveLength(0);
+
+      await ubicar(deviceId, 115); // sale
+      for (const metros of [105, 112, 103]) await ubicar(deviceId, metros); // sigue fuera (no bajó del radio)
+      const lista = await avisos(token);
+      expect(lista.map((a) => a.tipo)).toEqual(['zona_salida']);
+    });
+
+    test('sin zona no hay avisos; cambiar la zona reinicia el estado y la primera lectura fuera avisa', async () => {
+      const { token, deviceId } = await preparar();
+      expect((await ubicar(deviceId, 5000)).body.data.zona).toBeNull();
+      expect(await avisos(token)).toHaveLength(0);
+
+      await fijarZona(token, deviceId);
+      await ubicar(deviceId, 500);
+      expect((await avisos(token)).map((a) => a.tipo)).toEqual(['zona_salida']);
+
+      // Nueva zona (más grande): el estado se reinicia; dentro de la nueva no avisa «volvió»
+      await fijarZona(token, deviceId, 200);
+      await ubicar(deviceId, 150);
+      expect((await avisos(token)).map((a) => a.tipo)).toEqual(['zona_salida']);
+
+      // Quitar la zona: nada más
+      await request(app).put(`/api/devices/${deviceId}/zona-segura`).set(auth(token)).send({ zonaSegura: null });
+      await ubicar(deviceId, 5000);
+      expect(await avisos(token)).toHaveLength(1);
+    });
+
+    test('el teléfono del niño no puede enviar avisos de zona (los crea solo el servidor)', async () => {
+      const { token, deviceId } = await preparar();
+      for (const tipo of ['zona_salida', 'zona_regreso']) {
+        const res = await request(app).post(`/api/v1/devices/${deviceId}/notificaciones`).send({ tipo, titulo: 'Falso' });
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('NOTIFICACION_TIPO_INVALIDO');
+      }
+      expect(await avisos(token)).toHaveLength(0);
+    });
+  });
 });

@@ -262,4 +262,10 @@
     <string name="institution_code_label">Código de tu institución</string>
     <string name="institution_join">Unirme</string>
     <string name="institution_hint">Pídeselo al director de tu colegio o clínica: tus rutinas y tus hijos contarán en su panel.</string>
+    <string name="rutina_texto_ayuda">Solo letras, números, espacios y guion (-).</string>
+    <string name="rutina_texto_signos">Solo se permiten letras, números, espacios y el guion (-).</string>
+    <string name="rutina_texto_longitud">Debe tener de %1$d a %2$d caracteres.</string>
+    <string name="rutina_texto_bordes">Debe empezar y terminar con una letra o un número.</string>
+    <string name="rutina_texto_guiones_seguidos">No se permiten dos guiones seguidos.</string>
+    <string name="rutina_texto_guiones_max">Como máximo %1$d guiones.</string>
 </resources>
