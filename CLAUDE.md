@@ -21,8 +21,8 @@
 
 ## 4. Tests
 - Backend: `cd backend && npm test` (Jest + Supertest, `NODE_ENV=test`).
-- 262/262 pruebas pasan (verificado 16-nov-2026, tras el bloque O); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
-- Pruebas de carga (k6, en `backend/tests/k6/`): `npm run carga`, `carga:escritura`, `carga:limite` y `carga:humo` (contra `http://localhost:3000`; otro destino con `-e BASE_URL=`). Son autosuficientes: crean una cuenta temporal (`@carga.upad.test`, contraseña aleatoria en memoria) y la borran al terminar con `DELETE /api/auth/me`. NUNCA llevan credenciales. GitHub Actions (`.github/workflows/pruebas.yml`) ejecuta `npm test` y `carga:humo` en cada push que toque `backend/`.
+- 272/272 pruebas pasan (verificado 16-nov-2026, tras los bloques P y Q); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
+- Pruebas de carga (k6, en `backend/tests/k6/`): `npm run carga`, `carga:escritura`, `carga:limite`, `carga:humo` y `carga:10k` (10 000 usuarios que se registran, inician sesión, crean una rutina y borran su cuenta) (contra `http://localhost:3000`; otro destino con `-e BASE_URL=`). Son autosuficientes: crean una cuenta temporal (`@carga.upad.test`, contraseña aleatoria en memoria) y la borran al terminar con `DELETE /api/auth/me`. NUNCA llevan credenciales. GitHub Actions (`.github/workflows/pruebas.yml`) ejecuta `npm test` y `carga:humo` en cada push que toque `backend/`.
 - `tests/setup.js` fuerza una base SQLite temporal por corrida (y su carpeta `backups/`): los tests nunca tocan una base real ni crean `.db` en el repo. También genera `JWT_SECRET` y `GCP_KMS_PEPPER_SECRET` aleatorios en cada corrida (no usa los del `.env`).
 
 ## 5. Roles (estado actual del código)
@@ -62,6 +62,7 @@ Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y 
 
 ## 7. Android
 - Desde el 16-nov-2026 (decisión del usuario) se puede modificar `app/` SOLO dentro del bloque L (correcciones críticas de integración con el backend; ver sección 10), con plan aprobado. Fuera de eso sigue sin tocarse.
+- Desde el 16-nov-2026 (plan de la segunda ronda del docente, aprobado) también se puede modificar `app/` en los bloques S (niño) y T (padre), sin tocar Gradle.
 - No modificar la configuración de compilación (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradle.properties`, `gradlew*`) salvo indicación expresa. Excepción autorizada (16-nov-2026): quitar Firebase y el plugin `google-services` en el bloque L (Firebase ya no existe; el equipo lo confirmó). También autorizado (16-nov-2026, bloque N): sustituir `maps-compose` por `org.osmdroid:osmdroid-android` y quitar `MAPS_API_KEY`.
 - La APK de la raíz (`UPad_Cloud_Ready.apk`) se regenera con `build-apk.sh` (lo ejecuta el usuario: en esta Mac no hay SDK de Android). Antes de commitearla, comprobar que no lleve claves (el repositorio de GitHub es público).
 - El backend es la fuente de verdad: Android se adapta a sus contratos, no al revés.
@@ -219,6 +220,45 @@ Nada de los bloques B a F tiene commit todavía (último commit: `59590d6`). Los
   - El usuario dijo haber quitado el límite del `.env`, pero tras reiniciar el backend local sigue respondiendo `RateLimit-Policy: 10;w=900` (el `.env` cambió a las 12:31; la variable no viene de la terminal): probablemente `RATE_LIMIT_AUTH_MAX` sigue en el archivo.
   - El `reporte-carga.json` antiguo del historial tenía un token de la cuenta sembrada del director (firmado con el `JWT_SECRET` anterior, ya rotado en I.1): el commit `13d02fd` lo reemplaza.
   - Falta: comprobar el workflow en verde en GitHub y ejecutar k6 contra Cloud Run.
+- **Segunda ronda del docente (16-nov-2026, plan aprobado: bloques P a U; plan en `~/.claude/plans/empecemos-con-la-planificacion-sparkling-puzzle.md`).** Decisiones del usuario: k6 de 10 000 usuarios honesto (sin bajar PBKDF2); una rutina sin hijo la ven todos los hijos; minutos por paso y la rutina suma; ubicación del niño siempre que su app esté abierta, sin premium. Puntos 3 y 4 (web) ya estaban resueltos: el docente vio una versión anterior.
+  - **P hecho (sin commit):** (15) `App.jsx` protege cada ruta con `allowedRoles` (gerencial: empresario y developer; admin: developer; gps: tutor y developer) y un 403 `FORBIDDEN_ROLE` de la API lleva a `/403` (evento `upad:forbidden`). (1) `arasaacService.getPictogramByKeyword`: `bestsearch` de la frase, sin el «-se» de los verbos, palabra por palabra de la última a la primera (sin palabras vacías) y por último `search` («tomar desayuno» → desayuno, «cepillarse los dientes» → cepillar los dientes). (6 y 9) `POST /api/organizaciones/unirse {codigo}` y `DELETE /api/organizaciones/membresia` (solo tutor): mueven al tutor, sus rutinas y sus cumplimientos; «Mi perfil» tiene «Código de tu institución» con «Unirme» y «Salir». Sección 27 de tests (3).
+  - **Q hecho (sin commit):** `utils/pasosRutina.js`: hasta 20 pasos, texto 1-120, `duracionMinutos` 1-120 (5 por defecto), `pictogramaId` opcional; sin pasos = un paso con el título; 400 `PASOS_INVALIDOS`; las respuestas traen `duracionTotalMinutos`. Ya NO se asigna sola la rutina al único hijo: `ninoId` null = «Todos mis hijos». `GET /mobile/sync-routines` en orden de creación (ASC), con `pasos`, `ninoId` y duración; con `?deviceId=` solo las del hijo y las de todos (vacío si no es su hijo). POST/PUT móviles aceptan `pasos[]` y `ninoId` (y el formato antiguo). El cumplimiento solo acepta rutinas del hijo o de todos y las esperadas se cuentan por hijo. Nuevo `GET /api/devices/:deviceId/cumplimiento?fecha=` (sin token, vinculados, 60/min) para que el niño recupere su avance. Swagger actualizado. Sección 28 de tests (7).
+  - **R hecho (sin commit):** `RutinaDrawer` con «Minutos» por paso, «Duración total» y el selector «Todos mis hijos»; tarjetas y Developer Center muestran la duración. Build y paridad es/en (483) correctas.
+  - **S hecho (sin commit), Android niño:**
+    - `data/PictogramasArasaac.kt`: el mismo algoritmo que la web, con caché en el teléfono (`UPAD_PICTOGRAMAS`). La tarjeta muestra el pictograma del título; cada paso, el suyo.
+    - El niño pide sus rutinas con `?deviceId=` (solo las suyas y las de «Todos», en orden de creación). El filtro solo se aplica en su pantalla (`cargarRutinasDesdeFirebase(padreId, deviceId)`); las pantallas del padre piden todas.
+    - Lo completado se guarda en el teléfono y se recupera del servidor (`GET …/cumplimiento?fecha=`), así que recargar o reiniciar la app ya no lo borra (puntos 10 y 11).
+    - `TaskExecutionScreen` recorre los pasos («Paso X de N», temporizador por paso, «Siguiente paso»).
+    - La confirmación «Dispositivo vinculado» solo sale justo después de vincular (punto 7). La pantalla de logro anuncia la siguiente actividad pendiente real (antes decía «No tienes tareas pendientes» aunque quedaran).
+    - `child/EnvioUbicacionNino.kt`: ubicación cada 10 s en cualquier pantalla del niño, sin premium (punto 4).
+  - **T hecho (sin commit), Android padre:**
+    - `CreateRoutineScreen`: pasos con minutos, total y «¿Para quién?» (todos o cada hijo).
+    - `AnalyticsScreen`: cumplimiento real (`GET /api/cumplimiento`) por día, turno e hijo, sin el análisis con IA.
+    - Registro con «Código de tu institución (opcional)».
+    - Perfil con la tarjeta «Institución» (unirse con el código; muestra el error del servidor si es inválido).
+    - Strings en values, en, pt, fr, de y ru.
+  - **U hecho (sin commit):** `backend/tests/k6/estres-10k.js` y `npm run carga:10k`.
+    - Cada usuario se registra (tutor), inicia sesión, crea una rutina de 2 pasos (comprueba los 18 min) y borra su cuenta.
+    - Configuración: `USUARIOS` 10000, `VUS` 200 y `MAX_MIN` 15. Umbrales: 0 fallos y los 10 000 completos. Un 429 corta la prueba y explica `RATE_LIMIT_AUTH_MAX`.
+    - **Medido en local (backend sin `.env`, puerto 3100): 10 000 usuarios en 53,4 s (187/s), 40 001 peticiones, 0 fallos, p95 400 ms; la base quedó con 0 cuentas, rutinas y organizaciones.**
+    - Documentado en el README y la guía (no 10 s por PBKDF2). Reporte en `backend/reports/reporte-estres-10k.json` (sin token ni contraseñas).
+  - **Verificado en el emulador contra el backend local (16-nov-2026):**
+    - el padre crea desde la app una actividad de 2 pasos (1 y 2 min, total 3) para un hijo, y queda así en el servidor con pictogramas;
+    - el niño ve solo sus rutinas y las de «Todos», en orden de creación (la del otro hijo no aparece), con duración y pictogramas;
+    - los pasos avanzan con sus temporizadores;
+    - al terminar vuelve a la lista con la siguiente desbloqueada, y forzar el cierre conserva el avance;
+    - la ubicación llega estando en la pantalla de la tarea;
+    - el cumplimiento y los avisos llegan al padre, y Desempeño del padre muestra «2 de 9» con datos reales;
+    - unirse con un código inválido muestra el error; con el válido, el panel del director sube a 2 estudiantes, 6 rutinas y 1 tutor (puntos 6 y 9).
+  - APK de la raíz regenerada (compilación limpia): sin claves, `.env`, bases ni `google-services.json`; apunta a Cloud Run.
+  - **Fallo del punto 15 visto por el usuario:** un tutor en `/gerencial` veía la interfaz con «Acceso denegado». Era el `public_html` antiguo (producción y localhost:3000); el código fuente ya estaba bien. Comprobado con Chrome sin ventana: con el build nuevo va a `/403`, en local y en producción (con una cuenta temporal que se borró después).
+  - **Cierre (16-nov-2026):**
+    - `public_html` regenerado (sin `localhost` ni claves) y 272/272 tests;
+    - commits `7d8948b` (backend), `31a9524` (k6), `87b9e90` (web), `1c62d49` (Android), `13d14ef` (APK), `4959277` (public_html) y este de docs, con push;
+    - **despliegue hecho por Claude a pedido expreso del usuario** (única excepción a la sección 2): revisión `upad-backend-service-00047-gjt` con el 100 % del tráfico. `/health` → `persistencia: "Cloud Storage (Litestream)"`, `pepper: "Cloud KMS"`; responden las rutas nuevas (cumplimiento del niño 404 sin vincular, unirse 401 sin token).
+    - El usuario quitó `RATE_LIMIT_AUTH_MAX` de su `.env`.
+    - Manual del equipo actualizado con esta ronda.
+  - **Falta (equipo):** pruebas con dos teléfonos siguiendo el manual; añadir los usuarios de prueba de OAuth.
 - **Pendiente (usuario):** (puesta en marcha de H ya completada) pedir al compañero que suba su última versión (Android y backend) y que no despliegue; decidir si se abre Android para corregir esos fallos.
 
 ### Revisión de los 22 puntos (15-nov-2026)
