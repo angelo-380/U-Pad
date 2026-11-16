@@ -79,9 +79,24 @@ c) Solo se trabaja la web. La app Android no se toca (ver sección 7).
 d) El informe del proyecto es la referencia: pepper con Cloud KMS, backups a Cloud Storage y persistencia de la base de datos. **Verificado en producción el 16-nov-2026** (`/health`: `persistencia: "Cloud Storage (Litestream)"`, `pepper: "Cloud KMS"`; una cuenta sobrevivió a una nueva implementación; carpetas `db/` y `backups/` en el bucket).
 e) El build del frontend se copia a `backend/public_html` solo cuando el usuario lo pida, al final del trabajo. Mientras tanto, no se regenera ni se modifica.
 
-## 10. Estado de avance (actualizado 16-nov-2026)
+## 10. Estado de avance (actualizado 16-nov-2026, cierre de la entrega)
 
-Nada de los bloques B a F tiene commit todavía (último commit: `59590d6`). Los commits se hacen al cierre, cuando el usuario lo pida.
+### Punto de partida para la próxima sesión (leer primero)
+- **Estado:** trabajo de la entrega TERMINADO y presentado desde la rama `feature/mejoras-feedback-docente` (sin PR a `main`). Último commit `2bc23ff` (con push), árbol limpio. 272/272 tests y CI en verde.
+- **Producción:** revisión `upad-backend-service-00047-gjt` (16-nov-2026), con todo el código de los bloques A a U. `/health`: `persistencia: "Cloud Storage (Litestream)"`, `pepper: "Cloud KMS"`. URL: `https://upad-backend-service-466241893446.us-central1.run.app`. `public_html` y `UPad_Cloud_Ready.apk` corresponden a ese mismo código.
+- **Rondas del docente:** primera ronda (22 puntos, `docs/FEEDBACK_DOCENTE.md`) en los bloques A a O; segunda ronda (16 puntos) en los bloques P a U. Todo resuelto salvo lo listado en «Pendiente».
+- **Manual del equipo** (cambios, nuevo proceder, enlace de la APK y pruebas con dos teléfonos): https://claude.ai/artifact/7ptX6HSv6vWpttzv5ppXuA. Actualízalo si cambia algo que el equipo deba saber.
+- **Para retomar:**
+  - backend local: `cd backend && npm run dev`;
+  - web: `cd frontend && VITE_API_URL=http://localhost:3000 npm run dev`;
+  - Android: `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" sh gradlew :app:assembleDebug`. Emulador `Medium_Phone_API_37.0`; en la app, Ajustes → Servidor `10.0.2.2`.
+- **Hacer después de cada cambio:**
+  - frontend: regenerar `public_html` con `cd frontend && VITE_API_URL="" npx vite build --outDir ../backend/public_html --emptyOutDir`;
+  - Android: copiar `app/build/outputs/apk/debug/app-debug.apk` a `UPad_Cloud_Ready.apk` y escanearla antes de subirla (el repositorio es público).
+- **Lecciones de esta entrega:**
+  - Si el usuario ve un fallo en la web que el código fuente ya no tiene, casi siempre es un `public_html` viejo. Se comprueba con Chrome sin ventana (`--headless=new` y CDP; token en `localStorage.upad_token`).
+  - Al detener un backend de prueba, mata solo su puerto, no todos los procesos `server.js`: eso tumbó el backend y el frontend de desarrollo del usuario.
+  - El usuario puede autorizar un despliegue puntual (se hizo una vez, ver «Cierre»). Sin una autorización expresa en el turno, sigue vigente la sección 2.
 
 ### Hecho
 - **A. Roles y seeders:** rol `admin` eliminado (backend, frontend y tests); registro público cerrado a `developer`; lista blanca de roles al crear/editar usuarios; sin cuentas sembradas; `seedAdmin.js` y `seed:admin` eliminados; primera cuenta `developer` creada solo por entorno (`DEV_EMAIL`, `DEV_PASSWORD`, `DEV_NAME`) si no hay usuarios.
@@ -307,18 +322,16 @@ Nada de los bloques B a F tiene commit todavía (último commit: `59590d6`). Los
    - **Causa encontrada (16-nov-2026):** el tráfico del servicio está FIJADO a la revisión `00035-pwh` (100 %), creada por un compañero el 15-nov desde su máquina con código que no está en este repo; no sigue a la última revisión. Por eso las revisiones del usuario (`00036`, `00037` de I.1 y `00038-nqx`, el deploy de hoy) no reciben tráfico: **producción nunca usó el `JWT_SECRET` nuevo de I.1** (sirve la configuración de 00035). Además, la etiqueta `credential-repair` publica la revisión `00033-duv` en una URL propia. Plan dado al usuario: (1) etiquetar `00038-nqx` como `prueba` y revisar su `/health` sin tocar el tráfico; (2) si está bien, `update-traffic --to-latest`; (3) quitar las etiquetas `prueba` y `credential-repair`; (4) coordinar con el compañero: al pasar el tráfico, su código deja de servir y, si vuelve a desplegar o fija una revisión, pisa la nuestra.
 
 ### Pendiente
-Referencia: el listado completo de 22 puntos del docente está en `docs/FEEDBACK_DOCENTE.md` (los números de abajo son los de ese listado).
-- **G. Login con Google:** funciona en local y está configurado en producción; falta añadir a los compañeros (y al docente) como usuarios de prueba en la consola de OAuth.
-- **H. Coherencia con el informe:** hecho y verificado en producción el 16-nov-2026.
-- **I. Seguridad (en curso, ver «Orden de trabajo»).** Para cerrar del todo la sincronización móvil, la app Android debe enviar `Authorization: Bearer <AUTH_TOKEN>` (ya guarda el token al iniciar sesión, pero no lo envía). Cuando lo haga, poner `MOBILE_SIN_TOKEN=false` en Cloud Run. Mientras tanto, quien conozca el `userId` de alguien puede crear, ver o borrar sus rutinas desde la API.
-- **Android (bloque D):** la app del niño genera el código una vez por sesión y no lo renueva. Con la caducidad de 60 s, un código vencido obliga a reabrir la app. Falta que la app lo regenere cada 60 s con una cuenta regresiva.
-- **GPS en el teléfono del padre (Android):** la pantalla de seguimiento de la app lee la ubicación guardada en el propio teléfono, no la del servidor, así que el «tanto en el teléfono» del punto 6 depende de cambiar Android. Además, la app del niño solo envía la ubicación si el padre es premium en la app.
-- **Telemetría sin autenticar:** quien conozca un `deviceId` vinculado (el `ANDROID_ID` del teléfono) puede falsear su ubicación. El bloque I solo la limita (30/min) y valida el formato; la solución real es un token propio del dispositivo entregado al vincular, y requiere cambiar Android.
-- **Datos antiguos de rutinas:** las rutinas con `ninoId` = nombre del niño o `'dev_child_default'` quedan como están; la web no las muestra asignadas.
-- **Registro de cumplimiento real** (tabla y endpoint para rutinas completadas): queda para cuando se pueda modificar la app Android. Además, la app envía `dias` al sincronizar y el backend lo ignora.
+Referencia: el listado de 22 puntos de la primera ronda está en `docs/FEEDBACK_DOCENTE.md`.
+- **Equipo:** pruebas finales con dos teléfonos siguiendo el manual. Añadir al docente y a los compañeros como usuarios de prueba de OAuth (sin eso, «Entrar con Google» en la web solo funciona para el usuario).
+- **Punto 16 (10 000 usuarios en 10 s):** se cumple sin fallos, pero en unos 53 s en local. Es una limitación aceptada: no se baja PBKDF2. No ejecutar `carga:10k` contra producción.
+- **Seguridad móvil:** `MOBILE_SIN_TOKEN` sigue activo, porque el niño lee las rutinas del padre por `userId` sin token. La telemetría y los avisos del niño no llevan token propio del dispositivo: quien conozca un `deviceId` vinculado puede falsearlos (con límites por minuto). Solución: un token del dispositivo entregado al vincular (backend y Android).
+- **Android:** «Entrar con Google» está oculto en la APK (falta `GOOGLE_CLIENT_ID` en `local.properties`). El kiosco necesita que alguien confirme el fijado de pantalla (no es *device owner*). La pantalla de inicio del padre ya no mezcla lo que completó el niño (su avance real está en «Análisis de desempeño»).
+- **Datos antiguos:** las rutinas con `ninoId` = nombre del niño o `'dev_child_default'` quedan sin asignar. En la web, las tarjetas de rutina muestran el id de la organización (`Org: org_…`) en vez de su nombre.
+- **Documentación:** `GUIA_COMPROBACION_80_PORCIENTO_UPAD.txt` sigue desactualizada fuera de las secciones de k6 (rol admin, rutas de otra máquina).
 
 ### Recordatorios
 - Cuentas semilla antiguas de producción: eliminadas (la base de producción empezó vacía el 16-nov-2026). Las cuentas maestras del backend del compañero tampoco existen ya.
-- `backend/public_html` regenerado el 16-nov-2026; volver a regenerarlo si cambia el frontend antes de desplegar.
+- `backend/public_html` regenerado el 16-nov-2026 (cierre); volver a regenerarlo si cambia el frontend antes de desplegar.
 - Idiomas: las claves de `t()` deben existir en `es` y en `en` (el docente revisa en inglés; los usuarios usan español). pt, fr y de caen a español. Todo texto nuevo de la web va por `t()`; para valores variables usa `t('clave', { valor })` con `{valor}` en el texto.
 - En el primer arranque en producción, la migración creará una organización por cada empresario existente (incluidas las cuentas de las pruebas de carga).
