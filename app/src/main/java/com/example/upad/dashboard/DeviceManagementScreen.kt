@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.*
@@ -84,6 +85,7 @@ fun DeviceManagementScreen(
 
     var listaDispositivos by remember { mutableStateOf(listOf<DispositivoNiño>()) }
     var cargando by remember { mutableStateOf(true) }
+    var dispositivoAEliminar by remember { mutableStateOf<DispositivoNiño?>(null) }
 
     val firestore = remember { FirebaseFirestore.getInstance() }
     val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId() }
@@ -176,28 +178,37 @@ fun DeviceManagementScreen(
                                     )
                                 }
 
-                                Button(
-                                    onClick = {
-                                        val nuevoEstado = !dispositivo.kioscoActivo
-                                        BiometricHelper.cambiarEstadoKioscoConHuella(
-                                            activity = activity,
-                                            idDispositivoNiño = dispositivo.id,
-                                            debeBloquear = nuevoEstado
-                                        )
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (dispositivo.kioscoActivo) colorAcabadoPrincipal else MaterialTheme.colorScheme.error
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    if (dispositivo.kioscoActivo) {
-                                        Icon(Icons.Default.LockOpen, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(stringResource(id = R.string.unlock_action))
-                                    } else {
-                                        Icon(Icons.Default.Lock, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(stringResource(id = R.string.lock_action))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Button(
+                                        onClick = {
+                                            val nuevoEstado = !dispositivo.kioscoActivo
+                                            BiometricHelper.cambiarEstadoKioscoConHuella(
+                                                activity = activity,
+                                                idDispositivoNiño = dispositivo.id,
+                                                debeBloquear = nuevoEstado
+                                            )
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (dispositivo.kioscoActivo) colorAcabadoPrincipal else MaterialTheme.colorScheme.error
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        if (dispositivo.kioscoActivo) {
+                                            Icon(Icons.Default.LockOpen, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(stringResource(id = R.string.unlock_action))
+                                        } else {
+                                            Icon(Icons.Default.Lock, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(stringResource(id = R.string.lock_action))
+                                        }
+                                    }
+
+                                    IconButton(
+                                        onClick = { dispositivoAEliminar = dispositivo },
+                                        modifier = Modifier.background(Color(0xFFFFEBEE), RoundedCornerShape(12.dp))
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Desvincular dispositivo", tint = Color(0xFFC62828))
                                     }
                                 }
                             }
@@ -206,5 +217,31 @@ fun DeviceManagementScreen(
                 }
             }
         }
+    }
+
+    dispositivoAEliminar?.let { dispositivo ->
+        AlertDialog(
+            onDismissRequest = { dispositivoAEliminar = null },
+            title = { Text("Desvincular dispositivo") },
+            text = { Text("El teléfono del niño se desvinculará y volverá a la pantalla inicial de U-Pad.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        dispositivoAEliminar = null
+                        kotlin.concurrent.thread {
+                            com.example.upad.data.LocalDataManager.unlinkChildDevice(dispositivo.id, idPadre)
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Desvincular")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { dispositivoAEliminar = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }

@@ -66,7 +66,7 @@ fun DevicePairingScreen(
             }
             // Expired: reset code to enforce MFA time-based security
             pairingCode = ""
-            mensajeError = "El cdigo expir por seguridad. Ingrese el nuevo cdigo generado."
+            mensajeError = "El código expiró por seguridad. Ingresa el nuevo código generado."
             codeSeed++
         }
     }
@@ -224,7 +224,7 @@ fun DevicePairingScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Cdigo vlido por: ${secondsRemaining}s (seguridad TOTP)",
+                            text = "Código válido por: ${secondsRemaining}s (seguridad TOTP)",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (secondsRemaining <= 10) Color(0xFFEF4444) else colorTextoSecundario
@@ -308,9 +308,17 @@ fun DevicePairingScreen(
                             estaConectando = true
 
                             val parentId = currentParentId.ifEmpty { LocalDataManager.getCurrentUserId() }
-                            LocalDataManager.linkDeviceToParent(pairingCode, parentId)
-                            estaConectando = false
-                            isPaired = true
+                            kotlin.concurrent.thread {
+                                val result = LocalDataManager.linkDeviceToParent(pairingCode, parentId)
+                                (context as? android.app.Activity)?.runOnUiThread {
+                                    estaConectando = false
+                                    if (result.first) {
+                                        isPaired = true
+                                    } else {
+                                        mensajeError = result.second
+                                    }
+                                }
+                            }
                         } else {
                             mensajeError = "Introduce los 6 números obligatorios."
                         }

@@ -88,7 +88,9 @@ fun ConnectionScreen(
     val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId() }
     var codigoIngresado by remember { mutableStateOf("") }
     var cargandoVerificacion by remember { mutableStateOf(true) }
+    var estaConectando by remember { mutableStateOf(false) }
     var mensajeError by remember { mutableStateOf("") }
+    var dispositivoConfirmadoNombre by remember { mutableStateOf<String?>(null) }
 
     val listaDispositivos = remember { mutableStateListOf<DispositivoVinculado>() }
     val firestore = remember { FirebaseFirestore.getInstance() }
@@ -239,24 +241,77 @@ fun ConnectionScreen(
 
                                     Spacer(modifier = Modifier.height(16.dp))
 
-                                    Button(
-                                        onClick = {
-                                            if (codigoIngresado.length == 6) {
-                                                mensajeError = ""
-                                                com.example.upad.data.LocalDataManager.linkDeviceToParent(codigoIngresado, idPadre)
-                                                codigoIngresado = ""
-                                                onLinkSuccess()
-                                            } else {
-                                                mensajeError = context.getString(R.string.enter_6_numbers)
+                                    if (dispositivoConfirmadoNombre != null) {
+                                        // PANTALLA DE CONFIRMACIÓN TRAS VINCULAR
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = "¡Dispositivo Vinculado!",
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = colorVerdePremium
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "Se enlazó con éxito el equipo: $dispositivoConfirmadoNombre",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = colorTextoPrincipal,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            Button(
+                                                onClick = {
+                                                    dispositivoConfirmadoNombre = null
+                                                    onLinkSuccess()
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = colorVerdePremium),
+                                                shape = RoundedCornerShape(14.dp),
+                                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                                            ) {
+                                                Text("CONTINUAR AL DASHBOARD", fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color.White)
                                             }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = colorVerdePremium),
-                                        shape = RoundedCornerShape(14.dp),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(50.dp)
-                                    ) {
-                                        Text(stringResource(id = R.string.link_device_btn), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = {
+                                                if (codigoIngresado.length == 6) {
+                                                    mensajeError = ""
+                                                    estaConectando = true
+                                                    val cod = codigoIngresado.trim().uppercase()
+                                                    kotlin.concurrent.thread {
+                                                        val result = com.example.upad.data.LocalDataManager.linkDeviceToParent(cod, idPadre)
+                                                        (context as? android.app.Activity)?.runOnUiThread {
+                                                            estaConectando = false
+                                                            if (result.first) {
+                                                                val devName = com.example.upad.data.LocalDataManager.getAllDevices()[result.second]?.modelo 
+                                                                    ?: "Tablet Infantil ($cod)"
+                                                                dispositivoConfirmadoNombre = devName
+                                                                codigoIngresado = ""
+                                                            } else {
+                                                                mensajeError = result.second
+                                                            }
+                                                        }
+                                                    }
+                                                } else {
+                                                    mensajeError = context.getString(R.string.enter_6_numbers)
+                                                }
+                                            },
+                                            enabled = !estaConectando,
+                                            colors = ButtonDefaults.buttonColors(containerColor = colorVerdePremium),
+                                            shape = RoundedCornerShape(14.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(50.dp)
+                                        ) {
+                                            if (estaConectando) {
+                                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                            } else {
+                                                Text(stringResource(id = R.string.link_device_btn), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        }
                                     }
                                 }
                             }

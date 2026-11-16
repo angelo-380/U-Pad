@@ -19,7 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import com.google.firebase.firestore.ListenerRegistration
 import com.example.upad.utils.RoutineProgressCalculator
 import kotlinx.coroutines.tasks.await
-
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.lifecycle.viewModelScope
 data class TaskItem(
     val actividad: String = "",
     val palabraClave: String = "",
@@ -281,36 +283,73 @@ class RoutineViewModel(
     private var pairingCodeListener: ListenerRegistration? = null
     private var codigoGeneradoEnSesion = false
 
+    private val _errorConexionServidor = MutableStateFlow(false)
+    val errorConexionServidor: StateFlow<Boolean> = _errorConexionServidor.asStateFlow()
+
+    private val _nombreTutorVinculado = MutableStateFlow("")
+    val nombreTutorVinculado: StateFlow<String> = _nombreTutorVinculado.asStateFlow()
+
+    fun regenerarCodigoNiño(deviceId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val nuevoCodigo = java.security.SecureRandom().nextInt(900000) + 100000
+            val nuevoCodigoTexto = nuevoCodigo.toString()
+            val registrado = repository.createPairingCode(nuevoCodigoTexto, deviceId)
+
+            if (!registrado) {
+                _errorConexionServidor.value = true
+                _codigoNiño.value = "------"
+                codigoGeneradoEnSesion = false
+                return@launch
+            }
+
+            _errorConexionServidor.value = false
+            _codigoNiño.value = nuevoCodigoTexto
+            codigoGeneradoEnSesion = true
+
+            pairingCodeListener?.remove()
+            pairingCodeListener = repository.listenToPairingCode(nuevoCodigoTexto) { codeEntry ->
+                if (codeEntry != null) {
+                    val estado = codeEntry.estado
+                    val pId = codeEntry.padreId
+                    if (estado == "enlazado" && pId.isNotEmpty()) {
+                        val tutor = com.example.upad.data.LocalDataManager.getAllUsers().values.find { it.uid == pId }?.name ?: "Tutor"
+                        _nombreTutorVinculado.value = tutor
+                        // La web ya consumió el código y creó el vínculo en
+                        // Cloud Run. Aquí solo sincronizamos el estado local;
+                        // no volvemos a consumir el código ni lo regeneramos.
+                        repository.markDeviceLinkedLocally(deviceId, pId)
+                        repository.deletePairingCode(nuevoCodigoTexto)
+                    }
+                }
+            }
+        }
+    }
+
     fun iniciarEscuchaDispositivoNiño(deviceId: String) {
         devicesListener?.remove()
         devicesListener = repository.listenToChildDevice(deviceId) { device ->
             val padreId = device?.padreId ?: ""
 
             if (device == null || padreId.isEmpty()) {
+                val estabaVinculado = _estaVinculado.value
                 _estaVinculado.value = false
                 _padreIdAsociado.value = ""
+                _nombreTutorVinculado.value = ""
                 premiumListener?.remove()
 
+                // Si el padre eliminó el dispositivo desde la web (o desde su
+                // teléfono), el siguiente código debe ser uno nuevo, nunca el
+                // código que ya fue usado para el vínculo anterior.
+                if (estabaVinculado) {
+                    codigoGeneradoEnSesion = false
+                    _codigoNiño.value = "------"
+                }
+
                 if (!codigoGeneradoEnSesion) {
-                    codigoGeneradoEnSesion = true
-                    val nuevoCodigo = (100000..999999).random().toString()
-                    _codigoNiño.value = nuevoCodigo
-
-                    repository.createPairingCode(nuevoCodigo, deviceId)
-
-                    pairingCodeListener?.remove()
-                    pairingCodeListener = repository.listenToPairingCode(nuevoCodigo) { codeEntry ->
-                        if (codeEntry != null) {
-                            val estado = codeEntry.estado
-                            val pId = codeEntry.padreId
-                            if (estado == "enlazado" && pId.isNotEmpty()) {
-                                repository.linkDeviceToParent(deviceId, pId)
-                                repository.deletePairingCode(nuevoCodigo)
-                            }
-                        }
-                    }
+                    regenerarCodigoNiño(deviceId)
                 } else if (_codigoNiño.value == "------") {
                     codigoGeneradoEnSesion = false
+                    regenerarCodigoNiño(deviceId)
                 }
 
                 _cargandoChild.value = false
@@ -371,7 +410,7 @@ class RoutineViewModel(
                     if (padreIdLogueado == _padreIdAsociado.value) {
                         viewModelScope.launch {
                             try {
-                                repository.deleteDeviceDoc(deviceId)
+                                repository.deleteDeviceDoc(deviceId, padreIdLogueado ?: "")
                                 auth.signOut()
                                 _cargandoDesvinculacion.value = false
                                 _errorDesvinculacion.value = ""

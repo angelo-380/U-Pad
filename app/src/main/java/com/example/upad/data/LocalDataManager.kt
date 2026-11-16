@@ -503,6 +503,14 @@ object LocalDataManager {
         prefs.edit().putString(KEY_SERVER_IP, ip.trim()).apply()
     }
 
+    // =========================================================================
+    // CONFIGURACIÓN DE RED Y URLS BASE (A)
+    // Para probar en un teléfono físico con IP LAN, cambia DEFAULT_DEV_IP por la IP de tu PC (ej: "192.168.1.50")
+    // =========================================================================
+    const val DEFAULT_DEV_IP = "10.0.2.2" // <-- Cambiar esta línea si pruebas en teléfono físico LAN (ej: "192.168.1.X")
+    private const val DEFAULT_EMULATOR_BASE_URL = "http://$DEFAULT_DEV_IP:3000"
+    private const val CLOUD_RUN_FALLBACK_URL = "https://upad-backend-service-466241893446.us-central1.run.app"
+
     private fun getCloudBaseUrl(): String {
         val ip = getServerIp()
         return "http://$ip:3000"
@@ -510,24 +518,21 @@ object LocalDataManager {
 
     private fun getCandidateBaseUrls(): List<String> {
         val configured = getCloudBaseUrl()
+        // En la entrega del curso la fuente de verdad es Cloud Run. Se prueba
+        // primero para que la pantalla infantil no espere los timeouts de las
+        // direcciones locales antes de mostrar su código.
         val candidates = mutableListOf(
-            "https://upad-backend-service-466241893446.us-central1.run.app",
-            configured
+            CLOUD_RUN_FALLBACK_URL,
+            "http://127.0.0.1:3000",
+            configured,
+            DEFAULT_EMULATOR_BASE_URL
         )
-        val defaults = listOf(
-            "http://172.22.158.28:3000",
-            "http://192.168.15.12:3000",
-            "http://192.168.15.8:3000",
-            "http://10.0.2.2:3000",
-            "http://127.0.0.1:3000"
-        )
-        for (d in defaults) {
-            if (!candidates.contains(d)) {
-                candidates.add(d)
-            }
-        }
-        return candidates
+        return candidates.distinct()
     }
+
+    private fun connectTimeoutFor(baseUrl: String): Int = 3000
+
+    private fun readTimeoutFor(baseUrl: String, defaultTimeout: Int = 3000): Int = 3000
 
     private fun httpPostSync(path: String, jsonBody: String): String? {
         val urls = getCandidateBaseUrls()
@@ -536,8 +541,8 @@ object LocalDataManager {
                 val url = java.net.URL("$baseUrl$path")
                 val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                     requestMethod = "POST"
-                    connectTimeout = 3000
-                    readTimeout = 4000
+                    connectTimeout = connectTimeoutFor(baseUrl)
+                    readTimeout = readTimeoutFor(baseUrl, 4000)
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json")
                     setRequestProperty("Accept", "application/json")
@@ -550,7 +555,12 @@ object LocalDataManager {
                     }
                 }
                 val responseCode = conn.responseCode
-                val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+                if (responseCode !in 200..299) {
+                    Log.w(TAG, "httpPostSync fallo $baseUrl$path con HTTP $responseCode")
+                    conn.disconnect()
+                    continue
+                }
+                val stream = conn.inputStream
                 if (stream != null) {
                     val reader = java.io.BufferedReader(java.io.InputStreamReader(stream))
                     val sb = StringBuilder()
@@ -584,8 +594,8 @@ object LocalDataManager {
                     val url = java.net.URL("$baseUrl$path")
                     val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                         requestMethod = "POST"
-                        connectTimeout = 3000
-                        readTimeout = 3000
+                        connectTimeout = connectTimeoutFor(baseUrl)
+                        readTimeout = readTimeoutFor(baseUrl, 3000)
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json")
                         setRequestProperty("User-Agent", "UPad-Android-Client/2.0")
@@ -621,8 +631,8 @@ object LocalDataManager {
                     val url = java.net.URL("$baseUrl$path")
                     val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                         requestMethod = "DELETE"
-                        connectTimeout = 3000
-                        readTimeout = 3000
+                        connectTimeout = connectTimeoutFor(baseUrl)
+                        readTimeout = readTimeoutFor(baseUrl, 3000)
                         setRequestProperty("User-Agent", "UPad-Android-Client/2.0")
                     }
                     val code = conn.responseCode
@@ -643,8 +653,8 @@ object LocalDataManager {
                 val url = java.net.URL("$baseUrl$path")
                 val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 3000
-                    readTimeout = 3000
+                    connectTimeout = connectTimeoutFor(baseUrl)
+                    readTimeout = readTimeoutFor(baseUrl, 3000)
                     setRequestProperty("Accept", "application/json")
                     setRequestProperty("User-Agent", "UPad-Android-Client/2.0")
                 }
@@ -687,19 +697,46 @@ object LocalDataManager {
         prefs.edit().putString(KEY_DEVICES_MAP, gson.toJson(map)).apply()
     }
 
-    fun createPairingCode(code: String, deviceId: String) {
+    fun createPairingCode(code: String, deviceId: String, onEffectiveCodeResolved: ((String) -> Unit)? = null): Boolean {
+        // Sincronizar creación de código con el backend primero
+        val body = "{\"code\":\"$code\",\"deviceId\":\"$deviceId\"}"
+        val res = httpPostSync("/api/v1/devices/pairing/create", body)
+        if (res == null) {
+            Log.e(TAG, "Error registrando código de vinculación en el servidor")
+            return false
+        }
+
+        var effectiveCode = code
+        try {
+            val root = gson.fromJson(res, Map::class.java)
+            val status = root["status"] as? String
+            val success = root["success"] as? Boolean
+            if (status == "error" || success == false) {
+                Log.e(TAG, "Servidor rechazó la creación del código: $res")
+                return false
+            }
+            // Si la respuesta incluye el código guardado y es distinto del enviado, usar el código del servidor
+            val dataObj = root["data"] as? Map<*, *>
+            val returnedCode = (dataObj?.get("code") as? String) ?: (root["code"] as? String)
+            if (!returnedCode.isNullOrEmpty() && returnedCode != effectiveCode) {
+                effectiveCode = returnedCode
+                onEffectiveCodeResolved?.invoke(effectiveCode)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error analizando respuesta de pairing/create: ${e.message}")
+        }
+
+        // Si el backend confirmó con éxito, guardar en SharedPreferences localmente
         val map = getPairingCodes().toMutableMap()
-        val entry = LocalPairingCode(code = code, deviceId = deviceId, estado = "esperando", padreId = "")
-        map[code] = entry
+        val entry = LocalPairingCode(code = effectiveCode, deviceId = deviceId, estado = "esperando", padreId = "")
+        map[effectiveCode] = entry
         prefs.edit().putString(KEY_PAIRING_CODES, gson.toJson(map)).apply()
 
         mainHandler.post {
-            pairingListeners[code]?.forEach { it.invoke(entry) }
+            pairingListeners[effectiveCode]?.forEach { it.invoke(entry) }
         }
 
-        // Sincronizar creación de código con Google Cloud Platform (Cloud Run)
-        val body = "{\"code\":\"$code\",\"deviceId\":\"$deviceId\"}"
-        httpPost("/api/v1/devices/pairing/create", body)
+        return true
     }
 
     fun getPairingCodes(): Map<String, LocalPairingCode> {
@@ -712,12 +749,31 @@ object LocalDataManager {
         }
     }
 
-    fun linkDeviceToParent(codeOrDeviceId: String, parentId: String) {
+    fun linkDeviceToParent(codeOrDeviceId: String, parentId: String): Pair<Boolean, String> {
         val devices = getAllDevices().toMutableMap()
         val codes = getPairingCodes().toMutableMap()
 
         val matchingCode = codes[codeOrDeviceId]
         val targetDeviceId = matchingCode?.deviceId ?: codeOrDeviceId
+
+        // Intentar validación síncrona contra backend (local/cloud)
+        val body = "{\"code\":\"$codeOrDeviceId\",\"parentId\":\"$parentId\"}"
+        val res = httpPostSync("/api/v1/devices/pairing/link", body)
+        if (res != null) {
+            try {
+                val root = gson.fromJson(res, Map::class.java)
+                val status = root["status"] as? String
+                val statusCode = (root["statusCode"] as? Number)?.toInt()
+                if (status == "error" || statusCode == 410) {
+                    val errMsg = (root["message"] as? String) 
+                        ?: (root["error"] as? Map<*, *>)?.get("message") as? String 
+                        ?: "El código ha expirado o ya fue utilizado."
+                    return Pair(false, errMsg)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error analizando respuesta de link: ${e.message}")
+            }
+        }
 
         val updatedDevice = devices[targetDeviceId]?.copy(
             padreId = parentId,
@@ -745,9 +801,29 @@ object LocalDataManager {
             }
         }
 
-        // Sincronizar enlace en Google Cloud Platform (Cloud Run)
-        val body = "{\"code\":\"$codeOrDeviceId\",\"parentId\":\"$parentId\"}"
-        httpPost("/api/v1/devices/pairing/link", body)
+        return Pair(true, targetDeviceId)
+    }
+
+    /**
+     * Sincroniza localmente un vínculo que ya fue confirmado por Cloud Run.
+     * Se usa cuando el padre introduce en la web el código que aparece en el
+     * teléfono del niño; el dispositivo no debe volver a consumir ese código.
+     */
+    fun markDeviceLinkedLocally(deviceId: String, parentId: String) {
+        val devices = getAllDevices().toMutableMap()
+        val updated = (devices[deviceId] ?: LocalChildDevice(
+            deviceId = deviceId,
+            modelo = android.os.Build.MODEL
+        )).copy(padreId = parentId, ultimaActualizacion = System.currentTimeMillis())
+        devices[deviceId] = updated
+        saveDevicesMap(devices)
+
+        mainHandler.post {
+            deviceListeners[deviceId]?.forEach { it.invoke(updated) }
+            parentDeviceListListeners[parentId]?.forEach { listener ->
+                listener.invoke(devices.values.filter { it.padreId == parentId })
+            }
+        }
     }
 
     fun updateDeviceLocation(deviceId: String, lat: Double, lng: Double) {
@@ -781,7 +857,54 @@ object LocalDataManager {
         onDeviceChanged(getAllDevices()[deviceId])
         val list = deviceListeners.getOrPut(deviceId) { CopyOnWriteArrayList() }
         list.add(onDeviceChanged)
-        return ListenerRegistration { list.remove(onDeviceChanged) }
+
+        // La web puede desvincular el dispositivo en cualquier momento. Como
+        // el niño no tiene sesión web, consulta un endpoint de estado mínimo y
+        // vuelve a la pantalla inicial cuando el vínculo desaparece.
+        var pollingActive = true
+        kotlin.concurrent.thread {
+            while (pollingActive) {
+                try {
+                    Thread.sleep(2000)
+                    if (!pollingActive) break
+
+                    val json = httpGet("/api/v1/devices/status/$deviceId") ?: continue
+                    val root = gson.fromJson(json, Map::class.java)
+                    val data = root["data"] as? Map<*, *> ?: continue
+                    val linked = data["linked"] as? Boolean ?: false
+                    val parentId = data["parentId"] as? String ?: ""
+                    val local = getAllDevices()[deviceId]
+
+                    if (!linked) {
+                        // Un dispositivo nuevo puede no existir todavía en
+                        // child_devices mientras espera su primer vínculo.
+                        // Solo se limpia cuando ya estaba asociado a un padre
+                        // y ese vínculo desapareció remotamente.
+                        if (local?.padreId?.isNotEmpty() == true) {
+                            deleteDevice(deviceId)
+                        }
+                    } else if (local?.padreId != parentId) {
+                        val synced = (local ?: LocalChildDevice(
+                            deviceId = deviceId,
+                            modelo = android.os.Build.MODEL
+                        )).copy(padreId = parentId, ultimaActualizacion = System.currentTimeMillis())
+                        val devices = getAllDevices().toMutableMap()
+                        devices[deviceId] = synced
+                        saveDevicesMap(devices)
+                        mainHandler.post {
+                            deviceListeners[deviceId]?.forEach { it.invoke(synced) }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error consultando estado remoto del dispositivo: ${e.message}")
+                }
+            }
+        }
+
+        return ListenerRegistration {
+            pollingActive = false
+            list.remove(onDeviceChanged)
+        }
     }
 
     fun listenPairingCode(code: String, onCodeChanged: (LocalPairingCode?) -> Unit): ListenerRegistration {
