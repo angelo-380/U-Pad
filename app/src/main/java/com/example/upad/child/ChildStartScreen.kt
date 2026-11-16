@@ -64,14 +64,8 @@ fun ChildStartScreen(
     val nombreTutorVinculado by routineViewModel.nombreTutorVinculado.collectAsState()
     var secondsRemaining by remember { mutableIntStateOf(60) }
     var codeSeed by remember { mutableIntStateOf(1) }
-    var mostrarConfirmacionVinculado by remember { mutableStateOf(false) }
-
-    // Detección reactiva de vinculación completada
-    LaunchedEffect(estaVinculado) {
-        if (estaVinculado) {
-            mostrarConfirmacionVinculado = true
-        }
-    }
+    // Solo justo después de vincular (lo decide el ViewModel); al volver de una actividad va directo a la lista
+    val mostrarConfirmacionVinculado by routineViewModel.confirmacionVinculoPendiente.collectAsState()
 
     // Timer reactivo de 60 s que regenera efectivamente el código al llegar a 0 (solo si no hay error de conexión)
     LaunchedEffect(estaVinculado, errorConexionServidor, codeSeed) {
@@ -89,62 +83,8 @@ fun ChildStartScreen(
     val cargando by routineViewModel.cargandoChild.collectAsState()
     val padreIdAsociado by routineViewModel.padreIdAsociado.collectAsState()
     val esPremiumPorPadre by routineViewModel.esPremiumPorPadre.collectAsState()
-    var verTareasModoBasico by remember { mutableStateOf(false) }
 
-    var tienePermisoUbicacion by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    val launcherPermisos = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { aceptado ->
-        tienePermisoUbicacion = aceptado
-    }
-
-    LaunchedEffect(estaVinculado, esPremiumPorPadre) {
-        if (estaVinculado && esPremiumPorPadre && !tienePermisoUbicacion) {
-            launcherPermisos.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-    }
-
-    DisposableEffect(estaVinculado, esPremiumPorPadre, tienePermisoUbicacion) {
-        var callback: LocationCallback? = null
-        var client: com.google.android.gms.location.FusedLocationProviderClient? = null
-
-        if (estaVinculado && esPremiumPorPadre && tienePermisoUbicacion) {
-            try {
-                client = LocationServices.getFusedLocationProviderClient(context)
-                val locationRequest = LocationRequest.Builder(
-                    Priority.PRIORITY_HIGH_ACCURACY, 10000L
-                ).setMinUpdateIntervalMillis(5000L).build()
-
-                callback = object : LocationCallback() {
-                    override fun onLocationResult(locationResult: LocationResult) {
-                        val location = locationResult.lastLocation
-                        if (location != null) {
-                            routineViewModel.updateLocation(deviceId, location.latitude, location.longitude)
-                        }
-                    }
-                }
-
-                client.requestLocationUpdates(
-                    locationRequest,
-                    callback,
-                    android.os.Looper.getMainLooper()
-                )
-            } catch (e: SecurityException) {
-                e.printStackTrace()
-            }
-        }
-
-        onDispose {
-            if (client != null && callback != null) {
-                client.removeLocationUpdates(callback)
-            }
-        }
-    }
+    // La ubicación se envía desde EnvioUbicacionNino (a nivel de la navegación), en cualquier pantalla del niño.
 
     var mostrarDialogoDesvincular by remember { mutableStateOf(false) }
     var emailPadre by remember { mutableStateOf("") }
@@ -381,7 +321,7 @@ fun ChildStartScreen(
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
-                            onClick = { mostrarConfirmacionVinculado = false },
+                            onClick = { routineViewModel.confirmacionVinculoVista() },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D47A1)),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.height(48.dp)
@@ -395,7 +335,9 @@ fun ChildStartScreen(
                         }
                     }
                 } else {
-                    if (esPremiumPorPadre || verTareasModoBasico) {
+                    // Lista de actividades siempre visible (antes, sin plan premium había un paso intermedio que
+                    // se repetía cada vez que el niño volvía de una actividad)
+                    run {
                         Text(
                             text = stringResource(R.string.my_activities_today),
                             fontSize = 26.sp,
@@ -456,26 +398,6 @@ fun ChildStartScreen(
                             CardBloqueadoPorHorario(mensaje = stringResource(R.string.available_evening_only))
                         }
 
-                    } else {
-                        Text(
-                            text = stringResource(R.string.ready_to_start_activities),
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFF1A1A1A),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 60.dp)
-                        )
-                        Spacer(modifier = Modifier.height(48.dp))
-                        Button(
-                            onClick = { verTareasModoBasico = true },
-                            modifier = Modifier
-                                .fillMaxWidth(0.85f)
-                                .height(85.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                            shape = RoundedCornerShape(24.dp)
-                        ) {
-                            Text(stringResource(R.string.view_my_tasks), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
                     }
                 }
             }

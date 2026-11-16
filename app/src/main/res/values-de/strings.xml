@@ -239,4 +239,27 @@
     <string name="axis_afternoon">N</string>
     <string name="axis_evening">A</string>
     <string name="available_in_premium">Verfügbar im Premium-Plan</string>
+    <string name="step_x_of_n">Schritt %1$d von %2$d</string>
+    <string name="next_step_btn">NÄCHSTER SCHRITT ➜</string>
+    <string name="steps_and_minutes">Schritte und Minuten</string>
+    <string name="activity_minutes_label">Dauer der Aktivität</string>
+    <string name="minutes_short">Min.</string>
+    <string name="step_text_placeholder">Schritt (z. B. Hände waschen)</string>
+    <string name="remove_step">Schritt entfernen</string>
+    <string name="add_step">Schritt hinzufügen</string>
+    <string name="total_duration_min">Gesamt: %1$d Min.</string>
+    <string name="for_whom_label">Für wen?</string>
+    <string name="all_my_children">Alle meine Kinder</string>
+    <string name="perf_title">Erfüllung der letzten 7 Tage</string>
+    <string name="perf_total">%1$d von %2$d Aktivitäten erledigt</string>
+    <string name="perf_empty">Auf den Telefonen Ihrer Kinder wurden noch keine Aktivitäten erledigt.</string>
+    <string name="perf_by_day">Pro Tag</string>
+    <string name="perf_by_child">Pro Kind</string>
+    <string name="perf_error">Daten konnten nicht geladen werden. Prüfen Sie Ihre Verbindung.</string>
+    <string name="perf_retry">Erneut versuchen</string>
+    <string name="institution_title">Einrichtung</string>
+    <string name="institution_none">Keine Einrichtung</string>
+    <string name="institution_code_label">Code Ihrer Einrichtung</string>
+    <string name="institution_join">Beitreten</string>
+    <string name="institution_hint">Fragen Sie die Leitung Ihrer Schule oder Klinik.</string>
 </resources>

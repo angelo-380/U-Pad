@@ -37,6 +37,8 @@ fun RegisterScreen(
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    // Código que entrega el director de la institución (opcional): así sus rutinas y sus hijos cuentan en su panel
+    var codigoInstitucion by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -145,6 +147,31 @@ fun RegisterScreen(
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp)
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = codigoInstitucion,
+                onValueChange = { codigoInstitucion = it.uppercase().take(12) },
+                label = { Text("Código de tu institución (opcional)") },
+                placeholder = { Text("K7M2-Q9XD") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                enabled = !isLoading,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = colorAzulTEA,
+                    unfocusedContainerColor = Color.White,
+                    focusedContainerColor = Color.White
+                ),
+                singleLine = true
+            )
+
+            Text(
+                text = "Te lo da el director de tu colegio o clínica. Puedes dejarlo vacío.",
+                fontSize = 11.sp,
+                color = Color.Gray,
+                modifier = Modifier.padding(start = 12.dp, top = 4.dp)
+            )
+
             Spacer(modifier = Modifier.height(30.dp))
 
             val debouncedRegister = rememberDebouncedClick(debounceIntervalMs = 1200L) {
@@ -169,7 +196,7 @@ fun RegisterScreen(
                 Log.d("UPAD_DEBUG", "SUBMIT REGISTER - Email: $email")
 
                 scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                    val localUserRes = LocalDataManager.register(name.trim(), email.trim(), password.trim())
+                    val localUserRes = LocalDataManager.register(name.trim(), email.trim(), password.trim(), codigoInstitucion.trim())
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         isLoading = false
                         if (localUserRes.isSuccess) {

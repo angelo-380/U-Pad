@@ -27,6 +27,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upad.viewmodel.TaskItem
+import com.example.upad.viewmodel.PasoTarea
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import com.example.upad.viewmodel.RoutineViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -87,6 +90,26 @@ fun CreateRoutineScreen(
     var routineName by remember(routineTurn) { mutableStateOf("Rutina de la $routineTurn") }
     var showSendingDialog by remember { mutableStateOf(false) }
     var nombreActividad by remember { mutableStateOf("") }
+
+    // Pasos de la actividad con sus minutos (puntos 12-14). Sin pasos, la actividad es un único paso de `minutosActividad`.
+    val pasosEditor = remember { mutableStateListOf<Pair<String, String>>() } // (texto, minutos)
+    var minutosActividad by remember { mutableStateOf("5") }
+    val minutosValidos: (String) -> Int? = { texto -> texto.trim().toIntOrNull()?.takeIf { it in 1..120 } }
+    val duracionTotal = if (pasosEditor.isEmpty()) minutosValidos(minutosActividad) ?: 0
+        else pasosEditor.sumOf { minutosValidos(it.second) ?: 0 }
+    val pasosCorrectos = if (pasosEditor.isEmpty()) minutosValidos(minutosActividad) != null
+        else pasosEditor.all { it.first.isNotBlank() && minutosValidos(it.second) != null }
+
+    // Para quién es la actividad (punto 5): null = todos mis hijos
+    var hijoElegido by remember { mutableStateOf<String?>(null) }
+    var hijos by remember { mutableStateOf(com.example.upad.data.LocalDataManager.getDevicesForParent(currentUserId)) }
+    DisposableEffect(currentUserId) {
+        val registro = com.example.upad.data.LocalDataManager.listenParentDevices(currentUserId) { hijos = it }
+        onDispose { registro.remove() }
+    }
+    LaunchedEffect(hijos) {
+        if (hijoElegido != null && hijos.none { it.deviceId == hijoElegido }) hijoElegido = null
+    }
 
     var isLoadingAI by remember { mutableStateOf(false) }
     val sugerenciasIAByMenu = remember { mutableStateListOf<String>() }
@@ -425,6 +448,119 @@ fun CreateRoutineScreen(
 
                                 Spacer(modifier = Modifier.height(14.dp))
 
+                                // ── Pasos y minutos ──
+                                Text(
+                                    text = stringResource(id = R.string.steps_and_minutes),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colorTextoSecundario
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                if (pasosEditor.isEmpty()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = stringResource(id = R.string.activity_minutes_label),
+                                            fontSize = 13.sp,
+                                            color = colorTextoSecundario,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        OutlinedTextField(
+                                            value = minutosActividad,
+                                            onValueChange = { v -> minutosActividad = v.filter { it.isDigit() }.take(3) },
+                                            isError = minutosValidos(minutosActividad) == null,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            singleLine = true,
+                                            modifier = Modifier.width(90.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                            suffix = { Text(stringResource(id = R.string.minutes_short), fontSize = 12.sp) }
+                                        )
+                                    }
+                                } else {
+                                    pasosEditor.forEachIndexed { indice, (texto, minutos) ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(vertical = 3.dp)
+                                        ) {
+                                            Text("${indice + 1}.", fontWeight = FontWeight.Bold, color = colorAcabadoPrincipal, modifier = Modifier.width(22.dp))
+                                            OutlinedTextField(
+                                                value = texto,
+                                                onValueChange = { v -> pasosEditor[indice] = v.take(120) to minutos },
+                                                placeholder = { Text(stringResource(id = R.string.step_text_placeholder), fontSize = 12.sp) },
+                                                isError = texto.isBlank(),
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            OutlinedTextField(
+                                                value = minutos,
+                                                onValueChange = { v -> pasosEditor[indice] = texto to v.filter { it.isDigit() }.take(3) },
+                                                isError = minutosValidos(minutos) == null,
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                modifier = Modifier.width(78.dp),
+                                                shape = RoundedCornerShape(12.dp),
+                                                suffix = { Text(stringResource(id = R.string.minutes_short), fontSize = 11.sp) }
+                                            )
+                                            IconButton(onClick = { pasosEditor.removeAt(indice) }) {
+                                                Icon(Icons.Default.Delete, contentDescription = stringResource(id = R.string.remove_step), tint = colorTextoSecundario)
+                                            }
+                                        }
+                                    }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                    TextButton(
+                                        onClick = {
+                                            if (pasosEditor.isEmpty() && nombreActividad.isNotBlank()) {
+                                                // El primer paso parte del nombre de la actividad y sus minutos
+                                                pasosEditor.add(nombreActividad.trim() to (minutosValidos(minutosActividad)?.toString() ?: "5"))
+                                            }
+                                            if (pasosEditor.size < 20) pasosEditor.add("" to "5")
+                                        },
+                                        enabled = pasosEditor.size < 20
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(stringResource(id = R.string.add_step), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    Text(
+                                        text = stringResource(id = R.string.total_duration_min, duracionTotal),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = colorAcabadoPrincipal
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // ── Para quién ──
+                                Text(
+                                    text = stringResource(id = R.string.for_whom_label),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colorTextoSecundario
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    item {
+                                        FilterChip(
+                                            selected = hijoElegido == null,
+                                            onClick = { hijoElegido = null },
+                                            label = { Text(stringResource(id = R.string.all_my_children), fontSize = 12.sp) }
+                                        )
+                                    }
+                                    items(hijos, key = { it.deviceId }) { hijo ->
+                                        FilterChip(
+                                            selected = hijoElegido == hijo.deviceId,
+                                            onClick = { hijoElegido = hijo.deviceId },
+                                            label = { Text(hijo.nombre?.takeIf { it.isNotBlank() } ?: hijo.modelo, fontSize = 12.sp) }
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
                                 Text(
                                     text = stringResource(id = R.string.scheduled_days_label),
                                     fontSize = 13.sp,
@@ -478,21 +614,28 @@ fun CreateRoutineScreen(
 
                                 Button(
                                     onClick = {
-                                        if (nombreActividad.isNotEmpty()) {
+                                        if (nombreActividad.isNotBlank() && pasosCorrectos) {
                                             viewModel.agregarActividadAutomatica(
                                                 userId = currentUserId,
                                                 turn = routineTurn,
                                                 textoCompleto = nombreActividad,
-                                                diasSeleccionados = if (diasSeleccionados.isEmpty()) listOf(diaFiltroSeleccionado) else diasSeleccionados.toList()
+                                                diasSeleccionados = if (diasSeleccionados.isEmpty()) listOf(diaFiltroSeleccionado) else diasSeleccionados.toList(),
+                                                pasos = pasosEditor.map { (texto, minutos) ->
+                                                    PasoTarea(texto = texto.trim(), palabraClave = texto.trim().lowercase(), duracionMinutos = minutosValidos(minutos) ?: 5)
+                                                },
+                                                ninoId = hijoElegido,
+                                                duracionMinutos = minutosValidos(minutosActividad) ?: 5
                                             )
                                             if (diasSeleccionados.isNotEmpty()) {
                                                 diaFiltroSeleccionado = diasSeleccionados.first()
                                             }
                                             nombreActividad = ""
+                                            pasosEditor.clear()
+                                            minutosActividad = "5"
                                             diasSeleccionados.clear()
                                         }
                                     },
-                                    enabled = nombreActividad.isNotEmpty(),
+                                    enabled = nombreActividad.isNotBlank() && pasosCorrectos,
                                     modifier = Modifier.fillMaxWidth().height(45.dp),
                                     shape = RoundedCornerShape(14.dp),
                                     colors = ButtonDefaults.buttonColors(

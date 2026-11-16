@@ -82,6 +82,18 @@ data class AvisoPadre(
     val nombreHijo: String?
 )
 
+/** Una fila del resumen de cumplimiento (un día, un turno o un hijo). porcentaje null = no se esperaba nada. */
+data class FilaCumplimiento(val etiqueta: String, val completadas: Int, val esperadas: Int, val porcentaje: Int?)
+
+/** Resumen real de GET /api/v1/cumplimiento (lo que los hijos completaron en su teléfono). */
+data class ResumenCumplimiento(
+    val hayRegistros: Boolean,
+    val total: FilaCumplimiento,
+    val dias: List<FilaCumplimiento>,
+    val porTurno: List<FilaCumplimiento>,
+    val porHijo: List<FilaCumplimiento>
+)
+
 /**
  * Respuesta HTTP del backend. null en las llamadas significa «sin conexión»; cualquier respuesta del servidor
  * (incluidos 4xx y 5xx) llega aquí, para que la app no confunda un rechazo con un éxito.
@@ -372,10 +384,12 @@ object LocalDataManager {
         return Result.failure(Exception(MENSAJE_SIN_CONEXION))
     }
 
-    fun register(name: String, email: String, pass: String): Result<LocalUser> {
+    fun register(name: String, email: String, pass: String, codigoInstitucion: String = ""): Result<LocalUser> {
         val cleanEmail = email.trim().lowercase()
         val cleanName = name.trim().ifEmpty { cleanEmail.substringBefore("@").uppercase() }
         val cuerpo = JSONObject().put("nombre", cleanName).put("email", cleanEmail).put("password", pass).put("rol", "tutor")
+        // Código de la institución (opcional): un código inválido rechaza el registro sin crear la cuenta
+        if (codigoInstitucion.isNotBlank()) cuerpo.put("codigoOrganizacion", codigoInstitucion.trim())
         val r = httpRequest("POST", "/api/auth/register", cuerpo)
             ?: return Result.failure(Exception(MENSAJE_SIN_CONEXION))
         if (!r.ok) return Result.failure(Exception(r.mensaje("No se pudo crear la cuenta.")))
@@ -513,7 +527,20 @@ object LocalDataManager {
                             .put("palabraClave", ultima.palabraClave)
                             .put("turno", turnEnvio)
                             .put("userId", u)
-                        httpRequest("POST", "/api/v1/mobile/sync-routines", body, tokenPara(u))
+                        // Pasos con sus minutos y pictograma (puntos 12-14) e hijo asignado (punto 5; sin él, todos)
+                        val pasosEnvio = org.json.JSONArray()
+                        ultima.pasosEfectivos().forEach { paso ->
+                            val p = JSONObject()
+                                .put("texto", paso.texto)
+                                .put("palabraClave", paso.palabraClave.ifBlank { paso.texto })
+                                .put("duracionMinutos", paso.duracionMinutos.coerceIn(1, 120))
+                            paso.pictogramaId?.let { p.put("pictogramaId", it) }
+                            pasosEnvio.put(p)
+                        }
+                        body.put("pasos", pasosEnvio)
+                        ultima.ninoId?.takeIf { it.isNotBlank() }?.let { body.put("ninoId", it) }
+                        val r = httpRequest("POST", "/api/v1/mobile/sync-routines", body, tokenPara(u))
+                        if (r != null && !r.ok) Log.w(TAG, "El servidor rechazó la rutina (HTTP ${r.codigo} ${r.codigoError() ?: ""})")
                     }
                 }
             } catch (e: Exception) {
@@ -563,7 +590,17 @@ object LocalDataManager {
         }
     }
 
-    fun listenRoutinePorDia(userId: String, turn: String, dia: String, onDataChanged: (List<TaskItem>) -> Unit): ListenerRegistration {
+    /**
+     * Rutinas de un turno. Con deviceIdHijo (lo pasa SOLO la pantalla del niño), se piden las de ese hijo y se marca
+     * lo que ya completó hoy; sin él (pantallas del padre), todas las del padre.
+     */
+    fun listenRoutinePorDia(
+        userId: String,
+        turn: String,
+        dia: String,
+        deviceIdHijo: String? = null,
+        onDataChanged: (List<TaskItem>) -> Unit
+    ): ListenerRegistration {
         val u = if (userId.isEmpty() || userId == "PADRE_TEST") getCurrentUserId() else userId
         val key = routineKey(u, turn, dia)
         val initial = getRoutinePorDia(u, turn, dia)
@@ -572,38 +609,20 @@ object LocalDataManager {
         val list = routineListeners.getOrPut(key) { CopyOnWriteArrayList() }
         list.add(onDataChanged)
 
-        // Sincronización en vivo con el Backend (base de datos relacional) para ESTE usuario exacto
+        // Sincronización en vivo con el backend para ESTE usuario. En el teléfono del niño se piden solo sus rutinas
+        // (?deviceId=) y se marca lo que ya completó hoy (se guarda en el teléfono y en el servidor): recargar la lista
+        // ya no borra el avance, así que la siguiente actividad se habilita (puntos 10 y 11).
         var isPolling = true
         kotlin.concurrent.thread {
             while (isPolling) {
                 try {
-                    val jsonStr = httpRequest("GET", "/api/v1/mobile/sync-routines?userId=${enc(u)}", token = tokenPara(u))
-                        ?.takeIf { it.ok }?.cuerpo
+                    val hijo = deviceIdHijo?.takeIf { it.isNotBlank() }
+                    val ruta = "/api/v1/mobile/sync-routines?userId=${enc(u)}" + (hijo?.let { "&deviceId=${enc(it)}" } ?: "")
+                    val jsonStr = httpRequest("GET", ruta, token = tokenPara(u))?.takeIf { it.ok }?.cuerpo
                     if (!jsonStr.isNullOrEmpty()) {
-                        val root = gson.fromJson(jsonStr, Map::class.java)
-                        val dataList = root["data"] as? List<Map<String, Any>>
-                        if (dataList != null) {
-                            val turnNormalizado = when (turn.uppercase().trim()) {
-                                "MAÑANA" -> "MANANA"
-                                else -> turn.uppercase().trim()
-                            }
-                            val tareasFiltradas = dataList.filter {
-                                val t = it["turno"] as? String ?: ""
-                                t.uppercase() == turnNormalizado
-                            }.map {
-                                val act = it["actividad"] as? String ?: "ACTIVIDAD"
-                                val kw = it["palabraClave"] as? String ?: act.lowercase()
-                                TaskItem(
-                                    actividad = act,
-                                    palabraClave = kw,
-                                    imageUrl = "https://static.arasaac.org/pictograms/2445/2445_500.png",
-                                    dias = listOf("LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"),
-                                    duration = 10
-                                )
-                            }
-                            mainHandler.post {
-                                onDataChanged(tareasFiltradas)
-                            }
+                        val tareas = tareasDelServidor(jsonStr, turn, hijo)
+                        if (tareas != null && isPolling) {
+                            mainHandler.post { onDataChanged(tareas) }
                         }
                     }
                     Thread.sleep(3000)
@@ -617,6 +636,163 @@ object LocalDataManager {
             isPolling = false
             list.remove(onDataChanged)
         }
+    }
+
+    private fun turnoServidor(turn: String): String = when (turn.uppercase().trim()) {
+        "MAÑANA" -> "MANANA"
+        else -> turn.uppercase().trim()
+    }
+
+    /** Convierte la respuesta de GET /mobile/sync-routines en las tareas de un turno (en orden de creación). */
+    private fun tareasDelServidor(jsonStr: String, turn: String, deviceIdHijo: String?): List<TaskItem>? {
+        val root = JSONObject(jsonStr)
+        val data = root.optJSONArray("data") ?: return null
+        val turnNormalizado = turnoServidor(turn)
+        val completadas = if (deviceIdHijo != null) completadasHoy(deviceIdHijo) else emptySet()
+        val diaKey = com.example.upad.utils.RoutineProgressCalculator.obtenerPrefijoDia(
+            com.example.upad.utils.RoutineProgressCalculator.obtenerDiaDeHoy()
+        )
+        val tareas = mutableListOf<TaskItem>()
+        for (i in 0 until data.length()) {
+            val r = data.optJSONObject(i) ?: continue
+            if (r.optString("turno").uppercase() != turnNormalizado) continue
+            val act = r.optString("actividad", "ACTIVIDAD")
+            val pasosJson = r.optJSONArray("pasos")
+            val pasos = mutableListOf<com.example.upad.viewmodel.PasoTarea>()
+            if (pasosJson != null) {
+                for (k in 0 until pasosJson.length()) {
+                    val p = pasosJson.optJSONObject(k) ?: continue
+                    val texto = p.optString("texto").trim()
+                    if (texto.isEmpty()) continue
+                    val clave = p.optString("palabraClave").ifBlank { texto }
+                    val pictogramaId = p.optInt("pictogramaId", 0).takeIf { it > 0 }
+                    pasos.add(
+                        com.example.upad.viewmodel.PasoTarea(
+                            texto = texto,
+                            palabraClave = clave,
+                            duracionMinutos = p.optInt("duracionMinutos", 5).coerceIn(1, 120),
+                            pictogramaId = pictogramaId,
+                            imageUrl = pictogramaId?.let { PictogramasArasaac.urlImagen(it) } ?: PictogramasArasaac.urlPara(clave)
+                        )
+                    )
+                }
+            }
+            val kw = r.optString("palabraClave").ifBlank { act.lowercase() }
+            // Imagen de la actividad: la de su primer paso o, si no hay, la del título
+            // La tarjeta muestra el pictograma del TÍTULO («Tomar desayuno» → desayuno); el de cada paso se ve al ejecutarla
+            val imagen = PictogramasArasaac.urlPara(act.lowercase()).ifEmpty { pasos.firstOrNull()?.imageUrl.orEmpty() }
+            val hecha = deviceIdHijo != null && claveActividad(turnNormalizado, act) in completadas
+            tareas.add(
+                TaskItem(
+                    actividad = act,
+                    palabraClave = kw,
+                    imageUrl = imagen,
+                    dias = listOf("LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"),
+                    duration = r.optInt("duracionTotalMinutos", pasos.sumOf { it.duracionMinutos }.takeIf { it > 0 } ?: 5),
+                    estadosPorDia = if (hecha) mapOf(diaKey to true) else emptyMap(),
+                    id = r.optString("id").ifBlank { null },
+                    ninoId = r.optString("ninoId").takeIf { it.isNotBlank() && it != "null" },
+                    pasos = pasos
+                )
+            )
+        }
+        return tareas
+    }
+
+    // ==========================================
+    // AVANCE DEL NIÑO (actividades completadas hoy)
+    // ==========================================
+
+    private val ultimaConsultaCompletadas = ConcurrentHashMap<String, Long>()
+
+    private fun fechaLocalHoy(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(System.currentTimeMillis())
+
+    private fun claveActividad(turno: String, actividad: String): String =
+        "${turnoServidor(turno)}|${actividad.trim().replace(Regex("\\s+"), " ").uppercase()}"
+
+    private fun claveCompletadas(deviceId: String, fecha: String) = "COMPLETADAS_${deviceId}_$fecha"
+
+    private fun leerCompletadas(deviceId: String, fecha: String): Set<String> =
+        prefs.getStringSet(claveCompletadas(deviceId, fecha), emptySet())?.toSet() ?: emptySet()
+
+    /**
+     * Actividades que este teléfono completó hoy («TURNO|ACTIVIDAD»): las guardadas en el teléfono más las que tiene el
+     * servidor (consultado como mucho cada 15 s). Fuera del hilo principal.
+     */
+    fun completadasHoy(deviceId: String): Set<String> {
+        val fecha = fechaLocalHoy()
+        val local = leerCompletadas(deviceId, fecha)
+        val ahora = System.currentTimeMillis()
+        if (ahora - (ultimaConsultaCompletadas[deviceId] ?: 0L) < 15_000L) return local
+        ultimaConsultaCompletadas[deviceId] = ahora
+        val r = httpRequest("GET", "/api/v1/devices/${enc(deviceId)}/cumplimiento?fecha=${enc(fecha)}") ?: return local
+        if (!r.ok) return local
+        val lista = (r.data() as? Map<*, *>)?.get("completadas") as? List<*> ?: return local
+        val delServidor = lista.mapNotNull { item ->
+            val m = item as? Map<*, *> ?: return@mapNotNull null
+            val actividad = m["actividad"] as? String ?: return@mapNotNull null
+            claveActividad(m["turno"] as? String ?: "", actividad)
+        }
+        val union = local + delServidor
+        if (union.size != local.size) {
+            prefs.edit().putStringSet(claveCompletadas(deviceId, fecha), union).apply()
+        }
+        return union
+    }
+
+    /**
+     * Cumplimiento real de los últimos `dias` días (hasta hoy, fecha local) del padre con sesión: por día, por turno y
+     * por hijo (punto 8). null si no hay sesión o no hubo respuesta. Fuera del hilo principal.
+     */
+    fun obtenerCumplimiento(dias: Int = 7): ResumenCumplimiento? {
+        val token = tokenSesion() ?: return null
+        val r = httpRequest("GET", "/api/v1/cumplimiento?dias=$dias&hasta=${enc(fechaLocalHoy())}", token = token) ?: return null
+        if (!r.ok) return null
+        val data = (r.data() as? Map<*, *>) ?: return null
+        fun entero(v: Any?): Int = (v as? Number)?.toInt() ?: 0
+        fun fila(m: Any?, etiqueta: String): FilaCumplimiento {
+            val mapa = m as? Map<*, *> ?: emptyMap<Any, Any>()
+            return FilaCumplimiento(etiqueta, entero(mapa["completadas"]), entero(mapa["esperadas"]), (mapa["porcentaje"] as? Number)?.toInt())
+        }
+        fun lista(clave: String, etiqueta: (Map<*, *>) -> String): List<FilaCumplimiento> =
+            (data[clave] as? List<*>)?.mapNotNull { item -> (item as? Map<*, *>)?.let { fila(it, etiqueta(it)) } } ?: emptyList()
+        return ResumenCumplimiento(
+            hayRegistros = data["hayRegistros"] == true,
+            total = fila(data["total"], "total"),
+            dias = lista("dias") { it["fecha"] as? String ?: "" },
+            porTurno = lista("porTurno") { it["turno"] as? String ?: "" },
+            porHijo = lista("porHijo") { (it["nombre"] as? String)?.takeIf { n -> n.isNotBlank() } ?: "—" }
+        )
+    }
+
+    /** Institución del padre con sesión: nombre, o null si no pertenece a ninguna (o no hubo respuesta). */
+    fun obtenerMiInstitucion(): Result<String?> {
+        val token = tokenSesion() ?: return Result.failure(Exception("Inicia sesión para ver tu institución."))
+        val r = httpRequest("GET", "/api/v1/organizaciones/mia", token = token) ?: return Result.failure(Exception(MENSAJE_SIN_CONEXION))
+        if (!r.ok) return Result.failure(Exception(r.mensaje("No se pudo consultar tu institución.")))
+        val org = (r.data() as? Map<*, *>)?.get("organizacion") as? Map<*, *>
+        return Result.success(org?.get("nombre") as? String)
+    }
+
+    /** El tutor se une (o cambia) a la institución del código. Devuelve el nombre de la institución. */
+    fun unirseAInstitucion(codigo: String): Result<String> {
+        val token = tokenSesion() ?: return Result.failure(Exception("Inicia sesión para unirte a una institución."))
+        val r = httpRequest("POST", "/api/v1/organizaciones/unirse", JSONObject().put("codigo", codigo.trim()), token)
+            ?: return Result.failure(Exception(MENSAJE_SIN_CONEXION))
+        if (!r.ok) {
+            val mensaje = if (r.codigoError() == "ORGANIZACION_CODIGO_INVALIDO") "El código de la institución no es válido." else r.mensaje("No se pudo unir a la institución.")
+            return Result.failure(Exception(mensaje))
+        }
+        val org = (r.data() as? Map<*, *>)?.get("organizacion") as? Map<*, *>
+        return Result.success(org?.get("nombre") as? String ?: "")
+    }
+
+    /** Marca en el teléfono una actividad completada hoy (la lista la mantiene completada aunque se recargue). */
+    fun marcarCompletadaLocal(deviceId: String, turno: String, actividad: String) {
+        if (deviceId.isBlank() || actividad.isBlank()) return
+        val fecha = fechaLocalHoy()
+        val actual = leerCompletadas(deviceId, fecha)
+        prefs.edit().putStringSet(claveCompletadas(deviceId, fecha), actual + claveActividad(turno, actividad)).apply()
     }
 
     // ==========================================

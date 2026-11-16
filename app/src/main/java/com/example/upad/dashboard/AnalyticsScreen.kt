@@ -38,6 +38,11 @@ import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
 import java.util.Calendar
 
+/**
+ * Desempeño del padre (punto 8): lo que sus hijos completaron de verdad en su teléfono, según el servidor
+ * (GET /api/v1/cumplimiento, los mismos datos que la web). Por día, por turno y por hijo; estado vacío si no hay registros.
+ * Se actualiza al abrir y cada 30 s. Ya no usa la memoria del teléfono del padre ni un «análisis inteligente».
+ */
 @Composable
 fun AnalyticsScreen(
     routineViewModel: RoutineViewModel,
@@ -46,23 +51,14 @@ fun AnalyticsScreen(
     onNavigateToHelp: () -> Unit = {},
     onNavigateToProfile: () -> Unit = {}
 ) {
-    // 📨 1. ESTADOS LOCALES Y CONFIGURACIÓN EN LA CABECERA
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
     val isDarkMode by routineViewModel.isDarkMode.collectAsState()
-    val aiAnalysis by routineViewModel.aiAnalysis.collectAsState()
-    val isAnalyzing by routineViewModel.isAnalyzing.collectAsState()
 
-    // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
     val context = LocalContext.current
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
-
     LaunchedEffect(Unit) {
-        val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
-        imageUri = when {
-            saved != null -> Uri.parse(saved)
-            else -> null
-        }
+        imageUri = sharedPreferences.getString("PROFILE_IMAGE_URI", null)?.let { Uri.parse(it) }
     }
 
     val fuentePremium = FontFamily.SansSerif
@@ -71,56 +67,42 @@ fun AnalyticsScreen(
     } else {
         if (isDarkMode) Color(0xFF121212) else Color.White
     }
-
     val colorAcabadoPrincipal = if (isPremiumUser) Color(0xFFC5A059) else MaterialTheme.colorScheme.primary
     val colorTextoPrincipal = if (isDarkMode) Color.White else Color(0xFF111111)
     val colorTextoSecundario = if (isDarkMode) Color(0xFFB0B0B0) else Color(0xFF555555)
-
-    // Superficie de tarjetas purificada: Translúcidas en Premium, sólidas en Básico
     val colorSuperficieTarjetas = if (isPremiumUser) {
         if (isDarkMode) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.65f)
     } else {
         if (isDarkMode) Color(0xFF1E1E1E) else Color.White
     }
-
     val colorTurnoManana = Color(0xFFFFB74D)
     val colorTurnoTarde = Color(0xFF81C784)
     val colorTurnoNoche = Color(0xFF9575CD)
 
-    val colorFondoIAActiva = if (isDarkMode) Color(0xFF2E7D32).copy(alpha = 0.2f) else Color(0xFFE8F5E9).copy(alpha = 0.75f)
-    val colorTextoIAActiva = if (isDarkMode) Color(0xFF81C784) else Color(0xFF2E7D32)
+    var resumen by remember { mutableStateOf<com.example.upad.data.ResumenCumplimiento?>(null) }
+    var cargando by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf(false) }
+    var recarga by remember { mutableIntStateOf(0) }
 
-    val tasksManana by routineViewModel.tasksManana.collectAsState()
-    val tasksTarde by routineViewModel.tasksTarde.collectAsState()
-    val tasksNoche by routineViewModel.tasksNoche.collectAsState()
-
-    val diasSemana = listOf("LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO")
-
-    val diaActualTexto = remember {
-        when (Calendar.getInstance().get(Calendar.DAY_OF_WEEK)) {
-            Calendar.MONDAY -> "LUN"
-            Calendar.TUESDAY -> "MAR"
-            Calendar.WEDNESDAY -> "MIÉ"
-            Calendar.THURSDAY -> "JUE"
-            Calendar.FRIDAY -> "VIE"
-            Calendar.SATURDAY -> "SÁB"
-            Calendar.SUNDAY -> "DOM"
-            else -> "LUN"
+    LaunchedEffect(recarga) {
+        while (true) {
+            val datos = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.example.upad.data.LocalDataManager.obtenerCumplimiento(7)
+            }
+            if (datos != null) {
+                resumen = datos
+                error = false
+            } else if (resumen == null) {
+                error = true
+            }
+            cargando = false
+            kotlinx.coroutines.delay(30_000L)
         }
     }
 
-    // --- CÁLCULO GENERAL DE LA JORNADA ---
-    val completedManana = tasksManana.count { it.estaCompletadaHoy(diaActualTexto) }
-    val completedTarde = tasksTarde.count { it.estaCompletadaHoy(diaActualTexto) }
-    val completedNoche = tasksNoche.count { it.estaCompletadaHoy(diaActualTexto) }
+    val formatoDia = remember { java.text.SimpleDateFormat("EEE d", java.util.Locale.getDefault()) }
+    val parseoDia = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US) }
 
-    val totalTasksAsignadas = tasksManana.size + tasksTarde.size + tasksNoche.size
-    val totalTasksCompletadas = completedManana + completedTarde + completedNoche
-
-    val generalProgress = if (totalTasksAsignadas > 0) totalTasksCompletadas.toFloat() / totalTasksAsignadas.toFloat() else 0f
-    val generalPercentage = (generalProgress * 100).toInt()
-
-    // 🚀 2. CONTENEDOR BASE UNIFICADO
     UPADBackgroundWrapper(isPremium = isPremiumUser, isDarkMode = isDarkMode) {
         Scaffold(
             containerColor = Color.Transparent,
@@ -146,270 +128,122 @@ fun AnalyticsScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // --- TARJETA DE RESUMEN DE RENDIMIENTO (HOY) ---
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    color = colorAcabadoPrincipal,
-                    tonalElevation = 0.dp,
-                    shadowElevation = if (isPremiumUser) 0.dp else 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            val localizedDiaActual = when (diaActualTexto) {
-                                "LUN" -> stringResource(id = R.string.day_mon)
-                                "MAR" -> stringResource(id = R.string.day_tue)
-                                "MIÉ", "MIE" -> stringResource(id = R.string.day_wed)
-                                "JUE" -> stringResource(id = R.string.day_thu)
-                                "VIE" -> stringResource(id = R.string.day_fri)
-                                "SÁB", "SAB" -> stringResource(id = R.string.day_sat)
-                                else -> stringResource(id = R.string.day_sun)
-                            }
-                            Text(text = stringResource(id = R.string.effectiveness_today, localizedDiaActual), color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = if (totalTasksAsignadas > 0) stringResource(id = R.string.achieved_percentage, generalPercentage) else stringResource(id = R.string.no_activity),
-                                color = Color.White,
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = stringResource(id = R.string.progress_desc),
-                                color = Color.White.copy(alpha = 0.9f),
-                                fontSize = 12.sp
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(50.dp)
-                                .background(Color.White.copy(alpha = 0.2f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Star, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
-                        }
+                val datos = resumen
+                when {
+                    cargando && datos == null -> Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = colorAcabadoPrincipal)
                     }
-                }
-
-                // --- LEYENDA DEL GRÁFICO DE BARRAS ---
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = colorSuperficieTarjetas,
-                    border = if (isPremiumUser) BorderStroke(1.dp, colorAcabadoPrincipal.copy(alpha = 0.25f)) else BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.1f)),
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceAround,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        LegendItem(text = stringResource(id = R.string.morning), color = colorTurnoManana, icon = Icons.Default.LightMode, textColor = colorTextoPrincipal)
-                        LegendItem(text = stringResource(id = R.string.afternoon), color = colorTurnoTarde, icon = Icons.Default.WbTwilight, textColor = colorTextoPrincipal)
-                        LegendItem(text = stringResource(id = R.string.evening), color = colorTurnoNoche, icon = Icons.Default.NightsStay, textColor = colorTextoPrincipal)
-                    }
-                }
-
-                Text(
-                    text = stringResource(id = R.string.weekly_turn_compliance),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    color = colorTextoSecundario.copy(alpha = 0.7f),
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
-
-                // --- PANEL PRINCIPAL DEL GRÁFICO ---
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    color = colorSuperficieTarjetas,
-                    border = if (isPremiumUser) BorderStroke(1.dp, colorAcabadoPrincipal.copy(alpha = 0.25f)) else BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.1f)),
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp)
-                    ) {
-                        diasSemana.forEach { dia ->
-                            val prefix = when(dia) {
-                                "MIÉRCOLES" -> "MIÉ"
-                                "SÁBADO" -> "SÁB"
-                                else -> dia.take(3)
-                            }
-
-                            val mTasks = tasksManana.filter { it.dias.any { d -> d.uppercase().startsWith(prefix) } || it.dias.isEmpty() }
-                            val tTasks = tasksTarde.filter { it.dias.any { d -> d.uppercase().startsWith(prefix) } || it.dias.isEmpty() }
-                            val nTasks = tasksNoche.filter { it.dias.any { d -> d.uppercase().startsWith(prefix) } || it.dias.isEmpty() }
-
-                            val pManana = if (mTasks.isNotEmpty()) mTasks.count { it.estaCompletadaHoy(prefix) }.toFloat() / mTasks.size.toFloat() else -1f
-                            val pTarde = if (tTasks.isNotEmpty()) tTasks.count { it.estaCompletadaHoy(prefix) }.toFloat() / tTasks.size.toFloat() else -1f
-                            val pNoche = if (nTasks.isNotEmpty()) nTasks.count { it.estaCompletadaHoy(prefix) }.toFloat() / nTasks.size.toFloat() else -1f
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                val dayResId = when (dia) {
-                                    "LUNES" -> R.string.monday
-                                    "MARTES" -> R.string.tuesday
-                                    "MIÉRCOLES", "MIERCOLES" -> R.string.wednesday
-                                    "JUEVES" -> R.string.thursday
-                                    "VIERNES" -> R.string.friday
-                                    "SÁBADO", "SABADO" -> R.string.saturday
-                                    else -> R.string.sunday
-                                }
-                                val dayText = stringResource(id = dayResId)
-                                Text(
-                                    text = dayText.lowercase().replaceFirstChar { it.uppercase() },
-                                    modifier = Modifier
-                                        .width(75.dp)
-                                        .padding(top = 4.dp),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = colorTextoPrincipal
-                                )
-
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    BarChartRow(progress = pManana, color = colorTurnoManana, icon = Icons.Default.LightMode, textColor = colorTextoPrincipal)
-                                    BarChartRow(progress = pTarde, color = colorTurnoTarde, icon = Icons.Default.WbTwilight, textColor = colorTextoPrincipal)
-                                    BarChartRow(progress = pNoche, color = colorTurnoNoche, icon = Icons.Default.NightsStay, textColor = colorTextoPrincipal)
-                                }
-                            }
-
-                            if (dia != "DOMINGO") {
-                                HorizontalDivider(color = colorTextoSecundario.copy(alpha = 0.1f), thickness = 1.dp)
-                            }
-                        }
-                    }
-                }
-
-                // --- 🤖 SECCIÓN MÓDULO DE IA ---
-                Text(
-                    text = stringResource(id = R.string.behavioral_recommendations),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    color = colorTextoSecundario.copy(alpha = 0.7f),
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(start = 4.dp, top = 8.dp)
-                )
-
-                if (isPremiumUser) {
-                    Surface(
+                    datos == null -> Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
-                        color = colorFondoIAActiva,
-                        border = BorderStroke(1.dp, colorTextoIAActiva.copy(alpha = 0.25f)),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp
+                        color = colorSuperficieTarjetas
                     ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = colorTextoIAActiva, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(stringResource(id = R.string.upad_ai_mind_active), fontWeight = FontWeight.Black, fontSize = 14.sp, color = colorTextoIAActiva)
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            if (isAnalyzing) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                        Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(stringResource(id = R.string.perf_error), color = colorTextoPrincipal, textAlign = TextAlign.Center)
+                            Spacer(Modifier.height(12.dp))
+                            Button(onClick = { cargando = true; recarga++ }) { Text(stringResource(id = R.string.perf_retry)) }
+                        }
+                    }
+                    else -> {
+                        // --- RESUMEN DE LOS 7 DÍAS ---
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(24.dp),
+                            color = colorAcabadoPrincipal
+                        ) {
+                            Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(stringResource(id = R.string.perf_title), color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = datos.total.porcentaje?.let { "$it%" } ?: stringResource(id = R.string.no_activity),
+                                        color = Color.White,
+                                        fontSize = 28.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = stringResource(id = R.string.perf_total, datos.total.completadas, datos.total.esperadas),
+                                        color = Color.White.copy(alpha = 0.9f),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier.size(50.dp).background(Color.White.copy(alpha = 0.2f), CircleShape),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    CircularProgressIndicator(color = colorTextoIAActiva, modifier = Modifier.size(30.dp))
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Text(
-                                        text = "Analizando el comportamiento y registro emocional de hoy...",
-                                        fontSize = 13.sp,
-                                        color = colorTextoIAActiva,
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            } else if (aiAnalysis != null) {
-                                Column {
-                                    Text(
-                                        text = aiAnalysis ?: "",
-                                        fontSize = 13.sp,
-                                        color = colorTextoPrincipal,
-                                        lineHeight = 18.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Button(
-                                        onClick = {
-                                            routineViewModel.obtenerAnalisisPersonalizado(tasksManana, tasksTarde, tasksNoche)
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = colorTextoIAActiva),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.align(Alignment.End)
-                                    ) {
-                                        Text("Actualizar Análisis", color = Color.White, fontSize = 12.sp)
-                                    }
-                                }
-                            } else {
-                                Column {
-                                    Text(
-                                        text = "U-Pad AI puede analizar el comportamiento y estado emocional registrado por tu hijo el día de hoy para darte recomendaciones psicopedagógicas a medida.",
-                                        fontSize = 13.sp,
-                                        color = colorTextoPrincipal,
-                                        lineHeight = 18.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Button(
-                                        onClick = {
-                                            routineViewModel.obtenerAnalisisPersonalizado(tasksManana, tasksTarde, tasksNoche)
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = colorTextoIAActiva),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text("Generar Análisis Inteligente", color = Color.White, fontSize = 12.sp)
-                                    }
+                                    Icon(Icons.Default.Star, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
                                 }
                             }
                         }
-                    }
-                } else {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = colorSuperficieTarjetas,
-                        border = BorderStroke(1.dp, colorTextoSecundario.copy(alpha = 0.1f)),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Lock, contentDescription = null, tint = colorTextoSecundario.copy(alpha = 0.4f), modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
+
+                        if (!datos.hayRegistros) {
+                            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = colorSuperficieTarjetas) {
                                 Text(
-                                    text = stringResource(id = R.string.unlock_ai_desc),
-                                    fontSize = 13.sp,
+                                    text = stringResource(id = R.string.perf_empty),
                                     color = colorTextoSecundario,
-                                    lineHeight = 18.sp
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(20.dp).fillMaxWidth()
                                 )
                             }
-                            TextButton(onClick = onNavigateToPremium) {
-                                Text(stringResource(id = R.string.pro_badge), color = colorAcabadoPrincipal, fontWeight = FontWeight.Black)
+                        }
+
+                        // --- POR DÍA ---
+                        SeccionCumplimiento(stringResource(id = R.string.perf_by_day), colorTextoSecundario, colorSuperficieTarjetas) {
+                            datos.dias.forEach { d ->
+                                val etiqueta = try { parseoDia.parse(d.etiqueta)?.let { formatoDia.format(it) } ?: d.etiqueta } catch (e: Exception) { d.etiqueta }
+                                FilaBarra(etiqueta, d, colorAcabadoPrincipal, colorTextoPrincipal)
+                            }
+                        }
+
+                        // --- POR TURNO ---
+                        SeccionCumplimiento(stringResource(id = R.string.weekly_turn_compliance), colorTextoSecundario, colorSuperficieTarjetas) {
+                            datos.porTurno.forEach { t ->
+                                val (color, icono) = when (t.etiqueta) {
+                                    "MANANA" -> colorTurnoManana to Icons.Default.LightMode
+                                    "TARDE" -> colorTurnoTarde to Icons.Default.WbTwilight
+                                    else -> colorTurnoNoche to Icons.Default.NightsStay
+                                }
+                                BarChartRow(progress = t.porcentaje?.let { it / 100f } ?: -1f, color = color, icon = icono, textColor = colorTextoPrincipal)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                                LegendItem(text = stringResource(id = R.string.morning), color = colorTurnoManana, icon = Icons.Default.LightMode, textColor = colorTextoPrincipal)
+                                LegendItem(text = stringResource(id = R.string.afternoon), color = colorTurnoTarde, icon = Icons.Default.WbTwilight, textColor = colorTextoPrincipal)
+                                LegendItem(text = stringResource(id = R.string.evening), color = colorTurnoNoche, icon = Icons.Default.NightsStay, textColor = colorTextoPrincipal)
+                            }
+                        }
+
+                        // --- POR HIJO ---
+                        if (datos.porHijo.isNotEmpty()) {
+                            SeccionCumplimiento(stringResource(id = R.string.perf_by_child), colorTextoSecundario, colorSuperficieTarjetas) {
+                                datos.porHijo.forEach { h -> FilaBarra(h.etiqueta, h, colorAcabadoPrincipal, colorTextoPrincipal) }
                             }
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun SeccionCumplimiento(titulo: String, colorTitulo: Color, colorFondo: Color, contenido: @Composable ColumnScope.() -> Unit) {
+    Text(text = titulo.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Black, color = colorTitulo, letterSpacing = 1.sp)
+    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = colorFondo) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = contenido)
+    }
+}
+
+@Composable
+private fun FilaBarra(etiqueta: String, fila: com.example.upad.data.FilaCumplimiento, color: Color, colorTexto: Color) {
+    Column {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Text(etiqueta, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colorTexto, modifier = Modifier.weight(1f))
+            Text("${fila.completadas}/${fila.esperadas}", fontSize = 11.sp, color = colorTexto.copy(alpha = 0.6f))
+        }
+        Spacer(Modifier.height(4.dp))
+        BarChartRow(progress = fila.porcentaje?.let { it / 100f } ?: -1f, color = color, icon = Icons.Default.Star, textColor = colorTexto)
     }
 }
 

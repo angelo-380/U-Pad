@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -271,6 +272,17 @@ fun ProfileScreen(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Institución (puntos 6 y 9): el tutor se une con el código del director para que sus rutinas y sus
+                    // hijos cuenten en el panel de la institución
+                    TarjetaInstitucion(
+                        colorSuperficie = colorSuperficieTarjetas,
+                        colorPrincipal = colorAcabadoPrincipal,
+                        colorTexto = colorTextoPrincipal,
+                        colorTextoSec = colorTextoSecundario
+                    )
+
                     Spacer(modifier = Modifier.height(20.dp))
 
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -461,6 +473,87 @@ fun MenuOptionRow(
                 tint = colorTextoSec.copy(alpha = 0.6f),
                 modifier = Modifier.size(20.dp)
             )
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun TarjetaInstitucion(
+    colorSuperficie: Color,
+    colorPrincipal: Color,
+    colorTexto: Color,
+    colorTextoSec: Color
+) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var institucion by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var consultada by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var codigo by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var mensaje by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var enviando by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.example.upad.data.LocalDataManager.obtenerMiInstitucion()
+        }
+        institucion = r.getOrNull()
+        consultada = r.isSuccess
+    }
+
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = colorSuperficie
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(id = R.string.institution_title), fontSize = 11.sp, color = colorTextoSec, fontWeight = FontWeight.Bold)
+            androidx.compose.material3.Text(
+                text = when {
+                    !consultada -> "…"
+                    institucion.isNullOrBlank() -> androidx.compose.ui.res.stringResource(id = R.string.institution_none)
+                    else -> institucion!!
+                },
+                fontSize = 15.sp,
+                color = colorTexto,
+                fontWeight = FontWeight.Bold
+            )
+            androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = codigo,
+                    onValueChange = { codigo = it.uppercase().take(12) },
+                    label = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(id = R.string.institution_code_label), fontSize = 12.sp) },
+                    singleLine = true,
+                    enabled = !enviando,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                androidx.compose.material3.Button(
+                    onClick = {
+                        enviando = true
+                        mensaje = ""
+                        scope.launch {
+                            val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                com.example.upad.data.LocalDataManager.unirseAInstitucion(codigo)
+                            }
+                            enviando = false
+                            r.onSuccess { nombre ->
+                                institucion = nombre
+                                consultada = true
+                                codigo = ""
+                                mensaje = "✓ $nombre"
+                            }.onFailure { mensaje = it.message ?: "" }
+                        }
+                    },
+                    enabled = codigo.isNotBlank() && !enviando,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = colorPrincipal)
+                ) {
+                    androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(id = R.string.institution_join), fontWeight = FontWeight.Bold)
+                }
+            }
+            if (mensaje.isNotEmpty()) {
+                androidx.compose.material3.Text(mensaje, fontSize = 12.sp, color = if (mensaje.startsWith("✓")) Color(0xFF2E7D32) else Color(0xFFC62828))
+            }
+            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(id = R.string.institution_hint), fontSize = 11.sp, color = colorTextoSec)
         }
     }
 }

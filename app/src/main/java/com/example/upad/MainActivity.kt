@@ -422,6 +422,10 @@ fun UPadNavigation(
         }
     }
 
+    // Ubicación del niño en tiempo real mientras su app esté abierta (cualquier pantalla del niño)
+    val niñoVinculado by routineViewModel.estaVinculado.collectAsState()
+    com.example.upad.child.EnvioUbicacionNino(activo = estaEnSeccionNiño && niñoVinculado, routineViewModel = routineViewModel)
+
     LaunchedEffect(bloqueoActivo, estaEnSeccionNiño) {
         if (bloqueoActivo && estaEnSeccionNiño) onCambiarEstadoSistema(true)
         else onCambiarEstadoSistema(false)
@@ -881,8 +885,27 @@ fun UPadNavigation(
 
                 composable("child_routine_completed") {
                     val reinforcementMessages by routineViewModel.reinforcementMessages.collectAsState()
+                    val manana by routineViewModel.tasksManana.collectAsState()
+                    val tarde by routineViewModel.tasksTarde.collectAsState()
+                    val noche by routineViewModel.tasksNoche.collectAsState()
+                    // Siguiente actividad pendiente de hoy (en orden de turno y de creación); vacío = no queda ninguna
+                    val diaHoy = com.example.upad.utils.RoutineProgressCalculator.obtenerDiaDeHoy()
+                    val prefijoHoy = com.example.upad.utils.RoutineProgressCalculator.obtenerPrefijoDia(diaHoy)
+                    // Solo el turno actual y los siguientes: los anteriores ya no se pueden hacer hoy
+                    val hora = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                    val pendientesPosibles = when {
+                        hora < 13 -> manana + tarde + noche
+                        hora < 18 -> tarde + noche
+                        else -> noche
+                    }
+                    val siguiente = pendientesPosibles.firstOrNull { tarea ->
+                        val tocaHoy = tarea.dias.isEmpty() || tarea.dias.any { d ->
+                            d.uppercase().trim().replace("É", "E").replace("Á", "A").take(3) == prefijoHoy.take(3)
+                        }
+                        tocaHoy && !tarea.estaCompletadaHoy(diaHoy)
+                    }?.actividad.orEmpty()
                     RoutineCompletedScreen(
-                        nextActivityPreview = "",
+                        nextActivityPreview = siguiente,
                         reinforcementMessages = reinforcementMessages,
                         onFinishClick = {
                             navController.navigate("child_start") {

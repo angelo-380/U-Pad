@@ -239,4 +239,27 @@
     <string name="axis_afternoon">A</string>
     <string name="axis_evening">S</string>
     <string name="available_in_premium">Disponible avec le Plan Premium</string>
+    <string name="step_x_of_n">Étape %1$d sur %2$d</string>
+    <string name="next_step_btn">ÉTAPE SUIVANTE ➜</string>
+    <string name="steps_and_minutes">Étapes et minutes</string>
+    <string name="activity_minutes_label">Durée de l\'activité</string>
+    <string name="minutes_short">min</string>
+    <string name="step_text_placeholder">Étape (ex. se laver les mains)</string>
+    <string name="remove_step">Supprimer l\'étape</string>
+    <string name="add_step">Ajouter une étape</string>
+    <string name="total_duration_min">Total : %1$d min</string>
+    <string name="for_whom_label">Pour qui ?</string>
+    <string name="all_my_children">Tous mes enfants</string>
+    <string name="perf_title">Réalisation des 7 derniers jours</string>
+    <string name="perf_total">%1$d sur %2$d activités terminées</string>
+    <string name="perf_empty">Aucune activité n\'a encore été terminée sur les téléphones de vos enfants.</string>
+    <string name="perf_by_day">Par jour</string>
+    <string name="perf_by_child">Par enfant</string>
+    <string name="perf_error">Impossible de charger les données. Vérifiez votre connexion.</string>
+    <string name="perf_retry">Réessayer</string>
+    <string name="institution_title">Établissement</string>
+    <string name="institution_none">Aucun établissement</string>
+    <string name="institution_code_label">Code de votre établissement</string>
+    <string name="institution_join">Rejoindre</string>
+    <string name="institution_hint">Demandez-le au directeur de votre école ou clinique.</string>
 </resources>

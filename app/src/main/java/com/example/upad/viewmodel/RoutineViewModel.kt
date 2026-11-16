@@ -22,6 +22,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewModelScope
+/** Un paso de una rutina: texto, palabra del pictograma y los minutos que fijó el padre (puntos 12-14). */
+data class PasoTarea(
+    val texto: String = "",
+    val palabraClave: String = "",
+    val duracionMinutos: Int = 5,
+    val pictogramaId: Int? = null,
+    val imageUrl: String = ""
+)
+
 data class TaskItem(
     val actividad: String = "",
     val palabraClave: String = "",
@@ -29,8 +38,20 @@ data class TaskItem(
     val dias: List<String> = emptyList(),
     val duration: Int = 15,
     val estadosPorDia: Map<String, Boolean> = emptyMap(),
-    val emocionesPorDia: Map<String, String> = emptyMap()
+    val emocionesPorDia: Map<String, String> = emptyMap(),
+    // Datos del servidor. Nullables: las copias guardadas antes en el teléfono (Gson) no los tienen.
+    val id: String? = null,
+    val ninoId: String? = null,
+    val pasos: List<PasoTarea>? = null
 ) {
+    /** Pasos a recorrer: los de la rutina o, si es antigua, uno solo con su nombre y su duración. */
+    fun pasosEfectivos(): List<PasoTarea> =
+        pasos?.filter { it.texto.isNotBlank() }?.takeIf { it.isNotEmpty() }
+            ?: listOf(PasoTarea(texto = actividad, palabraClave = palabraClave, duracionMinutos = duration.coerceIn(1, 120), imageUrl = imageUrl))
+
+    /** Duración total en minutos (suma de los pasos). */
+    fun duracionTotalMinutos(): Int = pasosEfectivos().sumOf { it.duracionMinutos }
+
     fun estaCompletadaHoy(diaActual: String): Boolean {
         val diaKey = RoutineProgressCalculator.obtenerPrefijoDia(diaActual)
         return estadosPorDia[diaKey] ?: false
@@ -289,6 +310,15 @@ class RoutineViewModel(
     private val _nombreTutorVinculado = MutableStateFlow("")
     val nombreTutorVinculado: StateFlow<String> = _nombreTutorVinculado.asStateFlow()
 
+    // «¡Dispositivo vinculado correctamente!» solo se muestra justo después de vincular en esta sesión (con el código
+    // en pantalla), no cada vez que el niño vuelve a su lista de actividades (punto 7).
+    private val _confirmacionVinculoPendiente = MutableStateFlow(false)
+    val confirmacionVinculoPendiente: StateFlow<Boolean> = _confirmacionVinculoPendiente.asStateFlow()
+
+    fun confirmacionVinculoVista() {
+        _confirmacionVinculoPendiente.value = false
+    }
+
     fun regenerarCodigoNiño(deviceId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val nuevoCodigo = java.security.SecureRandom().nextInt(900000) + 100000
@@ -356,12 +386,18 @@ class RoutineViewModel(
                 return@listenToChildDevice
             }
 
-            // Padre vinculado
+            // Padre vinculado. Si este teléfono mostraba un código (no estaba vinculado), acaba de vincularse.
+            if (!_estaVinculado.value && codigoGeneradoEnSesion) {
+                _confirmacionVinculoPendiente.value = true
+            }
             _estaVinculado.value = true
 
+            // Rutinas de ESTE hijo (y las de todos). Se recargan si cambió el padre o si antes se mostraban las del padre.
+            if (_padreIdAsociado.value != padreId || deviceIdHijoCargado != deviceId) {
+                cargarRutinasDesdeFirebase(padreId, deviceId)
+            }
             if (_padreIdAsociado.value != padreId) {
                 _padreIdAsociado.value = padreId
-                cargarRutinasDesdeFirebase(padreId)
                 iniciarEscuchaIdioma(padreId)
 
                 premiumListener?.remove()
@@ -495,12 +531,16 @@ class RoutineViewModel(
     var ultimoDiaCargado: String = "LUNES"
         private set
 
-    fun cargarRutinasDesdeFirebase(userId: String) {
+    // deviceId del niño cuyas rutinas se están mostrando (pantalla del niño); null = pantallas del padre
+    private var deviceIdHijoCargado: String? = null
+
+    fun cargarRutinasDesdeFirebase(userId: String, deviceIdHijo: String? = null) {
         padreIdActual = userId
-        cargarRutinasPorDia(userId, RoutineProgressCalculator.obtenerDiaDeHoy())
+        cargarRutinasPorDia(userId, RoutineProgressCalculator.obtenerDiaDeHoy(), deviceIdHijo)
     }
 
-    fun cargarRutinasPorDia(userId: String, dia: String) {
+    fun cargarRutinasPorDia(userId: String, dia: String, deviceIdHijo: String? = null) {
+        deviceIdHijoCargado = deviceIdHijo
         if (userId.isNotEmpty() && userId != "PADRE_TEST") {
             padreIdActual = userId
         }
@@ -523,15 +563,15 @@ class RoutineViewModel(
             listenerTarde?.remove()
             listenerNoche?.remove()
 
-            listenerManana = repository.escucharRutinasDelPadrePorDia(uidValido, "MAÑANA", diaFull) { lista ->
+            listenerManana = repository.escucharRutinasDelPadrePorDia(uidValido, "MAÑANA", diaFull, deviceIdHijo) { lista ->
                 _tasksManana.value = lista
                 notificarCambioAlWidget()
             }
-            listenerTarde = repository.escucharRutinasDelPadrePorDia(uidValido, "TARDE", diaFull) { lista ->
+            listenerTarde = repository.escucharRutinasDelPadrePorDia(uidValido, "TARDE", diaFull, deviceIdHijo) { lista ->
                 _tasksTarde.value = lista
                 notificarCambioAlWidget()
             }
-            listenerNoche = repository.escucharRutinasDelPadrePorDia(uidValido, "NOCHE", diaFull) { lista ->
+            listenerNoche = repository.escucharRutinasDelPadrePorDia(uidValido, "NOCHE", diaFull, deviceIdHijo) { lista ->
                 _tasksNoche.value = lista
                 notificarCambioAlWidget()
             }
@@ -788,7 +828,9 @@ class RoutineViewModel(
                     val esteDispositivo = com.example.upad.data.LocalDataManager.idEsteDispositivo()
                     val vinculado = com.example.upad.data.LocalDataManager.getAllDevices()[esteDispositivo]?.padreId?.isNotEmpty() == true
                     if (vinculado) {
-                        // Cumplimiento real para la web (Análisis de desempeño y panel gerencial)
+                        // Se guarda en el teléfono para que la lista la mantenga completada al recargarse (y la
+                        // siguiente actividad se habilite), y en el servidor como cumplimiento real para la web.
+                        com.example.upad.data.LocalDataManager.marcarCompletadaLocal(esteDispositivo, turnoValido, actividadTexto)
                         com.example.upad.data.LocalDataManager.registrarCumplimiento(esteDispositivo, actividadTexto, turnoValido)
 
                         val lang = appLanguage.value
@@ -894,37 +936,44 @@ class RoutineViewModel(
         }
     }
 
-    fun agregarActividadAutomatica(userId: String, turn: String, textoCompleto: String, diasSeleccionados: List<String>) {
+    /**
+     * Añade una actividad (una rutina en el servidor) con sus pasos y minutos (puntos 12-14) y el hijo al que va
+     * dirigida (null = todos mis hijos, punto 5). Sin pasos, la actividad es un único paso de `duracionMinutos`.
+     * Los pictogramas se buscan con el mismo algoritmo que la web (PictogramasArasaac, punto 1).
+     */
+    fun agregarActividadAutomatica(
+        userId: String,
+        turn: String,
+        textoCompleto: String,
+        diasSeleccionados: List<String>,
+        pasos: List<PasoTarea> = emptyList(),
+        ninoId: String? = null,
+        duracionMinutos: Int = 5
+    ) {
         val turnoValido = normalizarTurno(turn)
         val uidValido = obtenerUidSeguro(userId)
 
         viewModelScope.launch {
-            var urlImagenFinal = ""
-            try {
-                val textoNormalizado = textoCompleto.trim()
-                    .lowercase()
-                    .replace(Regex("[áàä]"), "a")
-                    .replace(Regex("[éèë]"), "e")
-                    .replace(Regex("[íìï]"), "i")
-                    .replace(Regex("[óòö]"), "o")
-                    .replace(Regex("[úùü]"), "u")
-                    .replace(Regex("[^a-z0-9 ]"), "")
-
-                val palabras = textoNormalizado.split(" ")
-                    .map { it.trim() }
-                    .filter { it.length > 2 }
-
-                for (palabra in palabras) {
-                    val resultados = arasaacRepository.searchPictograms(palabra)
-                    if (resultados.isNotEmpty()) {
-                        val idImagen = resultados.first()._id
-                        urlImagenFinal = "https://static.arasaac.org/pictograms/$idImagen/${idImagen}_300.png"
-                        break
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            val titulo = textoCompleto.trim()
+            val pasosBase = pasos.filter { it.texto.isNotBlank() }.ifEmpty {
+                listOf(PasoTarea(texto = titulo, palabraClave = titulo.lowercase(), duracionMinutos = duracionMinutos))
             }
+            // Pictograma de cada paso (fuera del hilo principal)
+            val pasosConImagen = withContext(Dispatchers.IO) {
+                pasosBase.map { paso ->
+                    val clave = paso.palabraClave.ifBlank { paso.texto }.trim()
+                    val id = paso.pictogramaId ?: com.example.upad.data.PictogramasArasaac.buscarId(clave)
+                    paso.copy(
+                        texto = paso.texto.trim(),
+                        palabraClave = clave.lowercase(),
+                        duracionMinutos = paso.duracionMinutos.coerceIn(1, 120),
+                        pictogramaId = id,
+                        imageUrl = id?.let { com.example.upad.data.PictogramasArasaac.urlImagen(it) } ?: ""
+                    )
+                }
+            }
+            val urlImagenFinal = pasosConImagen.firstOrNull()?.imageUrl?.takeIf { it.isNotEmpty() }
+                ?: withContext(Dispatchers.IO) { com.example.upad.data.PictogramasArasaac.urlPara(titulo) }
 
             val diasFinales = if (diasSeleccionados.isEmpty()) {
                 listOf(ultimoDiaCargado)
@@ -941,7 +990,10 @@ class RoutineViewModel(
                 palabraClave = textoCompleto.trim(),
                 imageUrl = urlImagenFinal,
                 dias = diasFinales.map { RoutineProgressCalculator.obtenerPrefijoDia(it) },
+                duration = pasosConImagen.sumOf { it.duracionMinutos },
                 estadosPorDia = mapaInicialEstados,
+                ninoId = ninoId?.takeIf { it.isNotBlank() },
+                pasos = pasosConImagen
             )
 
             for (dia in diasFinales) {

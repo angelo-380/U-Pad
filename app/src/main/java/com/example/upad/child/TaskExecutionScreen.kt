@@ -57,15 +57,20 @@ fun TaskExecutionScreen(
 
     var mostrandoCelebracionIdivual by remember { mutableStateOf(false) }
 
-    // --- ⏱️ CONFIGURACIÓN DEL TEMPORIZADOR POMODORO (5 MINUTOS = 300 SEGUNDOS) ---
-    val tiempoInicialSegundos = remember(currentTask) { 1 * 60 }
-    var tiempoRestanteSegundos by remember { mutableStateOf(tiempoInicialSegundos) }
-    var tiempoCumplido by remember { mutableStateOf(false) }
+    // --- PASOS DE LA RUTINA (puntos 12-14): se recorren en orden, cada uno con los minutos que fijó el padre ---
+    val pasos = remember(currentTask) { currentTask?.pasosEfectivos() ?: emptyList() }
+    var indicePaso by androidx.compose.runtime.saveable.rememberSaveable(activityName) { mutableIntStateOf(0) }
+    val pasoActual = pasos.getOrNull(indicePaso.coerceAtMost((pasos.size - 1).coerceAtLeast(0)))
+    val esUltimoPaso = indicePaso >= pasos.size - 1
 
-    // Corrutina que gestiona el paso de los segundos
-    // Corrutina que gestiona el paso de los segundos (Estructura corregida para Compose)
-    LaunchedEffect(currentTask, mostrandoCelebracionIdivual) {
-        if (currentTask != null && !mostrandoCelebracionIdivual) {
+    // --- ⏱️ TEMPORIZADOR DEL PASO ---
+    val tiempoInicialSegundos = (pasoActual?.duracionMinutos ?: 1).coerceIn(1, 120) * 60
+    var tiempoRestanteSegundos by remember(indicePaso, tiempoInicialSegundos) { mutableIntStateOf(tiempoInicialSegundos) }
+    var tiempoCumplido by remember(indicePaso, tiempoInicialSegundos) { mutableStateOf(false) }
+
+    // Cuenta atrás del paso actual (se reinicia al pasar al siguiente)
+    LaunchedEffect(indicePaso, pasoActual != null, mostrandoCelebracionIdivual, tiempoInicialSegundos) {
+        if (pasoActual != null && !mostrandoCelebracionIdivual) {
             while (tiempoRestanteSegundos > 0) {
                 delay(1000)
                 tiempoRestanteSegundos -= 1
@@ -135,15 +140,43 @@ fun TaskExecutionScreen(
                 verticalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxSize().padding(24.dp)
             ) {
-                // Cabecera indicadora
-                Text(
-                    text = stringResource(R.string.active_focus),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFF0288D1),
-                    letterSpacing = 2.sp,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                // Cabecera: rutina y «Paso X de N»
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 8.dp)) {
+                    Text(
+                        text = currentTask.actividad.uppercase(),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF0288D1),
+                        letterSpacing = 1.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    if (pasos.size > 1) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.step_x_of_n, indicePaso + 1, pasos.size),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF546E7A)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            pasos.indices.forEach { i ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (i == indicePaso) 14.dp else 10.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            when {
+                                                i < indicePaso -> colorVerdeExito
+                                                i == indicePaso -> colorNaranjaPomodoro
+                                                else -> Color(0xFFCFD8DC)
+                                            }
+                                        )
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // 🖼️ CONTENEDOR CENTRAL DEL PICTOGRAMA
                 Card(
@@ -154,16 +187,17 @@ fun TaskExecutionScreen(
                     modifier = Modifier.size(260.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        if (currentTask.imageUrl.isNotEmpty()) {
+                        val imagenPaso = pasoActual?.imageUrl?.takeIf { it.isNotEmpty() } ?: currentTask.imageUrl
+                        if (imagenPaso.isNotEmpty()) {
                             AsyncImage(
-                                model = currentTask.imageUrl,
-                                contentDescription = currentTask.actividad,
+                                model = imagenPaso,
+                                contentDescription = pasoActual?.texto ?: currentTask.actividad,
                                 modifier = Modifier.fillMaxSize().padding(24.dp),
                                 contentScale = ContentScale.Fit
                             )
                         } else {
                             Text(
-                                text = currentTask.actividad.take(1).uppercase(),
+                                text = (pasoActual?.texto ?: currentTask.actividad).take(1).uppercase(),
                                 fontSize = 100.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Color(0xFFCFD8DC)
@@ -172,9 +206,9 @@ fun TaskExecutionScreen(
                     }
                 }
 
-                // Nombre Gigante de la Actividad
+                // Nombre gigante del paso actual
                 Text(
-                    text = currentTask.actividad.uppercase(),
+                    text = (pasoActual?.texto ?: currentTask.actividad).uppercase(),
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Black,
                     color = Color(0xFF01579B),
@@ -235,7 +269,10 @@ fun TaskExecutionScreen(
                 // 🚨 BOTÓN DE FINALIZACIÓN CONTROLADO
                 Button(
                     onClick = {
-                        if (tiempoCumplido) {
+                        if (tiempoCumplido && !esUltimoPaso) {
+                            // Siguiente paso: su temporizador empieza de nuevo
+                            indicePaso += 1
+                        } else if (tiempoCumplido) {
                             viewModel.completeTaskPorNombre(
                                 userId = currentUserId,
                                 turn = turn,
@@ -258,7 +295,11 @@ fun TaskExecutionScreen(
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = if (tiempoCumplido) 6.dp else 0.dp)
                 ) {
                     Text(
-                        text = if (tiempoCumplido) stringResource(R.string.finish_btn) else stringResource(R.string.wait_clock),
+                        text = when {
+                            !tiempoCumplido -> stringResource(R.string.wait_clock)
+                            esUltimoPaso -> stringResource(R.string.finish_btn)
+                            else -> stringResource(R.string.next_step_btn)
+                        },
                         fontSize = if (tiempoCumplido) 24.sp else 16.sp,
                         fontWeight = FontWeight.Black,
                         color = if (tiempoCumplido) Color.White else Color(0xFF546E7A),

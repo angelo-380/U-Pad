@@ -239,4 +239,27 @@
     <string name="axis_afternoon">T</string>
     <string name="axis_evening">N</string>
     <string name="available_in_premium">Disponible en Plan Premium</string>
+    <string name="step_x_of_n">Paso %1$d de %2$d</string>
+    <string name="next_step_btn">SIGUIENTE PASO ➜</string>
+    <string name="steps_and_minutes">Pasos y minutos</string>
+    <string name="activity_minutes_label">Duración de la actividad</string>
+    <string name="minutes_short">min</string>
+    <string name="step_text_placeholder">Paso (ej. lavarse las manos)</string>
+    <string name="remove_step">Quitar paso</string>
+    <string name="add_step">Añadir paso</string>
+    <string name="total_duration_min">Total: %1$d min</string>
+    <string name="for_whom_label">¿Para quién?</string>
+    <string name="all_my_children">Todos mis hijos</string>
+    <string name="perf_title">Cumplimiento de los últimos 7 días</string>
+    <string name="perf_total">%1$d de %2$d actividades completadas</string>
+    <string name="perf_empty">Aún no hay actividades completadas en el teléfono de tus hijos. Cuando terminen una, aparecerá aquí.</string>
+    <string name="perf_by_day">Por día</string>
+    <string name="perf_by_child">Por hijo</string>
+    <string name="perf_error">No se pudo cargar el cumplimiento. Revisa tu conexión.</string>
+    <string name="perf_retry">Reintentar</string>
+    <string name="institution_title">Institución</string>
+    <string name="institution_none">Sin institución</string>
+    <string name="institution_code_label">Código de tu institución</string>
+    <string name="institution_join">Unirme</string>
+    <string name="institution_hint">Pídeselo al director de tu colegio o clínica: tus rutinas y tus hijos contarán en su panel.</string>
 </resources>

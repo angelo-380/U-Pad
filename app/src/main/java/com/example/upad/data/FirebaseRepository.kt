@@ -34,7 +34,7 @@ class FirebaseRepository {
     }
 
     fun escucharRutinasDelPadre(padreId: String, turn: String, onDataChanged: (List<TaskItem>) -> Unit): ListenerRegistration {
-        return LocalDataManager.listenRoutinePorDia(padreId, turn, "LUNES", onDataChanged)
+        return LocalDataManager.listenRoutinePorDia(padreId, turn, "LUNES", onDataChanged = onDataChanged)
     }
 
     suspend fun obtenerRutinasDelPadreDirecto(padreId: String, turn: String): List<TaskItem> {
@@ -45,8 +45,14 @@ class FirebaseRepository {
         LocalDataManager.saveRoutinePorDia(userId, turn, dia, tasks)
     }
 
-    fun escucharRutinasDelPadrePorDia(padreId: String, turn: String, dia: String, onDataChanged: (List<TaskItem>) -> Unit): ListenerRegistration {
-        return LocalDataManager.listenRoutinePorDia(padreId, turn, dia, onDataChanged)
+    fun escucharRutinasDelPadrePorDia(
+        padreId: String,
+        turn: String,
+        dia: String,
+        deviceIdHijo: String? = null,
+        onDataChanged: (List<TaskItem>) -> Unit
+    ): ListenerRegistration {
+        return LocalDataManager.listenRoutinePorDia(padreId, turn, dia, deviceIdHijo, onDataChanged)
     }
 
     suspend fun obtenerRutinasDelPadreDirectoPorDia(padreId: String, turn: String, dia: String): List<TaskItem> {

@@ -239,4 +239,27 @@
     <string name="axis_afternoon">Д</string>
     <string name="axis_evening">В</string>
     <string name="available_in_premium">Доступно в Premium-плане</string>
+    <string name="step_x_of_n">Шаг %1$d из %2$d</string>
+    <string name="next_step_btn">СЛЕДУЮЩИЙ ШАГ ➜</string>
+    <string name="steps_and_minutes">Шаги и минуты</string>
+    <string name="activity_minutes_label">Длительность занятия</string>
+    <string name="minutes_short">мин</string>
+    <string name="step_text_placeholder">Шаг (напр. вымыть руки)</string>
+    <string name="remove_step">Удалить шаг</string>
+    <string name="add_step">Добавить шаг</string>
+    <string name="total_duration_min">Всего: %1$d мин</string>
+    <string name="for_whom_label">Для кого?</string>
+    <string name="all_my_children">Все мои дети</string>
+    <string name="perf_title">Выполнение за последние 7 дней</string>
+    <string name="perf_total">Выполнено %1$d из %2$d занятий</string>
+    <string name="perf_empty">На телефонах ваших детей пока нет выполненных занятий.</string>
+    <string name="perf_by_day">По дням</string>
+    <string name="perf_by_child">По детям</string>
+    <string name="perf_error">Не удалось загрузить данные. Проверьте подключение.</string>
+    <string name="perf_retry">Повторить</string>
+    <string name="institution_title">Учреждение</string>
+    <string name="institution_none">Без учреждения</string>
+    <string name="institution_code_label">Код вашего учреждения</string>
+    <string name="institution_join">Присоединиться</string>
+    <string name="institution_hint">Спросите у директора вашей школы или клиники.</string>
 </resources>
