@@ -30,8 +30,6 @@ import com.example.upad.R
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 data class DispositivoVinculado(val id: String, val modelo: String = "Dispositivo del Niño")
 
@@ -49,7 +47,6 @@ fun ConnectionScreen(
 
     // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
     val context = LocalContext.current
-    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -57,7 +54,6 @@ fun ConnectionScreen(
         val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
         imageUri = when {
             saved != null -> Uri.parse(saved)
-            currentUser?.photoUrl != null -> currentUser.photoUrl
             else -> null
         }
     }
@@ -85,7 +81,7 @@ fun ConnectionScreen(
     val colorVerdePremium = Color(0xFF2E7D32)
     val colorRojoSuave = Color(0xFFEF5350)
 
-    val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId() }
+    val idPadre = remember { com.example.upad.data.LocalDataManager.getCurrentUserId() }
     var codigoIngresado by remember { mutableStateOf("") }
     var cargandoVerificacion by remember { mutableStateOf(true) }
     var estaConectando by remember { mutableStateOf(false) }
@@ -93,14 +89,13 @@ fun ConnectionScreen(
     var dispositivoConfirmadoNombre by remember { mutableStateOf<String?>(null) }
 
     val listaDispositivos = remember { mutableStateListOf<DispositivoVinculado>() }
-    val firestore = remember { FirebaseFirestore.getInstance() }
 
     // --- ESCUCHAR MULTIDISPOSITIVOS EN TIEMPO REAL ---
     DisposableEffect(idPadre) {
         val listener = com.example.upad.data.LocalDataManager.listenParentDevices(idPadre) { devs ->
             listaDispositivos.clear()
             for (d in devs) {
-                listaDispositivos.add(DispositivoVinculado(id = d.deviceId, modelo = d.modelo))
+                listaDispositivos.add(DispositivoVinculado(id = d.deviceId, modelo = d.nombre ?: d.modelo))
             }
             cargandoVerificacion = false
         }
@@ -286,7 +281,7 @@ fun ConnectionScreen(
                                                         (context as? android.app.Activity)?.runOnUiThread {
                                                             estaConectando = false
                                                             if (result.first) {
-                                                                val devName = com.example.upad.data.LocalDataManager.getAllDevices()[result.second]?.modelo 
+                                                                val devName = com.example.upad.data.LocalDataManager.getAllDevices()[result.second]?.let { it.nombre ?: it.modelo } 
                                                                     ?: "Tablet Infantil ($cod)"
                                                                 dispositivoConfirmadoNombre = devName
                                                                 codigoIngresado = ""
@@ -412,21 +407,6 @@ fun ConnectionScreen(
                                                 val devId = dispositivo.id
                                                 com.example.upad.data.LocalDataManager.unlinkChildDevice(devId, idPadre)
                                                 listaDispositivos.removeAll { it.id == devId }
-                                                try {
-                                                    firestore.collection("dispositivos_niños").document(devId).delete()
-                                                } catch (e: Exception) {}
-                                                try {
-                                                    firestore.collection("dispositivos_niños")
-                                                        .whereEqualTo("padreId", idPadre)
-                                                        .get()
-                                                        .addOnSuccessListener { query ->
-                                                            for (d in query.documents) {
-                                                                if (d.id == devId || d.getString("deviceId") == devId) {
-                                                                    d.reference.delete()
-                                                                }
-                                                            }
-                                                        }
-                                                } catch (e: Exception) {}
                                             }
                                         ) {
                                             Icon(

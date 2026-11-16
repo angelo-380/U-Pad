@@ -6,8 +6,6 @@ import androidx.biometric.BiometricPrompt
 import androidx.biometric.BiometricManager
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 
 object BiometricHelper {
 
@@ -63,20 +61,16 @@ object BiometricHelper {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 super.onAuthenticationSucceeded(result)
 
-                // 🔓/🔒 Huella correcta -> Cambiamos el valor en Firebase Firestore
-                val firestore = FirebaseFirestore.getInstance()
-                firestore.collection("dispositivos_niños")
-                    .document(idDispositivoNiño)
-                    .set(mapOf("kioscoActivo" to debeBloquear), SetOptions.merge())
-                    .addOnSuccessListener {
-                        val mensaje = if (debeBloquear) "¡Dispositivo infantil Bloqueado! 🔒" else "¡Dispositivo infantil Liberado! 🔓"
-                        Toast.makeText(activity, mensaje, Toast.LENGTH_SHORT).show()
-                        onResultado(true)
+                // Huella correcta: el servidor guarda el bloqueo y el teléfono del niño lo aplica en unos 2 s
+                com.example.upad.data.LocalDataManager.setKioskActive(idDispositivoNiño, debeBloquear) { ok, mensajeServidor ->
+                    val mensaje = when {
+                        !ok -> mensajeServidor
+                        debeBloquear -> "¡Dispositivo infantil bloqueado! 🔒"
+                        else -> "¡Dispositivo infantil liberado! 🔓"
                     }
-                    .addOnFailureListener {
-                        Toast.makeText(activity, "Error de conexión con Firebase", Toast.LENGTH_SHORT).show()
-                        onResultado(false)
-                    }
+                    Toast.makeText(activity, mensaje, Toast.LENGTH_SHORT).show()
+                    onResultado(ok)
+                }
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {

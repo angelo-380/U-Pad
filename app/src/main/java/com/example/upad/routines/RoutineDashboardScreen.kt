@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import com.example.upad.R
 import com.example.upad.dashboard.components.DashboardDrawerContent
 import com.example.upad.dashboard.components.UpadTopAppBar
-import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -57,14 +56,14 @@ fun RoutineDashboardScreen(
     onNavigateToTracking: (String) -> Unit = {},
     onNavigateToHelp: () -> Unit = {}
 ) {
-    val firebaseAuth = remember { FirebaseAuth.getInstance() }
-    val currentUser = firebaseAuth.currentUser
+    // Sesión de nuestro backend
+    val currentUser = remember { com.example.upad.data.LocalDataManager.getCurrentUser() }
     val context = LocalContext.current
 
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
     val imageUriString = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
     val imageUri = remember(imageUriString) {
-        imageUriString?.let { android.net.Uri.parse(it) } ?: currentUser?.photoUrl
+        imageUriString?.let { android.net.Uri.parse(it) }
     }
 
     // ── ESTADOS DEL VIEWMODEL ────────────────────────────────────────────────
@@ -105,8 +104,8 @@ fun RoutineDashboardScreen(
 
     LaunchedEffect(currentUser) {
         if (currentUser != null) {
-            val emailName = currentUser.email?.substringBefore("@")?.uppercase()
-            val nameToDisplay = currentUser.displayName?.uppercase() ?: emailName
+            val emailName = currentUser.email.substringBefore("@").uppercase()
+            val nameToDisplay = currentUser.name.uppercase().ifBlank { emailName }
             if (!nameToDisplay.isNullOrBlank()) {
                 parentName = nameToDisplay
                 sharedPreferences.edit().putString("PARENT_NAME", nameToDisplay).apply()
@@ -132,7 +131,7 @@ fun RoutineDashboardScreen(
     var mostrarCalendarioCompleto by remember { mutableStateOf(false) }
     var showTurnSelectionDialog by remember { mutableStateOf(false) }
 
-    val currentUserId = remember(currentUser) { currentUser?.uid ?: "PADRE_TEST" }
+    val currentUserId = remember(currentUser) { currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId() }
 
     LaunchedEffect(diaSeleccionado, currentUserId) {
         routineViewModel.cargarRutinasPorDia(currentUserId, diaSeleccionado)
@@ -203,7 +202,7 @@ fun RoutineDashboardScreen(
                 gradienteFondoPremium = gradienteFondoPremium,
                 fuentePremium = fuentePremium,
                 onChangePlan = { scope.launch { drawerState.close() }; onNavigateToChangePlan() },
-                onCancelPremium = { scope.launch { drawerState.close() }; routineViewModel.cancelPremium(currentUser?.uid ?: "") },
+                onCancelPremium = { scope.launch { drawerState.close() }; routineViewModel.cancelPremium(currentUserId) },
                 onUbicarHijo = { scope.launch { drawerState.close() }; onUbicarHijoAccionUnificada() },
                 onNavigateToAnalytics = { scope.launch { drawerState.close() }; onNavigateToAnalytics() },
                 onNavigateToConnection = { scope.launch { drawerState.close() }; onNavigateToConnection() },

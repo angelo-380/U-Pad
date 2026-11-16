@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.upad.R
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import java.util.Locale
 import androidx.compose.ui.res.stringResource
@@ -41,7 +40,7 @@ fun TaskExecutionScreen(
 
     val currentUserId = remember {
         padreId.ifEmpty {
-            FirebaseAuth.getInstance().currentUser?.uid ?: "PADRE_TEST"
+            com.example.upad.data.LocalDataManager.getCurrentUserId()
         }
     }
 

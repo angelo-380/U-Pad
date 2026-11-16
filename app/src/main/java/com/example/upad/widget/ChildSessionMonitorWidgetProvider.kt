@@ -12,12 +12,9 @@ import android.util.Log
 import android.widget.RemoteViews
 import com.example.upad.R
 import com.example.upad.utils.RoutineProgressCalculator
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import java.util.Calendar
 
 class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
@@ -105,20 +102,20 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
             configurarVisualizacionDeEmocion(context, views, cachedEstado)
             appWidgetManager.updateAppWidget(appWidgetId, views)
 
-            // Consultar a Firestore si es forzado o si pasaron 5 mins
+            // Consultar a el teléfono si es forzado o si pasaron 5 mins
             val ultimoFetch = prefs.getLong("ULTIMO_FETCH_SESSION", 0)
             val tiempoActual = System.currentTimeMillis()
 
             if (forzarActualizacion || (tiempoActual - ultimoFetch > 5 * 60 * 1000)) {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        val db = FirebaseFirestore.getInstance()
-                        val currentAuthId = FirebaseAuth.getInstance().currentUser?.uid
-                        val userId = if (!currentAuthId.isNullOrEmpty()) {
-                            currentAuthId
-                        } else {
-                            val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
-                            db.collection("dispositivos_niños").document(deviceId).get().await().getString("padreId")
+                        // En el teléfono del niño, las rutinas son las de su padre (vínculo guardado); si no, las de la sesión
+                        val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+                        val padreVinculado = com.example.upad.data.LocalDataManager.getAllDevices()[deviceId]?.padreId
+                        val userId = when {
+                            !padreVinculado.isNullOrEmpty() -> padreVinculado
+                            com.example.upad.data.LocalDataManager.isLoggedIn() -> com.example.upad.data.LocalDataManager.getCurrentUserId()
+                            else -> null
                         }
 
                         if (userId != null && userId.isNotEmpty()) {
@@ -131,14 +128,7 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
                             }
 
                             val diaDeHoy = RoutineProgressCalculator.obtenerDiaDeHoy()
-                            val document = db.collection("routines")
-                                .document(userId)
-                                .collection("turns")
-                                .document(turnoActual)
-                                .collection("days")
-                                .document(diaDeHoy)
-                                .get()
-                                .await()
+                            val tareasDelTurno = com.example.upad.data.LocalDataManager.getRoutinePorDia(userId, turnoActual, diaDeHoy)
 
                             var actividadActualStr = "Libre"
                             var tiempoRestante = 0
@@ -148,8 +138,10 @@ class ChildSessionMonitorWidgetProvider : AppWidgetProvider() {
                             var todasCompletadas = true
                             val prefijoDia = RoutineProgressCalculator.obtenerPrefijoDia(diaDeHoy)
 
-                            if (document.exists()) {
-                                val tasksList = document.get("tasks") as? List<*> ?: emptyList<Any>()
+                            if (tareasDelTurno.isNotEmpty()) {
+                                // Mismo formato de mapa que usa el resto del cálculo
+                                val gson = com.google.gson.Gson()
+                                val tasksList = gson.fromJson(gson.toJson(tareasDelTurno), List::class.java) as? List<*> ?: emptyList<Any>()
 
                                 for (taskItem in tasksList) {
                                     if (taskItem is Map<*, *>) {

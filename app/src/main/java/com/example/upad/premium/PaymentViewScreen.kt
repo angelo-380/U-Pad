@@ -16,8 +16,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -27,8 +25,6 @@ fun PaymentViewScreen(
     onPaymentConfirmed: () -> Unit // 👶 Callback definitivo que te lleva a ChildProfileSetupScreen
 ) {
     val scope = rememberCoroutineScope()
-    val auth = remember { FirebaseAuth.getInstance() }
-    val firestore = remember { FirebaseFirestore.getInstance() }
 
     var procesandoPago by remember { mutableStateOf(false) }
 
@@ -128,20 +124,9 @@ fun PaymentViewScreen(
                         procesandoPago = true
                         delay(2000) // Simulación de verificación bancaria
 
-                        val uid = auth.currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
-                        // Actualizar estado en LocalDataManager y backend
+                        val uid = com.example.upad.data.LocalDataManager.getCurrentUserId()
+                        // Estado premium guardado en el teléfono
                         com.example.upad.data.LocalDataManager.setPremiumStatus(uid, true)
-
-                        // Intentar Firebase solo si está disponible sin bloquear
-                        try {
-                            val datosPremium = hashMapOf(
-                                "planSuscripcion" to "premium",
-                                "estadoSuscripcion" to "Activo",
-                                "fechaSeleccionPlan" to com.google.firebase.Timestamp.now()
-                            )
-                            firestore.collection("usuarios").document(uid)
-                                .set(datosPremium, com.google.firebase.firestore.SetOptions.merge())
-                        } catch (e: Exception) {}
 
                         // Cambiar estado reactivo global en ViewModel
                         routineViewModel.setPremiumUser(true)

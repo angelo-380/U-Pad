@@ -3,7 +3,6 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    id("com.google.gms.google-services")
 }
 
 android {
@@ -82,23 +81,13 @@ dependencies {
     // SplashScreen
     implementation("androidx.core:core-splashscreen:1.2.0")
 
-    // BoM de Firebase
-    implementation(platform("com.google.firebase:firebase-bom:34.13.0"))
-    implementation("com.google.firebase:firebase-auth")
-    implementation("com.google.firebase:firebase-firestore")
-
-    // Firebase Storage
-    implementation("com.google.firebase:firebase-storage")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
-
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
 
     // Coil para mostrar las imágenes de ARASAAC
     implementation("io.coil-kt:coil-compose:2.4.0")
 
-    // Librerias para firebase
-    implementation(libs.firebase.auth)
+    // Inicio de sesión con Google (Credential Manager); el token se valida en nuestro backend
     implementation(libs.play.services.auth)
 
     implementation(libs.androidx.credentials)

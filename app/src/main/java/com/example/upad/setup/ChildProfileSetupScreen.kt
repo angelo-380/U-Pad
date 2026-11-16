@@ -35,9 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.example.upad.R
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,9 +47,6 @@ fun ChildProfileSetupScreen(
     val pantallaPequeña = configuration.screenHeightDp < 650
 
     // 🔐 Instancias globales de Firebase
-    val auth = remember { FirebaseAuth.getInstance() }
-    val firestore = remember { FirebaseFirestore.getInstance() }
-    val storage = remember { FirebaseStorage.getInstance() }
 
     // Estado para controlar la pantalla de carga durante la subida a la red
     var cargando by remember { mutableStateOf(false) }
@@ -303,31 +297,14 @@ fun ChildProfileSetupScreen(
                     val nombreFinal = name.ifBlank { "Estudiante" }
                     val edadFinal = if (age.isBlank()) "14" else age.trim()
                     val interesesFinal = interests.ifBlank { "Tecnología, Arte, Lectura" }
-                    val uidPadre = auth.currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
 
                     // Guardado seguro local y persistente en SharedPreferences
                     prefs.edit().apply {
                         putString("CHILD_NAME", nombreFinal)
                         putString("CHILD_AGE", edadFinal)
                         putString("CHILD_INTERESTS", interesesFinal)
+                        imageUri?.let { putString("CHILD_IMAGE_URI", it.toString()) }
                         apply()
-                    }
-
-                    // Sincronización en background hacia Firestore / nube sin bloquear la interfaz
-                    try {
-                        val perfilHijoMap = hashMapOf(
-                            "nombre" to nombreFinal,
-                            "edad" to edadFinal,
-                            "intereses" to interesesFinal,
-                            "fotoUrl" to (imageUri?.toString() ?: ""),
-                            "fechaRegistro" to com.google.firebase.Timestamp.now()
-                        )
-
-                        firestore.collection("usuarios").document(uidPadre)
-                            .collection("hijos").document("perfil")
-                            .set(perfilHijoMap, com.google.firebase.firestore.SetOptions.merge())
-                    } catch (e: Exception) {
-                        // Tolera modo local
                     }
 
                     // Avanza inmediatamente a la siguiente pantalla sin colgarse en carga infinita

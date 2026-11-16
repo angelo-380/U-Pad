@@ -42,7 +42,6 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.*
-import com.google.firebase.auth.FirebaseAuth
 
 @Composable
 fun HijoTrackingScreen(
@@ -59,7 +58,6 @@ fun HijoTrackingScreen(
 
     // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
     val context = LocalContext.current
-    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -67,7 +65,6 @@ fun HijoTrackingScreen(
         val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
         imageUri = when {
             saved != null -> Uri.parse(saved)
-            currentUser?.photoUrl != null -> currentUser.photoUrl
             else -> null
         }
     }
@@ -91,7 +88,7 @@ fun HijoTrackingScreen(
         if (isDarkMode) Color(0xFF1E1E1E) else Color.White
     }
 
-    val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+    val idPadre = remember { com.example.upad.data.LocalDataManager.getCurrentUserId() }
 
     val dispositivosConectados by trackingViewModel.dispositivosConectados.collectAsState()
     var dispositivoSeleccionado by remember { mutableStateOf<DispositivoVinculado?>(null) }
@@ -282,6 +279,46 @@ fun HijoTrackingScreen(
                                 }
                             }
                         }
+                    }
+                }
+
+                // Estado real: sin hijos, sin ubicación todavía, u hora de la última ubicación recibida
+                val textoEstado = when {
+                    dispositivosConectados.isEmpty() ->
+                        "Aún no tienes hijos vinculados. Vincula el teléfono de tu hijo desde «Conexión»."
+                    datosUbicacionNino == null ->
+                        "${dispositivoSeleccionado?.modelo ?: "Tu hijo"} todavía no ha enviado su ubicación. Abre U-Pad en su teléfono con el GPS activado."
+                    else -> datosUbicacionNino?.actualizadaEn?.let { iso ->
+                        val ms = try {
+                            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+                                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                                .parse(iso)?.time
+                        } catch (e: Exception) {
+                            null
+                        }
+                        ms?.let {
+                            val minutos = ((System.currentTimeMillis() - it) / 60000L).coerceAtLeast(0L)
+                            if (minutos < 1) "Ubicación actualizada hace menos de un minuto."
+                            else "Última ubicación recibida hace $minutos min."
+                        }
+                    }
+                }
+                textoEstado?.let { texto ->
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = colorSuperficieFlotante),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(
+                            text = texto,
+                            color = colorTextoPrincipal,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(16.dp)
+                        )
                     }
                 }
 

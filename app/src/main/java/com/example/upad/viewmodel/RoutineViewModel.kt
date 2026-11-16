@@ -16,10 +16,10 @@ import com.example.upad.data.LanguageDataStore
 import com.example.upad.widget.ChildSessionMonitorWidgetProvider
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.asStateFlow
-import com.google.firebase.firestore.ListenerRegistration
+import com.example.upad.data.ListenerRegistration
 import com.example.upad.utils.RoutineProgressCalculator
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import androidx.lifecycle.viewModelScope
 data class TaskItem(
@@ -402,35 +402,23 @@ class RoutineViewModel(
         }
         _cargandoDesvinculacion.value = true
         _errorDesvinculacion.value = ""
-        val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
-        auth.signInWithEmailAndPassword(email.trim(), pass.trim())
-            .addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    val padreIdLogueado = task.result?.user?.uid
-                    if (padreIdLogueado == _padreIdAsociado.value) {
-                        viewModelScope.launch {
-                            try {
-                                repository.deleteDeviceDoc(deviceId, padreIdLogueado ?: "")
-                                auth.signOut()
-                                _cargandoDesvinculacion.value = false
-                                _errorDesvinculacion.value = ""
-                                onSuccess()
-                            } catch (e: Exception) {
-                                auth.signOut()
-                                _cargandoDesvinculacion.value = false
-                                _errorDesvinculacion.value = e.localizedMessage ?: "Error al desvincular"
-                            }
-                        }
-                    } else {
-                        auth.signOut()
-                        _cargandoDesvinculacion.value = false
-                        _errorDesvinculacion.value = "El correo no coincide con el padre enlazado a este dispositivo."
-                    }
-                } else {
-                    _cargandoDesvinculacion.value = false
-                    _errorDesvinculacion.value = task.exception?.localizedMessage ?: "Credenciales incorrectas"
-                }
+        // El padre escribe su correo y contraseña en el teléfono del niño: se comprueban en el servidor
+        // (sin guardar su sesión aquí) y el vínculo se borra con su token.
+        viewModelScope.launch(Dispatchers.IO) {
+            val resultado = com.example.upad.data.LocalDataManager.desvincularDesdeKiosco(
+                deviceId = deviceId,
+                email = email,
+                pass = pass,
+                padreEsperado = _padreIdAsociado.value
+            )
+            _cargandoDesvinculacion.value = false
+            if (resultado.isSuccess) {
+                _errorDesvinculacion.value = ""
+                withContext(Dispatchers.Main) { onSuccess() }
+            } else {
+                _errorDesvinculacion.value = resultado.exceptionOrNull()?.message ?: "No se pudo desvincular."
             }
+        }
     }
 
     fun clearUnlinkError() {
@@ -623,7 +611,7 @@ class RoutineViewModel(
 
     private fun obtenerUidSeguro(userId: String): String {
         return if (userId == "PADRE_TEST" || userId.isBlank()) {
-            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+            com.example.upad.data.LocalDataManager.getCurrentUserId()
         } else {
             userId
         }
@@ -753,37 +741,32 @@ class RoutineViewModel(
                 finalUid = padreIdActual
             }
             if (finalUid.isEmpty() || finalUid == "PADRE_TEST") {
-                try {
-                    val context = com.example.upad.UPadApplication.appContext
-                    val deviceId = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
-                    val doc = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                        .collection("dispositivos_niños")
-                        .document(deviceId)
-                        .get()
-                        .await()
-                    finalUid = doc.getString("padreId") ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                // Teléfono del niño: su padre es el del vínculo guardado
+                val esteDispositivo = com.example.upad.data.LocalDataManager.idEsteDispositivo()
+                finalUid = com.example.upad.data.LocalDataManager.getAllDevices()[esteDispositivo]?.padreId
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
             }
 
                         if (finalUid.isEmpty() || finalUid == "PADRE_TEST") {
                 finalUid = com.example.upad.data.LocalDataManager.getCurrentUserId()
             }
 
-            val listaActual = try {
+            val enMemoria = when (turnoValido) {
+                "MAÑANA" -> _tasksManana.value.toMutableList()
+                "TARDE"  -> _tasksTarde.value.toMutableList()
+                else     -> _tasksNoche.value.toMutableList()
+            }
+            val guardada = try {
                 repository.obtenerRutinasDelPadreDirectoPorDia(finalUid, turnoValido, diaFull).toMutableList()
             } catch (e: Exception) {
-                when (turnoValido) {
-                    "MAÑANA" -> _tasksManana.value.toMutableList()
-                    "TARDE"  -> _tasksTarde.value.toMutableList()
-                    else     -> _tasksNoche.value.toMutableList()
-                }
+                mutableListOf()
             }
+            val coincide: (TaskItem) -> Boolean = { it.actividad.uppercase() == actividadTexto.uppercase() }
+            // El teléfono del niño no guarda las rutinas que descarga del servidor: solo las tiene en memoria.
+            val listaActual = if (guardada.any(coincide)) guardada else enMemoria
 
-            val indexReal = listaActual.indexOfFirst {
-                it.actividad.uppercase() == actividadTexto.uppercase()
-            }
+            val indexReal = listaActual.indexOfFirst(coincide)
 
             if (indexReal != -1) {
                 val tareaEncontrada = listaActual[indexReal]
@@ -801,8 +784,10 @@ class RoutineViewModel(
                 try {
                     repository.saveRoutinePorDia(finalUid, turnoValido, diaFull, listaActual)
 
-                    if (finalUid.isNotEmpty() && finalUid != "PADRE_TEST") {
-                        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    // Avisos al padre: solo desde el teléfono de un niño vinculado (el servidor decide quién es el padre)
+                    val esteDispositivo = com.example.upad.data.LocalDataManager.idEsteDispositivo()
+                    val vinculado = com.example.upad.data.LocalDataManager.getAllDevices()[esteDispositivo]?.padreId?.isNotEmpty() == true
+                    if (vinculado) {
                         val lang = appLanguage.value
 
                         // 1. Enviar notificación por la tarea completada
@@ -815,16 +800,12 @@ class RoutineViewModel(
                             else -> "¡Actividad completada! 🌟" to "Tu hijo ha completado la actividad: ${actividadTexto.lowercase()}."
                         }
 
-                        val taskNotifData = mapOf(
-                            "title" to taskTitle,
-                            "description" to taskDesc,
-                            "type" to "INFO",
-                            "timestamp" to com.google.firebase.Timestamp.now()
+                        com.example.upad.data.LocalDataManager.enviarAvisoAlPadre(
+                            esteDispositivo,
+                            com.example.upad.data.LocalDataManager.AVISO_TAREA_COMPLETADA,
+                            taskTitle,
+                            taskDesc
                         )
-                        db.collection("users")
-                            .document(finalUid)
-                            .collection("notifications")
-                            .add(taskNotifData)
 
                         // 2. Verificar si todas las tareas de este turno aplicables a hoy están completadas
                         val targetPrefijo = RoutineProgressCalculator.obtenerPrefijoDia(diaActual)
@@ -847,16 +828,12 @@ class RoutineViewModel(
                                 else -> "¡Rutina de la ${turnoValido.lowercase()} completada! 🎉" to "Tu hijo ha terminado con éxito todas las tareas de la rutina de la ${turnoValido.lowercase()}."
                             }
 
-                            val routineNotifData = mapOf(
-                                "title" to routineTitle,
-                                "description" to routineDesc,
-                                "type" to "SUCCESS",
-                                "timestamp" to com.google.firebase.Timestamp.now()
+                            com.example.upad.data.LocalDataManager.enviarAvisoAlPadre(
+                                esteDispositivo,
+                                com.example.upad.data.LocalDataManager.AVISO_RUTINA_COMPLETADA,
+                                routineTitle,
+                                routineDesc
                             )
-                            db.collection("users")
-                                .document(finalUid)
-                                .collection("notifications")
-                                .add(routineNotifData)
                         }
                     }
                 } catch (e: Exception) {

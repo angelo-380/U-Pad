@@ -41,7 +41,6 @@ import coil.request.ImageRequest
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,8 +52,8 @@ fun ProfileScreen(
 ) {
     val context = LocalContext.current
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
-    val firebaseAuth = remember { FirebaseAuth.getInstance() }
-    val currentUser = firebaseAuth.currentUser
+    // Sesión de nuestro backend (nombre y correo de la cuenta)
+    val currentUser = remember { com.example.upad.data.LocalDataManager.getCurrentUser() }
 
     // 🌗 ESTADOS GLOBALES DE DISEÑO
     val isPremiumUser by routineViewModel.isUserPremium.collectAsState(initial = false)
@@ -75,7 +74,6 @@ fun ProfileScreen(
         val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
         imageUri = when {
             saved != null -> Uri.parse(saved)
-            currentUser?.photoUrl != null -> currentUser.photoUrl
             else -> null
         }
     }
@@ -83,7 +81,7 @@ fun ProfileScreen(
     // ✏️ ESTADOS DE CAMPOS FORMULARIO
     val initialName = remember(currentUser) {
         sharedPreferences.getString("PARENT_NAME", null)
-            ?: currentUser?.displayName
+            ?: currentUser?.name
             ?: currentUser?.email?.substringBefore("@")?.uppercase()
             ?: "PADRE/TUTOR"
     }
@@ -300,7 +298,6 @@ fun ProfileScreen(
                         colorTextoSec = Color(0xFFEF5350),
                         onClick = {
                             com.example.upad.data.LocalDataManager.logout()
-                            try { firebaseAuth.signOut() } catch(e: Exception){}
                             onLogoutSuccess()
                         }
                     )

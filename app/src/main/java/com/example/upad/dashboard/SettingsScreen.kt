@@ -29,7 +29,6 @@ import com.example.upad.R
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
 
 @Composable
 fun SettingsScreen(
@@ -39,7 +38,6 @@ fun SettingsScreen(
     onNavigateToProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
 
     // ✅ FIX 1: Cargar imageUri igual que en ProfileScreen — reactivo y con LaunchedEffect
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
@@ -48,7 +46,6 @@ fun SettingsScreen(
         val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
         imageUri = when {
             saved != null -> Uri.parse(saved)
-            currentUser?.photoUrl != null -> currentUser.photoUrl
             else -> null
         }
     }
@@ -237,6 +234,12 @@ fun SettingsScreen(
                 // IP del Servidor Cloud
                 var showIpDialog by remember { mutableStateOf(false) }
                 var tempIp by remember { mutableStateOf(com.example.upad.data.LocalDataManager.getServerIp()) }
+                var servidorActual by remember {
+                    mutableStateOf(
+                        if (com.example.upad.data.LocalDataManager.getServerIp().isBlank()) "Cloud Run (predeterminado)"
+                        else com.example.upad.data.LocalDataManager.baseUrl()
+                    )
+                }
 
                 Surface(
                     modifier = Modifier
@@ -263,13 +266,13 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
                                 Text(
-                                    text = "IP del Servidor Cloud",
+                                    text = "Servidor",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = colorTextoPrincipal
                                 )
                                 Text(
-                                    text = "${com.example.upad.data.LocalDataManager.getServerIp()}:3000",
+                                    text = servidorActual,
                                     fontSize = 12.sp,
                                     color = colorTextoSecundario
                                 )
@@ -281,10 +284,10 @@ fun SettingsScreen(
                 if (showIpDialog) {
                     AlertDialog(
                         onDismissRequest = { showIpDialog = false },
-                        title = { Text("Configurar IP del Servidor") },
+                        title = { Text("Servidor de pruebas") },
                         text = {
                             Column {
-                                Text("Introduce la IP local de tu laptop/servidor (ej: 192.168.15.12):", fontSize = 14.sp)
+                                Text("Solo para pruebas: IP de tu computadora con el backend local (ej.: 192.168.1.50 o 10.0.2.2 en el emulador). Déjalo vacío para usar Cloud Run.", fontSize = 14.sp)
                                 Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedTextField(
                                     value = tempIp,
@@ -296,10 +299,10 @@ fun SettingsScreen(
                         },
                         confirmButton = {
                             Button(onClick = {
-                                if (tempIp.isNotBlank()) {
-                                    com.example.upad.data.LocalDataManager.setServerIp(tempIp.trim())
-                                    android.widget.Toast.makeText(context, "IP actualizada: ${tempIp.trim()}", android.widget.Toast.LENGTH_SHORT).show()
-                                }
+                                com.example.upad.data.LocalDataManager.setServerIp(tempIp.trim())
+                                servidorActual = if (tempIp.isBlank()) "Cloud Run (predeterminado)" else com.example.upad.data.LocalDataManager.baseUrl()
+                                val aviso = "Servidor: $servidorActual"
+                                android.widget.Toast.makeText(context, aviso, android.widget.Toast.LENGTH_SHORT).show()
                                 showIpDialog = false
                             }) {
                                 Text("Guardar")
@@ -366,7 +369,7 @@ fun SettingsScreen(
                                 text = { Text(text = nombre, color = colorTextoPrincipal) },
                                 onClick = {
                                     expandedLanguage = false
-                                    val userId = FirebaseAuth.getInstance().currentUser?.uid
+                                    val userId = com.example.upad.data.LocalDataManager.getCurrentUser()?.uid
                                     routineViewModel.changeLanguage(userId, codigo)
                                 }
                             )

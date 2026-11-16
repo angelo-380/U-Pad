@@ -28,21 +28,29 @@ import com.example.upad.R
 import com.example.upad.data.LocalDataManager
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
-// --- 1. LÓGICA DE AUTENTICACIÓN CON GOOGLE Y MODO LOCAL ---
-fun iniciarSesionConGoogle(context: Context, coroutineScope: CoroutineScope, onResultado: (Boolean) -> Unit) {
-    val credentialManager = CredentialManager.create(context)
-    val auth = FirebaseAuth.getInstance()
+// --- 1. INICIO DE SESIÓN CON GOOGLE (validado por nuestro backend) ---
+/** true si la app se compiló con GOOGLE_CLIENT_ID (ID de cliente web, en local.properties). */
+fun googleDisponible(): Boolean = com.example.upad.BuildConfig.GOOGLE_CLIENT_ID.isNotBlank()
 
-    val webClientId = com.example.upad.BuildConfig.GOOGLE_CLIENT_ID
+/**
+ * Pide la cuenta de Google con Credential Manager y envía su token a POST /api/auth/google. Si la cuenta
+ * no existe en U-Pad, se registra como tutor. onResultado(ok, mensajeDeError) llega en el hilo principal.
+ */
+fun iniciarSesionConGoogle(context: Context, coroutineScope: CoroutineScope, onResultado: (Boolean, String?) -> Unit) {
+    if (!googleDisponible()) {
+        onResultado(false, "El inicio de sesión con Google no está configurado en esta versión de la app.")
+        return
+    }
+    val credentialManager = CredentialManager.create(context)
 
     val googleIdOption = GetGoogleIdOption.Builder()
         .setFilterByAuthorizedAccounts(false)
-        .setServerClientId(webClientId)
+        .setServerClientId(com.example.upad.BuildConfig.GOOGLE_CLIENT_ID)
         .setAutoSelectEnabled(true)
         .build()
 
@@ -52,35 +60,23 @@ fun iniciarSesionConGoogle(context: Context, coroutineScope: CoroutineScope, onR
 
     coroutineScope.launch {
         try {
-            val result = credentialManager.getCredential(context = context, request = request)
-            val credential = result.credential
-
-            if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                val idToken = googleIdTokenCredential.idToken
-
-                val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
-                auth.signInWithCredential(firebaseCredential)
-                    .addOnCompleteListener { task ->
-                        if (task.isSuccessful) {
-                            val userEmail = auth.currentUser?.email ?: "google.user@gmail.com"
-                            val userName = auth.currentUser?.displayName ?: "USUARIO GOOGLE"
-                            LocalDataManager.register(userName, userEmail, "google_login")
-                            onResultado(true)
-                        } else {
-                            // Fallback local garantizado
-                            LocalDataManager.login("google.user@gmail.com", "google_login")
-                            onResultado(true)
-                        }
-                    }
-            } else {
-                LocalDataManager.login("google.user@gmail.com", "google_login")
-                onResultado(true)
+            val credential = credentialManager.getCredential(context = context, request = request).credential
+            if (credential !is CustomCredential || credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                onResultado(false, "No se recibió una cuenta de Google válida.")
+                return@launch
             }
+            val idToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
+            val resultado = withContext(Dispatchers.IO) { LocalDataManager.loginWithGoogle(idToken) }
+            if (resultado.isSuccess) {
+                onResultado(true, null)
+            } else {
+                onResultado(false, resultado.exceptionOrNull()?.message ?: "No se pudo iniciar sesión con Google.")
+            }
+        } catch (e: androidx.credentials.exceptions.GetCredentialCancellationException) {
+            onResultado(false, null) // el usuario cerró la ventana de Google
         } catch (e: Exception) {
-            Log.d("GoogleAuth", "Activando inicio de sesión local para demo: ${e.message}")
-            LocalDataManager.login("google.user@gmail.com", "google_login")
-            onResultado(true)
+            Log.w("GoogleAuth", "Fallo al iniciar sesión con Google: ${e.message}")
+            onResultado(false, "No se pudo iniciar sesión con Google.")
         }
     }
 }
@@ -173,37 +169,41 @@ fun WelcomeScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             // --- BOTÓN DE GOOGLE ---
-            OutlinedButton(
-                onClick = {
-                    iniciarSesionConGoogle(context, coroutineScope) { exitoso ->
-                        if (exitoso) {
-                            onLoginExitoso()
+            if (googleDisponible()) {
+                OutlinedButton(
+                    onClick = {
+                        iniciarSesionConGoogle(context, coroutineScope) { exitoso, mensaje ->
+                            if (exitoso) {
+                                onLoginExitoso()
+                            } else if (mensaje != null) {
+                                android.widget.Toast.makeText(context, mensaje, android.widget.Toast.LENGTH_LONG).show()
+                            }
                         }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(65.dp),
-                shape = RoundedCornerShape(20.dp),
-                border = androidx.compose.foundation.BorderStroke(2.dp, colorAzulTEA)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(65.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    border = androidx.compose.foundation.BorderStroke(2.dp, colorAzulTEA)
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_menu_login),
-                        contentDescription = "Google Icon",
-                        tint = Color.Unspecified,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "CONTINUAR CON GOOGLE",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colorAzulTEA
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_menu_login),
+                            contentDescription = "Google Icon",
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "CONTINUAR CON GOOGLE",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colorAzulTEA
+                        )
+                    }
                 }
             }
         }

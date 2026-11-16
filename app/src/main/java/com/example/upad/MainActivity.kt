@@ -27,6 +27,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.upad.ui.theme.UPadTheme
 import androidx.navigation.NavType
@@ -35,10 +37,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
 import com.example.upad.dashboard.HijoTrackingScreen
 import com.example.upad.auth.ForgotPasswordScreen
+import com.example.upad.data.ListenerRegistration
 import com.example.upad.auth.LoginScreen
 import com.example.upad.auth.RegisterScreen
 import com.example.upad.auth.RoleSelectionScreen
@@ -74,7 +75,6 @@ import com.example.upad.components.UPADBottomBar
 import com.example.upad.dashboard.EmotionsTrackScreen
 import com.example.upad.dashboard.HelpTutorialScreen
 import com.example.upad.dashboard.TodayCalendarScreen
-import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : AppCompatActivity() {
 
@@ -82,9 +82,9 @@ class MainActivity : AppCompatActivity() {
     private var pendingLanguage = ""
 
     private var ordenBloqueoPadreActiva by mutableStateOf(false)
-    private val firestore = FirebaseFirestore.getInstance()
     private var kioscoListener: ListenerRegistration? = null
     private var notificationsListener: ListenerRegistration? = null
+    private var escuchasPadreDe: String? = null
     private var parentPremiumListener: ListenerRegistration? = null
     private val listenerStartTime = System.currentTimeMillis()
 
@@ -97,12 +97,14 @@ class MainActivity : AppCompatActivity() {
 
         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
 
-        try {
-            kioscoListener = com.example.upad.data.LocalDataManager.listenChildDevice(deviceId) { dev ->
-                ordenBloqueoPadreActiva = dev?.kioscoActivo ?: false
-            }
-        } catch (e: Exception) {
-            ordenBloqueoPadreActiva = false
+        // Bloqueo kiosco: lo activa el padre en el servidor y este teléfono lo recibe en su consulta de estado (cada 2 s).
+        // El teléfono del padre no consulta su propio estado.
+        val rolInicial = getSharedPreferences("UPadPrefs", Context.MODE_PRIVATE).getString("rol_usuario", null)
+        if (rolInicial != "padre" && rolInicial != "padre_directo" && !deviceId.isNullOrBlank()) {
+            kioscoListener = com.example.upad.data.LocalDataManager.listenChildDevice(deviceId) { }
+        }
+        lifecycleScope.launch {
+            com.example.upad.data.LocalDataManager.kioscoEsteDispositivo.collect { ordenBloqueoPadreActiva = it }
         }
 
         setContent {
@@ -112,12 +114,11 @@ class MainActivity : AppCompatActivity() {
             )
 
             LaunchedEffect(routineViewModel) {
-                val currentUid = FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+                val currentUid = com.example.upad.data.LocalDataManager.getCurrentUserId()
                 val sharedPrefs = getSharedPreferences("UPadPrefs", Context.MODE_PRIVATE)
                 val rol = sharedPrefs.getString("rol_usuario", null)
                 if (rol == "padre" || rol == "padre_directo") {
-                    iniciarEscuchaNotificacionesPadre(currentUid)
-                    iniciarEscuchaPremiumPadre(currentUid, routineViewModel)
+                    asegurarEscuchasPadre(currentUid, routineViewModel)
                 }
             }
 
@@ -147,6 +148,7 @@ class MainActivity : AppCompatActivity() {
                     routineViewModel = routineViewModel,
                     isPremiumListo = isPremiumUser != null,
                     onCambiarEstadoSistema = ::gestionarRestriccionesSistema,
+                    onSesionPadreLista = { uid -> asegurarEscuchasPadre(uid, routineViewModel) },
                     onRouteChanged = { route ->
                         currentRoute = route
                         if (pendingLanguage.isNotEmpty() && esRutaSeguraParaIdioma(route)) {
@@ -259,30 +261,54 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Avisos del niño para el padre (GET /api/v1/notificaciones cada 30 s): la primera consulta solo marca el punto
+     * de partida; después, cada aviso nuevo sin leer se muestra como notificación del sistema.
+     */
+    /** Arranca (una vez por cuenta) la consulta de avisos y la escucha del plan del padre con sesión. */
+    private fun asegurarEscuchasPadre(userId: String, routineViewModel: RoutineViewModel) {
+        if (userId.isEmpty() || userId == com.example.upad.data.LocalDataManager.SIN_SESION) return
+        if (userId == escuchasPadreDe) return
+        escuchasPadreDe = userId
+        iniciarEscuchaNotificacionesPadre(userId)
+        iniciarEscuchaPremiumPadre(userId, routineViewModel)
+    }
+
     private fun iniciarEscuchaNotificacionesPadre(userId: String) {
         notificationsListener?.remove()
-        if (userId.isEmpty() || userId == "PADRE_TEST") return
+        if (userId.isEmpty() || userId == com.example.upad.data.LocalDataManager.SIN_SESION) return
 
-        notificationsListener = firestore.collection("users")
-            .document(userId)
-            .collection("notifications")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) return@addSnapshotListener
-                if (snapshot != null) {
-                    for (dc in snapshot.documentChanges) {
-                        if (dc.type == com.google.firebase.firestore.DocumentChange.Type.ADDED) {
-                            val doc = dc.document
-                            val timestamp = doc.getTimestamp("timestamp")
-                            val tMillis = timestamp?.toDate()?.time ?: 0L
-                            if (tMillis > listenerStartTime - 5000) {
-                                val title = doc.getString("title") ?: "U-Pad Alerta"
-                                val description = doc.getString("description") ?: ""
-                                mostrarNotificacionLocal(title, description)
-                            }
+        val ldm = com.example.upad.data.LocalDataManager
+        var activo = true
+        kotlin.concurrent.thread(isDaemon = true, name = "upad-avisos-padre") {
+            while (activo) {
+                // Marca guardada en el teléfono: avisos ya notificados (sobrevive a cerrar la app).
+                val marca = ldm.getUltimoAvisoNotificado(userId)
+                val avisos = ldm.obtenerAvisos(if (marca > 0L) ldm.fechaIso(marca) else null)
+                if (avisos == null) {
+                    android.util.Log.w("UPadAvisos", "No se pudieron consultar los avisos")
+                } else {
+                    val maxima = avisos.maxOfOrNull { it.creadoEnMs } ?: 0L
+                    if (marca == 0L) {
+                        // Primera vez en este teléfono: no se notifica el historial, solo lo posterior.
+                        ldm.setUltimoAvisoNotificado(userId, maxOf(maxima, 1L))
+                    } else {
+                        val nuevos = avisos.filter { !it.leida && it.creadoEnMs > marca }.sortedBy { it.creadoEnMs }
+                        android.util.Log.d("UPadAvisos", "Avisos recibidos: ${avisos.size}, nuevos sin leer: ${nuevos.size}")
+                        if (nuevos.isNotEmpty()) {
+                            runOnUiThread { nuevos.forEach { mostrarNotificacionLocal(it.titulo, it.descripcion) } }
                         }
+                        if (maxima > marca) ldm.setUltimoAvisoNotificado(userId, maxima)
                     }
                 }
+                try {
+                    Thread.sleep(30_000L)
+                } catch (e: InterruptedException) {
+                    break
+                }
             }
+        }
+        notificationsListener = ListenerRegistration { activo = false }
     }
 
     private fun mostrarNotificacionLocal(title: String, description: String) {
@@ -332,15 +358,10 @@ class MainActivity : AppCompatActivity() {
         parentPremiumListener?.remove()
         if (userId.isEmpty() || userId == "PADRE_TEST") return
 
-        parentPremiumListener = firestore.collection("users")
-            .document(userId)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) return@addSnapshotListener
-                if (snapshot != null && snapshot.exists()) {
-                    val isPremium = snapshot.getBoolean("isPremium") ?: false
-                    routineViewModel.setPremiumUser(isPremium)
-                }
-            }
+        // El plan (premium o básico) se guarda en el teléfono
+        parentPremiumListener = com.example.upad.data.LocalDataManager.listenUserPremium(userId) { isPremium ->
+            routineViewModel.setPremiumUser(isPremium)
+        }
     }
 
     override fun onDestroy() {
@@ -355,14 +376,16 @@ class MainActivity : AppCompatActivity() {
 
 // ── DESTINO INICIAL ──────────────────────────────────────────────────────────
 private fun obtenerDestinoInicial(context: android.content.Context): String {
-    val auth = FirebaseAuth.getInstance()
     val sharedPreferences = context.getSharedPreferences("UPadPrefs", android.content.Context.MODE_PRIVATE)
-    val usuarioLogueado = auth.currentUser != null || com.example.upad.data.LocalDataManager.isLoggedIn()
+    val usuarioLogueado = com.example.upad.data.LocalDataManager.isLoggedIn()
     val rolGuardado = sharedPreferences.getString("rol_usuario", null)
-    return if (usuarioLogueado && !rolGuardado.isNullOrEmpty()) {
-        if (rolGuardado == "padre" || rolGuardado == "padre_directo") "parent_dashboard" else "child_start"
-    } else {
-        "role_selection"
+    val esPadre = rolGuardado == "padre" || rolGuardado == "padre_directo"
+    return when {
+        rolGuardado.isNullOrEmpty() -> "role_selection"
+        // El teléfono del niño no inicia sesión: vuelve directo a su pantalla (código o actividades).
+        !esPadre -> "child_start"
+        usuarioLogueado -> "parent_dashboard"
+        else -> "role_selection"
     }
 }
 
@@ -374,6 +397,7 @@ fun UPadNavigation(
     routineViewModel: RoutineViewModel,
     isPremiumListo: Boolean,
     onCambiarEstadoSistema: (Boolean) -> Unit,
+    onSesionPadreLista: (String) -> Unit,
     onRouteChanged: (String) -> Unit
 ) {
     val navController = rememberNavController()
@@ -386,6 +410,17 @@ fun UPadNavigation(
     val estaEnSeccionNiño = rutaActual.startsWith("child_")
 
     LaunchedEffect(rutaActual) { onRouteChanged(rutaActual) }
+
+    // Si el servidor rechaza el token (cuenta borrada o desactivada, sesión vencida), se vuelve a la bienvenida.
+    // El teléfono del niño no usa sesión, así que no se le saca de su pantalla.
+    val sesionCaducada by com.example.upad.data.LocalDataManager.sesionCaducada.collectAsState()
+    val contextoSesion = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(sesionCaducada) {
+        if (sesionCaducada && !estaEnSeccionNiño && rutaActual.isNotEmpty() && rutaActual != "sincronizando") {
+            android.widget.Toast.makeText(contextoSesion, "Tu sesión terminó. Vuelve a iniciar sesión.", android.widget.Toast.LENGTH_LONG).show()
+            navController.navigate("welcome") { popUpTo(0) { inclusive = true } }
+        }
+    }
 
     LaunchedEffect(bloqueoActivo, estaEnSeccionNiño) {
         if (bloqueoActivo && estaEnSeccionNiño) onCambiarEstadoSistema(true)
@@ -473,8 +508,9 @@ fun UPadNavigation(
                 composable("login") {
                     LoginScreen(
                         onLoginClick = { _, _ ->
+                            // Con sesión iniciada, «atrás» no debe volver a la bienvenida ni al login.
                             navController.navigate("parent_dashboard") {
-                                popUpTo("login") { inclusive = true }
+                                popUpTo(navController.graph.id) { inclusive = true }
                             }
                         },
                         onForgotPasswordClick = { navController.navigate("forgot_password") },
@@ -548,7 +584,7 @@ fun UPadNavigation(
                     PaymentViewScreen(
                         routineViewModel = routineViewModel,
                         onPaymentConfirmed = {
-                            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+                            val uid = com.example.upad.data.LocalDataManager.getCurrentUserId()
                             routineViewModel.setSuscripcionManual(true, uid)
                             navController.navigate("parent_dashboard") {
                                 popUpTo("parent_dashboard") { inclusive = true }
@@ -560,8 +596,10 @@ fun UPadNavigation(
                 // ── DASHBOARD PADRE ──────────────────────────────────────────
                 composable("parent_dashboard") {
                     LaunchedEffect(Unit) {
-                        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+                        val uid = com.example.upad.data.LocalDataManager.getCurrentUserId()
                         routineViewModel.cargarRutinasDesdeFirebase(uid)
+                        // Tras iniciar sesión (sin reiniciar la app) también deben arrancar los avisos y el plan.
+                        onSesionPadreLista(uid)
                     }
                     RoutineDashboardScreen(
                         routineViewModel = routineViewModel,
@@ -717,7 +755,7 @@ fun UPadNavigation(
                     }
 
                     LaunchedEffect(turnoNormalizado, diaNormalizado) {
-                        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+                        val uid = com.example.upad.data.LocalDataManager.getCurrentUserId()
                         routineViewModel.cargarRutinasPorDia(uid, diaNormalizado)
                     }
 
@@ -735,7 +773,7 @@ fun UPadNavigation(
                         onNavigateToPictogramSearch = { navController.navigate("pictogram_selection/$turnoNormalizado/$diaNormalizado") },
                         onRemoveTaskClick = { index -> routineViewModel.removeTask(turnoNormalizado, index) },
                         onSendRoutine = {
-                            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+                            val uid = com.example.upad.data.LocalDataManager.getCurrentUserId()
                             routineViewModel.saveAll(uid, turnoNormalizado)
                             navController.navigate("parent_dashboard")
                         },
@@ -769,7 +807,7 @@ fun UPadNavigation(
                         viewModel = routineViewModel,
                         onBackClick = { navController.popBackStack() },
                         onPictogramSelected = { description, url ->
-                            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+                            val uid = com.example.upad.data.LocalDataManager.getCurrentUserId()
                             routineViewModel.addTaskConDia(turnoNormalizado, description, url, diaNormalizado, uid)
                             navController.popBackStack()
                         }
@@ -818,7 +856,7 @@ fun UPadNavigation(
                         activityName = activityName,
                         onFeedbackSelected = { emocion ->
                             val idPadre = padreIdDelHijo.ifEmpty {
-                                FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+                                com.example.upad.data.LocalDataManager.getCurrentUserId()
                             }
                             val horaActual = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
                             val turnoActual = when {
@@ -863,7 +901,7 @@ fun UPadNavigation(
 
                 composable("activity_details") {
                     LaunchedEffect(Unit) {
-                        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId()
+                        val uid = com.example.upad.data.LocalDataManager.getCurrentUserId()
                         routineViewModel.cargarRutinasDesdeFirebase(uid)
                     }
                     ActivityDetailsScreen(

@@ -1,6 +1,9 @@
 package com.example.upad.dashboard
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -28,8 +31,6 @@ import coil.request.ImageRequest
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 data class NotificationItem(
     val id: String = "",
@@ -43,9 +44,9 @@ enum class NotificationType {
     SUCCESS, WARNING, INFO
 }
 
-fun formatRelativeTime(timestamp: com.google.firebase.Timestamp?): String {
-    if (timestamp == null) return "Hace un momento"
-    val diff = System.currentTimeMillis() - timestamp.toDate().time
+fun formatRelativeTime(timestampMs: Long?): String {
+    if (timestampMs == null || timestampMs <= 0L) return "Hace un momento"
+    val diff = (System.currentTimeMillis() - timestampMs).coerceAtLeast(0L)
     val seconds = diff / 1000
     val minutes = seconds / 60
     val hours = minutes / 60
@@ -71,7 +72,6 @@ fun NotificationsScreen(
 
     // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
     val context = LocalContext.current
-    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -79,7 +79,6 @@ fun NotificationsScreen(
         val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
         imageUri = when {
             saved != null -> Uri.parse(saved)
-            currentUser?.photoUrl != null -> currentUser.photoUrl
             else -> null
         }
     }
@@ -100,51 +99,31 @@ fun NotificationsScreen(
         if (isDarkMode) Color(0xFF1E1E1E) else Color.White
     }
 
-    val padreId = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
-    val firestore = remember { FirebaseFirestore.getInstance() }
+    val padreId = remember { com.example.upad.data.LocalDataManager.getCurrentUserId() }
     val notificationsList = remember { mutableStateListOf<NotificationItem>() }
     var loadingNotifications by remember { mutableStateOf(true) }
 
+    // Avisos que envía el teléfono del niño (servidor), consultados al abrir y cada 30 s; al verlos se marcan como leídos
     LaunchedEffect(padreId) {
-        if (padreId.isNotEmpty()) {
-            firestore.collection("users")
-                .document(padreId)
-                .collection("notifications")
-                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                .addSnapshotListener { snapshot, error ->
-                    loadingNotifications = false
-                    if (error != null) {
-                        error.printStackTrace()
-                        return@addSnapshotListener
-                    }
-                    if (snapshot != null) {
-                        notificationsList.clear()
-                        for (doc in snapshot.documents) {
-                            val title = doc.getString("title") ?: ""
-                            val description = doc.getString("description") ?: ""
-                            val typeStr = doc.getString("type") ?: "INFO"
-                            val type = try {
-                                NotificationType.valueOf(typeStr.uppercase())
-                            } catch (e: Exception) {
-                                NotificationType.INFO
-                            }
-                            val timestamp = doc.getTimestamp("timestamp")
-                            val relativeTime = formatRelativeTime(timestamp)
-
-                            notificationsList.add(
-                                NotificationItem(
-                                    id = doc.id,
-                                    title = title,
-                                    description = description,
-                                    time = relativeTime,
-                                    type = type
-                                )
-                            )
-                        }
-                    }
-                }
-        } else {
+        while (true) {
+            val avisos = withContext(Dispatchers.IO) { com.example.upad.data.LocalDataManager.obtenerAvisos() }
             loadingNotifications = false
+            if (avisos != null) {
+                notificationsList.clear()
+                avisos.forEach { aviso ->
+                    notificationsList.add(
+                        NotificationItem(
+                            id = aviso.id,
+                            title = aviso.titulo,
+                            description = listOfNotNull(aviso.nombreHijo, aviso.descripcion.takeIf { it.isNotBlank() }).joinToString(" · "),
+                            time = formatRelativeTime(aviso.creadoEnMs),
+                            type = if (aviso.tipo == com.example.upad.data.LocalDataManager.AVISO_RUTINA_COMPLETADA) NotificationType.SUCCESS else NotificationType.INFO
+                        )
+                    )
+                }
+                if (avisos.any { !it.leida }) com.example.upad.data.LocalDataManager.marcarAvisosLeidos()
+            }
+            delay(30_000L)
         }
     }
 

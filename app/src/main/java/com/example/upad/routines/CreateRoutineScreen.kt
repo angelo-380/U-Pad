@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upad.viewmodel.TaskItem
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -82,7 +81,7 @@ fun CreateRoutineScreen(
     }
 
     val currentUserId = remember {
-        FirebaseAuth.getInstance().currentUser?.uid ?: "PADRE_TEST"
+        com.example.upad.data.LocalDataManager.getCurrentUserId()
     }
 
     var routineName by remember(routineTurn) { mutableStateOf("Rutina de la $routineTurn") }

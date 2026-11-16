@@ -2,7 +2,6 @@ package com.example.upad.data
 
 import android.net.Uri
 import com.example.upad.viewmodel.TaskItem
-import com.google.firebase.firestore.ListenerRegistration
 
 class FirebaseRepository {
 

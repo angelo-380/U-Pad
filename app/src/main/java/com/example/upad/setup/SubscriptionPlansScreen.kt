@@ -20,8 +20,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import com.example.upad.R
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
 fun SubscriptionPlansScreen(
@@ -34,21 +32,11 @@ fun SubscriptionPlansScreen(
     val colorAmarilloTEA = Color(0xFFFFD54F)
     val colorFondoBase = Color(0xFFF0F4F8)
 
-    val auth = remember { FirebaseAuth.getInstance() }
-    val firestore = remember { FirebaseFirestore.getInstance() }
     var selectedPlan by remember { mutableStateOf("premium") }
 
+    // Plan básico: se guarda en el teléfono (el plan no se gestiona en el servidor)
     val guardarPlanBasicoEnFirebase = {
-        val uid = auth.currentUser?.uid
-        if (uid != null) {
-            val datosPlan = hashMapOf(
-                "planSuscripcion" to "basico",
-                "estadoSuscripcion" to "Gratuito",
-                "fechaSeleccionPlan" to com.google.firebase.Timestamp.now()
-            )
-            firestore.collection("usuarios").document(uid)
-                .set(datosPlan, com.google.firebase.firestore.SetOptions.merge())
-        }
+        com.example.upad.data.LocalDataManager.setPremiumStatus(com.example.upad.data.LocalDataManager.getCurrentUserId(), false)
     }
 
     Column(

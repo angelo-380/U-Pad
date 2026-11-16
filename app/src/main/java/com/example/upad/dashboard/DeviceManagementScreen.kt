@@ -27,8 +27,6 @@ import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.dashboard.components.UpadTopAppBar
 import com.example.upad.utils.BiometricHelper
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 // Usamos un modelo consistente con los datos reales guardados en Firebase
 data class DispositivoNiño(
@@ -50,7 +48,6 @@ fun DeviceManagementScreen(
 
     // --- NUEVOS ESTADOS Y CONFIGURACIÓN REQUERIDA ---
     val context = LocalContext.current
-    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
     val sharedPreferences = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -58,7 +55,6 @@ fun DeviceManagementScreen(
         val saved = sharedPreferences.getString("PROFILE_IMAGE_URI", null)
         imageUri = when {
             saved != null -> Uri.parse(saved)
-            currentUser?.photoUrl != null -> currentUser.photoUrl
             else -> null
         }
     }
@@ -87,13 +83,12 @@ fun DeviceManagementScreen(
     var cargando by remember { mutableStateOf(true) }
     var dispositivoAEliminar by remember { mutableStateOf<DispositivoNiño?>(null) }
 
-    val firestore = remember { FirebaseFirestore.getInstance() }
-    val idPadre = remember { FirebaseAuth.getInstance().currentUser?.uid ?: com.example.upad.data.LocalDataManager.getCurrentUserId() }
+    val idPadre = remember { com.example.upad.data.LocalDataManager.getCurrentUserId() }
 
     // 📡 ESCUCHA EN ESPEJO
     DisposableEffect(idPadre) {
         val listener = com.example.upad.data.LocalDataManager.listenParentDevices(idPadre) { devs ->
-            listaDispositivos = devs.map { DispositivoNiño(it.deviceId, it.modelo, it.kioscoActivo) }
+            listaDispositivos = devs.map { DispositivoNiño(it.deviceId, it.nombre ?: it.modelo, it.kioscoActivo) }
             cargando = false
         }
 

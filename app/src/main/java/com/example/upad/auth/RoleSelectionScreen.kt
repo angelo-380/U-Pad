@@ -29,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upad.R
 import com.example.upad.utils.BiometricHelper
-import com.google.firebase.auth.FirebaseAuth
 
 @Composable
 fun RoleSelectionScreen(
@@ -41,7 +40,7 @@ fun RoleSelectionScreen(
 
     val context = LocalContext.current
     val activity = context as? androidx.fragment.app.FragmentActivity
-    val usuarioFirebase = remember { FirebaseAuth.getInstance().currentUser }
+    val haySesion = remember { com.example.upad.data.LocalDataManager.isLoggedIn() }
 
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -107,7 +106,7 @@ fun RoleSelectionScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val cardModifier = Modifier.width(240.dp).aspectRatio(1.1f)
-                        TutorCard(cardModifier, usuarioFirebase, activity, context, colorMoradoTutor, onRoleSelected)
+                        TutorCard(cardModifier, haySesion, activity, context, colorMoradoTutor, onRoleSelected)
                         MenorCard(cardModifier, colorAzulTEA, onRoleSelected)
                     }
                 } else {
@@ -116,7 +115,7 @@ fun RoleSelectionScreen(
                         horizontalArrangement = Arrangement.spacedBy(20.dp), // Tus 20.dp originales
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TutorCard(Modifier.weight(1f).aspectRatio(0.8f), usuarioFirebase, activity, context, colorMoradoTutor, onRoleSelected) // Tu aspect ratio original de 0.8f
+                        TutorCard(Modifier.weight(1f).aspectRatio(0.8f), haySesion, activity, context, colorMoradoTutor, onRoleSelected) // Tu aspect ratio original de 0.8f
                         MenorCard(Modifier.weight(1f).aspectRatio(0.8f), colorAzulTEA, onRoleSelected)
                     }
                 }
@@ -144,7 +143,7 @@ fun RoleSelectionScreen(
 @Composable
 private fun TutorCard(
     modifier: Modifier,
-    usuarioFirebase: com.google.firebase.auth.FirebaseUser?,
+    haySesion: Boolean,
     activity: androidx.fragment.app.FragmentActivity?,
     context: android.content.Context,
     colorMoradoTutor: Color,
@@ -156,7 +155,7 @@ private fun TutorCard(
         imageRes = R.drawable.tutor,
         colorTheme = colorMoradoTutor,
         onClick = {
-            if (usuarioFirebase != null || com.example.upad.data.LocalDataManager.isLoggedIn()) {
+            if (haySesion || com.example.upad.data.LocalDataManager.isLoggedIn()) {
                 if (activity != null && BiometricHelper.esBiometriaDisponible(context)) {
                     BiometricHelper.lanzarLectorHuella(
                         activity = activity,

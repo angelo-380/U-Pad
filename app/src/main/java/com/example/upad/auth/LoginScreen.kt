@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.sp
 import com.example.upad.data.LocalDataManager
 import com.example.upad.utils.PasswordValidator
 import com.example.upad.utils.rememberDebouncedClick
-import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
 @Composable

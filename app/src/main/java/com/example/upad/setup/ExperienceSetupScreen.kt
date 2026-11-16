@@ -24,8 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.upad.components.UPADBackgroundWrapper
 import com.example.upad.viewmodel.RoutineViewModel
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,8 +35,6 @@ fun ExperienceSetupScreen(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val prefs = remember { context.getSharedPreferences("UPAD_PREFS", Context.MODE_PRIVATE) }
-    val firestore = remember { FirebaseFirestore.getInstance() }
-    val auth = remember { FirebaseAuth.getInstance() }
 
     val pantallaPequeña = configuration.screenHeightDp < 650
 
@@ -273,18 +269,6 @@ fun ExperienceSetupScreen(
                                 putFloat("AUDIO_VOLUME", audioVolume)
                                 putBoolean("VOICE_ENABLED", voiceEnabled)
                                 apply()
-                            }
-
-                            val uid = auth.currentUser?.uid
-                            if (uid != null) {
-                                val configuracionExperiencia = mapOf(
-                                    "temaSeleccionado" to selectedTheme,
-                                    "volumenAudio" to audioVolume.toDouble(),
-                                    "vozHabilitada" to voiceEnabled
-                                )
-                                firestore.collection("usuarios").document(uid)
-                                    .collection("configuracion").document("experiencia")
-                                    .set(configuracionExperiencia, com.google.firebase.firestore.SetOptions.merge())
                             }
 
                             onNextClick()

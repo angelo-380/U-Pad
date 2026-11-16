@@ -19,12 +19,9 @@ import com.example.upad.MainActivity
 import com.example.upad.R
 import com.example.upad.utils.RoutineProgressCalculator
 import com.example.upad.viewmodel.TaskItem
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 class PremiumProgressWidgetProvider : AppWidgetProvider() {
 
@@ -130,24 +127,20 @@ class PremiumProgressWidgetProvider : AppWidgetProvider() {
             val tiempoActual = System.currentTimeMillis()
             if (forzarActualizacion || (tiempoActual - ultimoFetch > 5 * 60 * 1000)) {
                 CoroutineScope(Dispatchers.IO).launch {
-                    val firebaseAuth = FirebaseAuth.getInstance()
-                    val currentUser = firebaseAuth.currentUser
-                    if (currentUser != null) {
-                        val userId = currentUser.uid
+                    if (com.example.upad.data.LocalDataManager.isLoggedIn()) {
+                        val userId = com.example.upad.data.LocalDataManager.getCurrentUserId()
                         try {
-                            val db = FirebaseFirestore.getInstance()
 
-                            // Consultar plan del usuario para validar premium
-                            val userDoc = db.collection("users").document(userId).get().await()
-                            val esPremiumReal = userDoc.getBoolean("isPremium") ?: false
+                            // Plan del usuario (se guarda en el teléfono)
+                            val esPremiumReal = com.example.upad.data.LocalDataManager.getCurrentUser()?.isPremium ?: false
 
                             val diaDeHoy = RoutineProgressCalculator.obtenerDiaDeHoy()
                             val prefijoDia = RoutineProgressCalculator.obtenerPrefijoDia(diaDeHoy)
 
                             // Consultar tareas de los tres turnos
-                            val mananaTareas = obtenerTareasDeTurno(db, userId, "MAÑANA")
-                            val tardeTareas = obtenerTareasDeTurno(db, userId, "TARDE")
-                            val nocheTareas = obtenerTareasDeTurno(db, userId, "NOCHE")
+                            val mananaTareas = obtenerTareasDeTurno(userId, "MAÑANA")
+                            val tardeTareas = obtenerTareasDeTurno(userId, "TARDE")
+                            val nocheTareas = obtenerTareasDeTurno(userId, "NOCHE")
 
                             // Calcular porcentajes individuales para el widget de barras
                             val progManana = calcularPorcentaje(mananaTareas, prefijoDia)
@@ -183,57 +176,17 @@ class PremiumProgressWidgetProvider : AppWidgetProvider() {
                             ParentRoutineWidgetProvider.notificarCambioDatos(context)
                             notificarCambioDatos(context)
                         } catch (e: Exception) {
-                            Log.e("PremiumWidgetProvider", "Error cargando rutinas desde Firestore", e)
+                            Log.e("PremiumWidgetProvider", "Error cargando las rutinas", e)
                         }
                     }
                 }
             }
         }
 
-        private suspend fun obtenerTareasDeTurno(db: FirebaseFirestore, userId: String, turn: String): List<TaskItem> {
+        private fun obtenerTareasDeTurno(userId: String, turn: String): List<TaskItem> {
+            // Rutinas guardadas en el teléfono (sincronizadas con el servidor por LocalDataManager)
             val diaDeHoy = RoutineProgressCalculator.obtenerDiaDeHoy()
-            val document = db.collection("routines")
-                .document(userId)
-                .collection("turns")
-                .document(turn.uppercase())
-                .collection("days")
-                .document(diaDeHoy)
-                .get()
-                .await()
-
-            val tareas = mutableListOf<TaskItem>()
-            if (document.exists()) {
-                val tasksList = document.get("tasks") as? List<*> ?: emptyList<Any>()
-                for (taskItem in tasksList) {
-                    if (taskItem is Map<*, *>) {
-                        try {
-                            val actividad = taskItem["actividad"] as? String ?: ""
-                            val palabraClave = taskItem["palabraClave"] as? String ?: ""
-                            val imageUrl = taskItem["imageUrl"] as? String ?: ""
-                            val rawDias = taskItem["dias"] as? List<*> ?: emptyList<Any>()
-                            val dias = rawDias.mapNotNull { it?.toString() }
-                            val durationNum = taskItem["duration"] as? Number ?: 15
-                            val rawEstados = taskItem["estadosPorDia"] as? Map<*, *> ?: emptyMap<Any, Any>()
-                            val estadosPorDia = rawEstados.entries.associate {
-                                it.key.toString() to (it.value as? Boolean ?: false)
-                            }
-                            tareas.add(
-                                TaskItem(
-                                    actividad = actividad,
-                                    palabraClave = palabraClave,
-                                    imageUrl = imageUrl,
-                                    dias = dias,
-                                    duration = durationNum.toInt(),
-                                    estadosPorDia = estadosPorDia,
-                                )
-                            )
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-            }
-            return tareas
+            return com.example.upad.data.LocalDataManager.getRoutinePorDia(userId, turn, diaDeHoy)
         }
 
         private fun calcularPorcentaje(tareas: List<TaskItem>, prefijoDia: String): Int {
