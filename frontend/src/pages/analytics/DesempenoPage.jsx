@@ -9,10 +9,11 @@ import {
   RefreshCw,
   CalendarCheck,
   ListChecks,
-  ClipboardList,
   BarChart3,
 } from 'lucide-react';
 import { rutinasService } from '../../services/rutinasService.js';
+import { cumplimientoService } from '../../services/cumplimientoService.js';
+import { CumplimientoResumen } from '../../components/common/CumplimientoResumen.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 
@@ -31,8 +32,8 @@ const contarPasos = (rutina) => (Array.isArray(rutina?.pasos) ? rutina.pasos.len
 
 /**
  * Análisis de desempeño: SOLO datos reales.
- * El backend aún no recibe registros de rutinas completadas (la app Android los guarda solo en el
- * dispositivo), así que el cumplimiento se muestra como estado vacío en lugar de cifras inventadas.
+ * El cumplimiento sale de las actividades que el niño completa en su teléfono (GET /api/cumplimiento);
+ * sin registros se muestra un estado vacío en lugar de cifras inventadas.
  */
 export const DesempenoPage = () => {
   const { user } = useAuth();
@@ -41,6 +42,8 @@ export const DesempenoPage = () => {
   const [rutinas, setRutinas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [cumplimiento, setCumplimiento] = useState(null);
+  const [errorCumplimiento, setErrorCumplimiento] = useState(null);
 
   // Roles que tienen el módulo de Rutinas en su menú
   const puedeIrARutinas = user?.rol === 'tutor' || user?.rol === 'developer';
@@ -49,7 +52,17 @@ export const DesempenoPage = () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await rutinasService.listar();
+      cumplimientoService
+        .obtener({ dias: 7 })
+        .then((datos) => {
+          setCumplimiento(datos);
+          setErrorCumplimiento(null);
+        })
+        .catch((e) => {
+          console.warn('Error cargando cumplimiento:', e);
+          setErrorCumplimiento(e);
+        });
+      const res = await rutinasService.listar({ limit: 100 });
       setRutinas(Array.isArray(res) ? res : res?.rutinas || []);
     } catch (e) {
       console.warn('Error cargando rutinas para desempeño:', e);
@@ -206,17 +219,13 @@ export const DesempenoPage = () => {
         </>
       )}
 
-      {/* Cumplimiento: aún no hay registros en el backend, no se inventan cifras */}
+      {/* Cumplimiento real: actividades completadas en el teléfono del niño */}
       <div className="bg-white rounded-3xl p-6 border border-tea-border shadow-soft-xs space-y-4">
         <h2 className="text-base font-extrabold text-tea-text flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-amber-600" />
           {t('perf_compliance_title')}
         </h2>
-        <div className="flex flex-col items-center justify-center text-center gap-2 py-8 px-4 rounded-2xl border border-dashed border-tea-border bg-slate-50">
-          <ClipboardList className="w-8 h-8 text-tea-subtle" />
-          <p className="text-sm font-bold text-tea-text">{t('compliance_empty_title')}</p>
-          <p className="text-xs text-tea-muted max-w-sm">{t('compliance_empty_desc')}</p>
-        </div>
+        <CumplimientoResumen datos={cumplimiento} loading={loading} error={errorCumplimiento} />
       </div>
     </div>
   );

@@ -10,12 +10,13 @@ import {
   KeyRound,
   Copy,
   Check,
-  ClipboardList,
   HeartHandshake,
   ChevronRight,
   X,
 } from 'lucide-react';
 import { adminService } from '../../services/adminService.js';
+import { cumplimientoService } from '../../services/cumplimientoService.js';
+import { CumplimientoResumen } from '../../components/common/CumplimientoResumen.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 
 // Estado vacío: sin cifras inventadas. Mientras no haya datos reales todo se muestra en cero.
@@ -39,10 +40,23 @@ export const GerencialKpiPage = () => {
   const [error, setError] = useState(null);
   const [codigoCopiado, setCodigoCopiado] = useState(false);
   const [tutoresOpen, setTutoresOpen] = useState(false);
+  const [cumplimiento, setCumplimiento] = useState(null);
+  const [errorCumplimiento, setErrorCumplimiento] = useState(null);
 
   const fetchKpis = async () => {
     setLoading(true);
     setError(null);
+    // Cumplimiento real de la organización (en paralelo; si falla, solo esa tarjeta muestra el error)
+    cumplimientoService
+      .obtener({ dias: 7 })
+      .then((datos) => {
+        setCumplimiento(datos);
+        setErrorCumplimiento(null);
+      })
+      .catch((e) => {
+        console.warn('Error cargando cumplimiento:', e);
+        setErrorCumplimiento(e);
+      });
     try {
       const res = await adminService.obtenerKpisEmpresario();
       setData(res);
@@ -276,17 +290,13 @@ export const GerencialKpiPage = () => {
           </div>
         </div>
 
-        {/* Adherencia semanal: aún no hay registros de cumplimiento en el backend, no se inventan cifras */}
+        {/* Adherencia semanal real: actividades completadas en los teléfonos de los niños de la organización */}
         <div className="bg-white rounded-3xl p-6 border border-tea-border shadow-soft-xs space-y-4">
           <h3 className="text-base font-extrabold text-tea-text flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-indigo-600" />
             {t('gerencial_adherence_title')}
           </h3>
-          <div className="flex flex-col items-center justify-center text-center gap-2 py-8 px-4 rounded-2xl border border-dashed border-tea-border bg-slate-50">
-            <ClipboardList className="w-8 h-8 text-tea-subtle" />
-            <p className="text-sm font-bold text-tea-text">{t('compliance_empty_title')}</p>
-            <p className="text-xs text-tea-muted max-w-sm">{t('compliance_empty_desc')}</p>
-          </div>
+          <CumplimientoResumen datos={cumplimiento} loading={loading} error={errorCumplimiento} />
         </div>
       </div>
 
