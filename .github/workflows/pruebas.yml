@@ -1,0 +1,71 @@
+# Pruebas automáticas del backend en cada push y pull request:
+#   1. Jest + Supertest (npm test).
+#   2. Pasada corta de k6 (npm run carga:humo) contra un backend levantado aquí mismo.
+# No toca producción ni usa secretos reales: JWT_SECRET y el pepper se generan al azar en cada ejecución
+# y la base es un archivo temporal. Las pruebas de k6 crean y borran su propia cuenta temporal.
+name: Pruebas del backend
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/pruebas.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/pruebas.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Tests (Jest)
+        run: npm test
+
+      - name: Generar secretos de prueba (aleatorios, solo para este job)
+        run: |
+          for nombre in JWT_SECRET GCP_KMS_PEPPER_SECRET; do
+            valor="$(openssl rand -hex 32)"
+            echo "::add-mask::$valor"
+            echo "$nombre=$valor" >> "$GITHUB_ENV"
+          done
+
+      - name: Levantar el backend
+        env:
+          DB_PATH: ${{ runner.temp }}/upad_ci.db
+          PORT: '3000'
+        run: |
+          nohup npm start > "$RUNNER_TEMP/servidor.log" 2>&1 &
+          curl -sf --retry 30 --retry-connrefused --retry-delay 1 http://localhost:3000/health
+
+      - uses: grafana/setup-k6-action@v1
+
+      - name: Pruebas de carga (k6, pasada corta)
+        run: npm run carga:humo
+
+      - name: Registro del backend (si algo falló)
+        if: failure()
+        run: cat "$RUNNER_TEMP/servidor.log" || true
