@@ -194,7 +194,7 @@ export function inicializarEsquema(conexion) {
     parent_id VARCHAR(64),
     child_name VARCHAR(128),
     device_model VARCHAR(128) NOT NULL DEFAULT '',
-    is_kiosk_active INTEGER NOT NULL DEFAULT 1,
+    is_kiosk_active INTEGER NOT NULL DEFAULT 0,
     last_latitude REAL,
     last_longitude REAL,
     ubicacion_actualizada_en TEXT,
@@ -224,6 +224,19 @@ export function inicializarEsquema(conexion) {
     creadoEn TEXT NOT NULL
   );
 
+  -- Avisos del teléfono del niño para su padre (p. ej. «completó la rutina»). El padre lo decide el servidor.
+  CREATE TABLE IF NOT EXISTS notificaciones (
+    id TEXT PRIMARY KEY,
+    padreId TEXT NOT NULL,
+    deviceId TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    titulo TEXT NOT NULL,
+    descripcion TEXT NOT NULL DEFAULT '',
+    creadoEn TEXT NOT NULL,
+    leida INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_notificaciones_padre ON notificaciones(padreId, creadoEn);
   CREATE INDEX IF NOT EXISTS idx_usuarios_organizacion ON usuarios(organizacionId);
   CREATE INDEX IF NOT EXISTS idx_rutinas_organizacion ON rutinas(organizacionId);
 `);
@@ -378,6 +391,26 @@ export function migrarOrganizaciones(conexion, consola = console) {
 }
 
 /**
+ * Migración única (PRAGMA user_version 1 → 2): el bloqueo del kiosco pasa a controlarse desde la app del padre
+ * (PUT /api/devices/:id/kiosk). Antes la columna valía 1 por defecto y nadie la usaba; se pone en 0 para que
+ * ningún niño quede bloqueado sin que su padre lo active. Devuelve las filas cambiadas, o null si ya estaba aplicada.
+ */
+export function migrarKioscoDesactivado(conexion) {
+  const { user_version: version } = conexion.prepare('PRAGMA user_version').get();
+  if (version >= 2) return null;
+  conexion.exec('BEGIN');
+  try {
+    const cambiadas = Number(conexion.prepare('UPDATE child_devices SET is_kiosk_active = 0 WHERE is_kiosk_active <> 0').run().changes);
+    conexion.exec('PRAGMA user_version = 2');
+    conexion.exec('COMMIT');
+    return cambiadas;
+  } catch (error) {
+    conexion.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
  * Crea la primera cuenta developer SOLO si la tabla usuarios está vacía,
  * leyendo DEV_EMAIL, DEV_PASSWORD y DEV_NAME del entorno.
  * - Si ya existen usuarios: no hace nada.
@@ -428,6 +461,7 @@ export function crearDeveloperInicial(conexion, entorno = process.env, consola =
 
 migrarRolAdmin(db);
 migrarOrganizaciones(db);
+migrarKioscoDesactivado(db);
 crearDeveloperInicial(db);
 
 

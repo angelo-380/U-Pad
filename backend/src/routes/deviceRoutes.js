@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { deviceController } from '../controllers/deviceController.js';
 import { deviceService } from '../services/deviceService.js';
+import { notificacionesService } from '../services/notificacionesService.js';
+import { sendCreated, sendSuccess } from '../utils/responseHandler.js';
 import { authenticate } from '../middlewares/authMiddleware.js';
 import { crearLimiteIntentos } from '../middlewares/limiteIntentos.js';
 import { compatibilidadMovilActiva } from '../utils/compatMovil.js';
@@ -14,6 +16,7 @@ export const LIMITES_DISPOSITIVOS = Object.freeze({
   PAIRING_POR_IP: 30,
   TELEMETRIA_POR_DISPOSITIVO: 30,
   ESTADO_POR_DISPOSITIVO: 120,
+  NOTIFICACIONES_POR_DISPOSITIVO: 30,
 });
 
 export const limitePairingLink = crearLimiteIntentos({
@@ -50,6 +53,15 @@ export const limiteEstadoDispositivo = crearLimiteIntentos({
   claves: (req) => [`estado:${req.params.deviceId}`],
   codigo: 'ESTADO_RATE_LIMIT',
   mensaje: 'Demasiadas consultas de estado para este dispositivo. Espera un minuto.',
+});
+
+// Avisos del niño a su padre: 30 por minuto por dispositivo
+export const limiteNotificaciones = crearLimiteIntentos({
+  ventanaMs: 60_000,
+  maximo: LIMITES_DISPOSITIVOS.NOTIFICACIONES_POR_DISPOSITIVO,
+  claves: (req) => [`aviso:${req.params.deviceId}`],
+  codigo: 'NOTIFICACION_RATE_LIMIT',
+  mensaje: 'Demasiados avisos para este dispositivo. Espera un minuto.',
 });
 
 // reiniciar() de ambos límites de vinculación (lo usan los tests)
@@ -129,10 +141,30 @@ router.post('/:deviceId/telemetry', validarDeviceId, limiteTelemetria, deviceCon
 // Estado de vinculación para la app del niño (sin token): detecta una desvinculación hecha desde la web
 router.get('/status/:deviceId', validarDeviceId, limiteEstadoDispositivo, deviceController.estado);
 
+// Aviso del teléfono del niño para su padre (sin token; solo dispositivos vinculados; el padre lo decide el servidor)
+router.post('/:deviceId/notificaciones', validarDeviceId, limiteNotificaciones, (req, res, next) => {
+  try {
+    const aviso = notificacionesService.crear(req.params.deviceId, req.body || {});
+    return sendCreated(res, 'Aviso enviado', aviso);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // Todos los demás endpoints de gestión requieren usuario autenticado
 router.use(authenticate);
 
 router.get('/', deviceController.listar);
 router.put('/:deviceId/zona-segura', deviceController.zonaSegura);
+
+// Bloqueo kiosco del hijo (solo su dueño, con token)
+router.put('/:deviceId/kiosk', validarDeviceId, (req, res, next) => {
+  try {
+    const resultado = deviceService.cambiarKiosco(req.params.deviceId, req.user.id, req.body?.activo);
+    return sendSuccess(res, 200, resultado.kioscoActivo ? 'Bloqueo kiosco activado' : 'Bloqueo kiosco retirado', resultado);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 export default router;

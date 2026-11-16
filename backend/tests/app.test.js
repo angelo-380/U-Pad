@@ -10,7 +10,8 @@ import request from 'supertest';
 import app from '../src/app.js';
 import { signToken } from '../src/utils/jwt.js';
 import { secretosFaltantes, SECRETOS_OBLIGATORIOS } from '../src/config/secretos.js';
-import { limitePairingLink, limiteTelemetria, limiteEstadoDispositivo, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
+import { limitePairingLink, limiteTelemetria, limiteEstadoDispositivo, limiteNotificaciones, LIMITES_DISPOSITIVOS } from '../src/routes/deviceRoutes.js';
+import { TIPOS_NOTIFICACION, MAX_LISTADO, DIAS_RETENCION } from '../src/services/notificacionesService.js';
 import { establecerVerificadorGoogle } from '../src/utils/googleVerifier.js';
 import { descripcionPersistencia } from '../src/config/persistencia.js';
 import { crearAlmacenGcs, crearAlmacenLocal, establecerAlmacenBackups } from '../src/services/almacenBackups.js';
@@ -23,6 +24,7 @@ import {
   crearDeveloperInicial,
   migrarRolAdmin,
   migrarOrganizaciones,
+  migrarKioscoDesactivado,
   asegurarColumnasChildDevices,
   verifyPassword,
 } from '../src/config/database.js';
@@ -63,6 +65,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
     limitePairingLink.reiniciar();
     limiteTelemetria.reiniciar();
     limiteEstadoDispositivo.reiniciar();
+    limiteNotificaciones.reiniciar();
   });
 
   let authToken = '';
@@ -1010,9 +1013,10 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
 
       test('los niños vinculados por los tutores de la organización cuentan como estudiantes y kioscos', async () => {
         const code = String(100000 + crypto.randomInt(900000));
+        const deviceId = `dev_test_${crypto.randomUUID().slice(0, 8)}`;
         const publicado = await request(app)
           .post('/api/v1/devices/pairing/create')
-          .send({ code, deviceId: `dev_test_${crypto.randomUUID().slice(0, 8)}` });
+          .send({ code, deviceId });
         expect(publicado.status).toBe(201);
 
         const vincular = await request(app)
@@ -1021,6 +1025,13 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
           .send({ code, childName: 'Niño de Prueba', deviceModel: 'Tablet de Prueba' });
         expect(vincular.status).toBe(201);
 
+        // Recién vinculado no está bloqueado; cuenta como kiosco cuando el tutor activa el bloqueo
+        const antes = await kpis(a.token);
+        expect(antes.body.data.kpis.totalEstudiantesInstitucion).toBe(1);
+        expect(antes.body.data.kpis.dispositivosKioskEnPerimetro).toBe(0);
+
+        const bloqueo = await request(app).put(`/api/devices/${deviceId}/kiosk`).set(auth(tutorDeA.token)).send({ activo: true });
+        expect(bloqueo.status).toBe(200);
         const res = await kpis(a.token);
         expect(res.body.data.kpis.totalEstudiantesInstitucion).toBe(1);
         expect(res.body.data.kpis.dispositivosKioskEnPerimetro).toBe(1);
@@ -2718,7 +2729,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       test('un dispositivo desconocido responde linked: false', async () => {
         const res = await request(app).get('/api/v1/devices/status/dev_desconocido_j');
         expect(res.status).toBe(200);
-        expect(res.body.data).toEqual({ deviceId: 'dev_desconocido_j', linked: false, parentId: '' });
+        expect(res.body.data).toEqual({ deviceId: 'dev_desconocido_j', linked: false, parentId: '', kioscoActivo: false });
       });
 
       test('un hijo vinculado responde linked: true con el id del padre, y false tras desvincularlo desde la web', async () => {
@@ -2727,13 +2738,13 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
 
         const vinculado = await request(app).get(`/api/v1/devices/status/${deviceId}`);
         expect(vinculado.status).toBe(200);
-        expect(vinculado.body.data).toEqual({ deviceId, linked: true, parentId: tutor.usuario.id });
+        expect(vinculado.body.data).toEqual({ deviceId, linked: true, parentId: tutor.usuario.id, kioscoActivo: false });
 
         const borrado = await request(app).delete(`/api/devices/${deviceId}`).set(auth(tutor.token));
         expect(borrado.status).toBe(200);
 
         const despues = await request(app).get(`/api/v1/devices/status/${deviceId}`);
-        expect(despues.body.data).toEqual({ deviceId, linked: false, parentId: '' });
+        expect(despues.body.data).toEqual({ deviceId, linked: false, parentId: '', kioscoActivo: false });
       });
 
       test('no expone el nombre del hijo, el modelo ni la ubicación', async () => {
@@ -2742,7 +2753,7 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
         await request(app).post(`/api/v1/devices/${deviceId}/telemetry`).send({ latitude: -12.05, longitude: -77.04 });
 
         const res = await request(app).get(`/api/devices/status/${deviceId}`);
-        expect(Object.keys(res.body.data).sort()).toEqual(['deviceId', 'linked', 'parentId']);
+        expect(Object.keys(res.body.data).sort()).toEqual(['deviceId', 'kioscoActivo', 'linked', 'parentId']);
         expect(JSON.stringify(res.body)).not.toMatch(/Hijo J|-12\.05|-77\.04/);
       });
 
@@ -2943,6 +2954,265 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
         expect(kpis.tutoresDetalle.map((t) => [t.nombre, t.cantidadNinos])).toEqual([['Ana K5', 1], ['Bruno K5', 0]]);
         expect(Object.keys(kpis.tutoresDetalle[0]).sort()).toEqual(['cantidadNinos', 'id', 'nombre']);
         expect(JSON.stringify(res.body)).not.toMatch(/@upad\.test|Ajeno K5|Hijo K5/);
+      });
+    });
+  });
+
+  describe('24. App Android sin Firebase: bloqueo kiosco y avisos del niño a su padre', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const correo = (etiqueta) => `test-${TIMESTAMP}-l-${etiqueta}-${crypto.randomUUID().slice(0, 8)}@upad.test`;
+
+    const registrar = async (rol = 'tutor') => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: `Cuenta L ${rol}`,
+        email: correo(rol),
+        password: passwordGenerada(),
+        rol,
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    const vincularHijo = async (tutor, childName = 'Hijo L') => {
+      const code = String(crypto.randomInt(100000, 1000000));
+      const deviceId = `dev_l_${crypto.randomUUID().slice(0, 8)}`;
+      await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+      const res = await request(app).post('/api/devices/pairing/link').set(auth(tutor.token)).send({ code, childName });
+      expect(res.status).toBe(201);
+      return deviceId;
+    };
+
+    const estado = (deviceId) => request(app).get(`/api/v1/devices/status/${deviceId}`);
+    const aviso = (deviceId, cuerpo = {}) =>
+      request(app).post(`/api/v1/devices/${deviceId}/notificaciones`).send({ tipo: 'tarea_completada', titulo: 'Completó «Lavarse los dientes»', ...cuerpo });
+
+    describe('L.1 bloqueo kiosco', () => {
+      test('un hijo recién vinculado no está bloqueado; el estado lo informa', async () => {
+        const tutor = await registrar();
+        const deviceId = await vincularHijo(tutor);
+        const res = await estado(deviceId);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ deviceId, linked: true, parentId: tutor.usuario.id, kioscoActivo: false });
+      });
+
+      test('el dueño activa y retira el bloqueo; el teléfono del niño lo ve en su consulta de estado', async () => {
+        const tutor = await registrar();
+        const deviceId = await vincularHijo(tutor);
+
+        const activar = await request(app).put(`/api/v1/devices/${deviceId}/kiosk`).set(auth(tutor.token)).send({ activo: true });
+        expect(activar.status).toBe(200);
+        expect(activar.body.data).toEqual({ deviceId, kioscoActivo: true });
+        expect((await estado(deviceId)).body.data.kioscoActivo).toBe(true);
+
+        // La lista del padre (web y app) muestra el mismo estado
+        const lista = await request(app).get('/api/devices').set(auth(tutor.token));
+        expect(lista.body.data.find((d) => d.deviceId === deviceId).isKioskActive).toBe(true);
+
+        const retirar = await request(app).put(`/api/devices/${deviceId}/kiosk`).set(auth(tutor.token)).send({ activo: false });
+        expect(retirar.status).toBe(200);
+        expect((await estado(deviceId)).body.data.kioscoActivo).toBe(false);
+      });
+
+      test('otro padre no puede bloquear un hijo ajeno (404) y sin token se rechaza (401)', async () => {
+        const dueno = await registrar();
+        const ajeno = await registrar();
+        const deviceId = await vincularHijo(dueno);
+
+        const intento = await request(app).put(`/api/v1/devices/${deviceId}/kiosk`).set(auth(ajeno.token)).send({ activo: true });
+        expect(intento.status).toBe(404);
+        expect(intento.body.errors.code).toBe('DEVICE_NOT_FOUND');
+
+        const sinToken = await request(app).put(`/api/v1/devices/${deviceId}/kiosk`).send({ activo: true });
+        expect(sinToken.status).toBe(401);
+
+        expect((await estado(deviceId)).body.data.kioscoActivo).toBe(false);
+      });
+
+      test('el valor debe ser booleano (400 KIOSCO_VALOR_INVALIDO)', async () => {
+        const tutor = await registrar();
+        const deviceId = await vincularHijo(tutor);
+        for (const activo of ['true', 1, null, undefined]) {
+          const res = await request(app).put(`/api/v1/devices/${deviceId}/kiosk`).set(auth(tutor.token)).send({ activo });
+          expect(res.status).toBe(400);
+          expect(res.body.errors.code).toBe('KIOSCO_VALOR_INVALIDO');
+        }
+      });
+
+      test('al volver a vincular un dispositivo, el bloqueo se retira', async () => {
+        const tutor = await registrar();
+        const deviceId = await vincularHijo(tutor);
+        await request(app).put(`/api/v1/devices/${deviceId}/kiosk`).set(auth(tutor.token)).send({ activo: true });
+
+        const code = String(crypto.randomInt(100000, 1000000));
+        await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+        const otro = await registrar();
+        const res = await request(app).post('/api/devices/pairing/link').set(auth(otro.token)).send({ code, childName: 'Hijo L2' });
+        expect(res.status).toBe(201);
+        expect((await estado(deviceId)).body.data).toMatchObject({ parentId: otro.usuario.id, kioscoActivo: false });
+      });
+
+      test('un dispositivo no vinculado nunca figura como bloqueado', async () => {
+        const deviceId = `dev_l_suelto_${crypto.randomUUID().slice(0, 8)}`;
+        db.prepare("INSERT INTO child_devices (device_id, parent_id, is_kiosk_active) VALUES (?, NULL, 1)").run(deviceId);
+        expect((await estado(deviceId)).body.data).toMatchObject({ linked: false, kioscoActivo: false });
+      });
+
+      test('migración única: pone en 0 el bloqueo heredado (antes valía 1 por defecto) y no se repite', () => {
+        const conexion = new DatabaseSync(':memory:');
+        inicializarEsquema(conexion);
+        conexion.exec('PRAGMA user_version = 1');
+        conexion.prepare("INSERT INTO child_devices (device_id, parent_id, is_kiosk_active) VALUES ('a', 'p', 1), ('b', 'p', 0)").run();
+
+        expect(migrarKioscoDesactivado(conexion)).toBe(1);
+        expect(conexion.prepare('SELECT COUNT(*) AS n FROM child_devices WHERE is_kiosk_active = 1').get().n).toBe(0);
+        expect(conexion.prepare('PRAGMA user_version').get().user_version).toBe(2);
+
+        // Ya aplicada: un bloqueo activado después por el padre se respeta
+        conexion.prepare("UPDATE child_devices SET is_kiosk_active = 1 WHERE device_id = 'a'").run();
+        expect(migrarKioscoDesactivado(conexion)).toBeNull();
+        expect(conexion.prepare("SELECT is_kiosk_active FROM child_devices WHERE device_id = 'a'").get().is_kiosk_active).toBe(1);
+        conexion.close();
+      });
+
+      test('en una base nueva la columna vale 0 por defecto', () => {
+        const conexion = new DatabaseSync(':memory:');
+        inicializarEsquema(conexion);
+        conexion.prepare("INSERT INTO child_devices (device_id, parent_id) VALUES ('x', 'p')").run();
+        expect(conexion.prepare("SELECT is_kiosk_active FROM child_devices WHERE device_id = 'x'").get().is_kiosk_active).toBe(0);
+        conexion.close();
+      });
+    });
+
+    describe('L.1 avisos del niño a su padre', () => {
+      test('el niño publica un aviso sin token y solo lo ve su padre', async () => {
+        const padre = await registrar();
+        const otro = await registrar();
+        const deviceId = await vincularHijo(padre, 'Mateo L');
+
+        const res = await aviso(deviceId, { tipo: 'rutina_completada', titulo: '  Rutina   de la mañana  completada ', descripcion: 'Todas las tareas' });
+        expect(res.status).toBe(201);
+        expect(res.body.data).toMatchObject({ deviceId, tipo: 'rutina_completada', titulo: 'Rutina de la mañana completada', leida: false });
+        expect(res.body.data.padreId).toBeUndefined();
+
+        const lista = await request(app).get('/api/v1/notificaciones').set(auth(padre.token));
+        expect(lista.status).toBe(200);
+        expect(lista.body.data.noLeidas).toBe(1);
+        expect(lista.body.data.notificaciones).toHaveLength(1);
+        expect(lista.body.data.notificaciones[0]).toMatchObject({ deviceId, nombreHijo: 'Mateo L', descripcion: 'Todas las tareas', leida: false });
+        expect(lista.body.data.notificaciones[0].padreId).toBeUndefined();
+
+        const ajena = await request(app).get('/api/notificaciones').set(auth(otro.token));
+        expect(ajena.body.data).toEqual({ notificaciones: [], noLeidas: 0 });
+      });
+
+      test('el padre lo decide el servidor: un padreId enviado por el cliente se ignora', async () => {
+        const padre = await registrar();
+        const intruso = await registrar();
+        const deviceId = await vincularHijo(padre);
+        expect((await aviso(deviceId, { padreId: intruso.usuario.id })).status).toBe(201);
+        expect((await request(app).get('/api/notificaciones').set(auth(intruso.token))).body.data.notificaciones).toHaveLength(0);
+        expect((await request(app).get('/api/notificaciones').set(auth(padre.token))).body.data.notificaciones).toHaveLength(1);
+      });
+
+      test('dispositivo no vinculado (404), tipo fuera de la lista (400) y título vacío (400)', async () => {
+        const noVinculado = await aviso(`dev_l_nadie_${crypto.randomUUID().slice(0, 8)}`);
+        expect(noVinculado.status).toBe(404);
+        expect(noVinculado.body.errors.code).toBe('DEVICE_NOT_FOUND');
+
+        const padre = await registrar();
+        const deviceId = await vincularHijo(padre);
+        const tipo = await aviso(deviceId, { tipo: 'alerta_falsa' });
+        expect(tipo.status).toBe(400);
+        expect(tipo.body.errors.code).toBe('NOTIFICACION_TIPO_INVALIDO');
+        expect(TIPOS_NOTIFICACION).toEqual(['tarea_completada', 'rutina_completada']);
+
+        const titulo = await aviso(deviceId, { titulo: '   ' });
+        expect(titulo.status).toBe(400);
+        expect(titulo.body.errors.code).toBe('NOTIFICACION_TITULO_REQUERIDO');
+
+        expect((await aviso('id con espacios')).status).toBe(400);
+      });
+
+      test('los textos se acotan (título 120, descripción 500)', async () => {
+        const padre = await registrar();
+        const deviceId = await vincularHijo(padre);
+        const res = await aviso(deviceId, { titulo: 'x'.repeat(300), descripcion: 'y'.repeat(900) });
+        expect(res.status).toBe(201);
+        expect(res.body.data.titulo).toHaveLength(120);
+        expect(res.body.data.descripcion).toHaveLength(500);
+      });
+
+      test(`máximo ${LIMITES_DISPOSITIVOS.NOTIFICACIONES_POR_DISPOSITIVO} avisos por minuto por dispositivo (luego 429)`, async () => {
+        const padre = await registrar();
+        const deviceId = await vincularHijo(padre);
+        for (let i = 0; i < LIMITES_DISPOSITIVOS.NOTIFICACIONES_POR_DISPOSITIVO; i += 1) {
+          expect((await aviso(deviceId)).status).toBe(201);
+        }
+        const res = await aviso(deviceId);
+        expect(res.status).toBe(429);
+        expect(res.body.errors.code).toBe('NOTIFICACION_RATE_LIMIT');
+      });
+
+      test('?desde= devuelve solo los posteriores; una fecha inválida da 400; como máximo 50', async () => {
+        const padre = await registrar();
+        const deviceId = await vincularHijo(padre);
+        const insertar = db.prepare(`
+          INSERT INTO notificaciones (id, padreId, deviceId, tipo, titulo, descripcion, creadoEn, leida)
+          VALUES (?, ?, ?, 'tarea_completada', ?, '', ?, 0)
+        `);
+        const base = Date.now() - 60 * 60 * 1000;
+        for (let i = 0; i < MAX_LISTADO + 5; i += 1) {
+          insertar.run(`ntf_l_${crypto.randomUUID()}`, padre.usuario.id, deviceId, `Aviso ${i}`, new Date(base + i * 1000).toISOString());
+        }
+
+        const todas = await request(app).get('/api/notificaciones').set(auth(padre.token));
+        expect(todas.body.data.notificaciones).toHaveLength(MAX_LISTADO);
+        expect(todas.body.data.notificaciones[0].titulo).toBe(`Aviso ${MAX_LISTADO + 4}`);
+        expect(todas.body.data.noLeidas).toBe(MAX_LISTADO + 5);
+
+        const desde = new Date(base + (MAX_LISTADO + 2) * 1000).toISOString();
+        const nuevas = await request(app).get('/api/notificaciones').query({ desde }).set(auth(padre.token));
+        expect(nuevas.body.data.notificaciones.map((n) => n.titulo)).toEqual([`Aviso ${MAX_LISTADO + 4}`, `Aviso ${MAX_LISTADO + 3}`]);
+
+        const mala = await request(app).get('/api/notificaciones').query({ desde: 'ayer' }).set(auth(padre.token));
+        expect(mala.status).toBe(400);
+        expect(mala.body.errors.code).toBe('FECHA_INVALIDA');
+      });
+
+      test('marcar como leídos: los indicados o todos, y nunca los de otro padre', async () => {
+        const padre = await registrar();
+        const otro = await registrar();
+        const deviceId = await vincularHijo(padre);
+        const deviceOtro = await vincularHijo(otro);
+        const a = (await aviso(deviceId)).body.data.id;
+        await aviso(deviceId);
+        const ajeno = (await aviso(deviceOtro)).body.data.id;
+
+        const uno = await request(app).put('/api/v1/notificaciones/leidas').set(auth(padre.token)).send({ ids: [a, ajeno] });
+        expect(uno.status).toBe(200);
+        expect(uno.body.data.marcadas).toBe(1);
+        expect((await request(app).get('/api/notificaciones').set(auth(otro.token))).body.data.noLeidas).toBe(1);
+
+        const todos = await request(app).put('/api/notificaciones/leidas').set(auth(padre.token)).send({});
+        expect(todos.body.data.marcadas).toBe(1);
+        const lista = await request(app).get('/api/notificaciones').set(auth(padre.token));
+        expect(lista.body.data.noLeidas).toBe(0);
+        expect(lista.body.data.notificaciones.every((n) => n.leida)).toBe(true);
+      });
+
+      test(`sin token no se pueden leer (401); los avisos de más de ${DIAS_RETENCION} días se purgan`, async () => {
+        expect((await request(app).get('/api/v1/notificaciones')).status).toBe(401);
+        expect((await request(app).put('/api/v1/notificaciones/leidas')).status).toBe(401);
+
+        const padre = await registrar();
+        const deviceId = await vincularHijo(padre);
+        const viejo = new Date(Date.now() - (DIAS_RETENCION + 1) * 24 * 60 * 60 * 1000).toISOString();
+        db.prepare(`
+          INSERT INTO notificaciones (id, padreId, deviceId, tipo, titulo, descripcion, creadoEn, leida)
+          VALUES ('ntf_l_viejo', ?, ?, 'tarea_completada', 'Viejo', '', ?, 0)
+        `).run(padre.usuario.id, deviceId, viejo);
+        await aviso(deviceId);
+        expect(db.prepare("SELECT COUNT(*) AS n FROM notificaciones WHERE id = 'ntf_l_viejo'").get().n).toBe(0);
       });
     });
   });

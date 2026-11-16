@@ -126,11 +126,12 @@ export const deviceService = {
     // sin nombres, modelos ni ubicaciones inventadas.
     db.prepare(`
       INSERT INTO child_devices (device_id, parent_id, child_name, device_model, is_kiosk_active, last_latitude, last_longitude, last_seen_at)
-      VALUES (?, ?, ?, ?, 1, NULL, NULL, CURRENT_TIMESTAMP)
+      VALUES (?, ?, ?, ?, 0, NULL, NULL, CURRENT_TIMESTAMP)
       ON CONFLICT(device_id) DO UPDATE SET
         parent_id = excluded.parent_id,
         child_name = excluded.child_name,
         device_model = excluded.device_model,
+        is_kiosk_active = 0,
         last_seen_at = CURRENT_TIMESTAMP
     `).run(deviceId, parentId, cleanChildName, cleanModel);
 
@@ -175,12 +176,30 @@ export const deviceService = {
    * Devuelve solo el id del padre (la app del niño ya lo conoce: lo usa para leer sus rutinas).
    */
   estadoDispositivo(deviceId) {
-    const row = db.prepare('SELECT parent_id FROM child_devices WHERE device_id = ?').get(deviceId);
+    const row = db.prepare('SELECT parent_id, is_kiosk_active FROM child_devices WHERE device_id = ?').get(deviceId);
+    const linked = Boolean(row?.parent_id);
     return {
       deviceId,
-      linked: Boolean(row?.parent_id),
+      linked,
       parentId: row?.parent_id || '',
+      kioscoActivo: linked && Number(row?.is_kiosk_active) === 1,
     };
+  },
+
+  /**
+   * Activa o retira el bloqueo kiosco de un hijo. Solo su dueño (404 si el dispositivo no es suyo).
+   * El teléfono del niño lo recibe en su consulta de estado (cada 2 s).
+   */
+  cambiarKiosco(deviceId, parentId, activo) {
+    if (typeof activo !== 'boolean') {
+      throw new AppError('Indica activo: true o false.', 400, { field: 'activo', code: 'KIOSCO_VALOR_INVALIDO' });
+    }
+    const resultado = db.prepare('UPDATE child_devices SET is_kiosk_active = ? WHERE device_id = ? AND parent_id = ?')
+      .run(activo ? 1 : 0, deviceId, parentId);
+    if (resultado.changes === 0) {
+      throw new AppError('No se encontró ese dispositivo entre tus hijos vinculados.', 404, { code: 'DEVICE_NOT_FOUND' });
+    }
+    return { deviceId, kioscoActivo: activo };
   },
 
   /**
