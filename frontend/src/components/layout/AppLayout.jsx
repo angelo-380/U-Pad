@@ -5,6 +5,7 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 import { RoleBadge } from '../common/RoleBadge.jsx';
 import { LanguageSelector } from '../common/LanguageSelector.jsx';
 import { BackupsModal } from '../admin/BackupsModal.jsx';
+import { ConfiguracionUsuarioModal } from './ConfiguracionUsuarioModal.jsx';
 import {
   LogOut,
   CalendarCheck,
@@ -25,6 +26,7 @@ export const AppLayout = ({ children }) => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backupsModalOpen, setBackupsModalOpen] = useState(false);
+  const [perfilOpen, setPerfilOpen] = useState(false);
 
   const isDeveloper = user?.rol === 'developer';
 
@@ -158,7 +160,13 @@ export const AppLayout = ({ children }) => {
               {/* Selector de Idioma */}
               <LanguageSelector />
 
-              <div className="flex items-center gap-2.5 pl-3 border-l border-tea-border">
+              <button
+                type="button"
+                onClick={() => setPerfilOpen(true)}
+                className="flex items-center gap-2.5 pl-3 pr-2 py-1 border-l border-tea-border rounded-r-xl hover:bg-tea-cardSubtle transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 cursor-pointer"
+                aria-label={t('profile_open')}
+                title={t('profile_open')}
+              >
                 <div className="w-8 h-8 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-xs">
                   {displayName.charAt(0).toUpperCase()}
                 </div>
@@ -171,7 +179,7 @@ export const AppLayout = ({ children }) => {
                   </span>
                 </div>
                 <RoleBadge role={user?.rol} />
-              </div>
+              </button>
 
               <button
                 type="button"
@@ -203,7 +211,15 @@ export const AppLayout = ({ children }) => {
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-tea-border bg-white px-4 pt-4 pb-5 space-y-4 animate-fadeIn">
             <div className="flex items-center justify-between pb-3 border-b border-tea-border">
-              <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setPerfilOpen(true);
+                }}
+                className="flex items-center gap-2.5 text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 cursor-pointer"
+                aria-label={t('profile_open')}
+              >
                 <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center font-bold text-sm">
                   {displayName.charAt(0).toUpperCase()}
                 </div>
@@ -211,7 +227,7 @@ export const AppLayout = ({ children }) => {
                   <span className="font-bold text-sm text-tea-text">{displayName}</span>
                   <span className="text-xs text-tea-subtle">{user?.email}</span>
                 </div>
-              </div>
+              </button>
               <RoleBadge role={user?.rol} />
             </div>
 
@@ -284,6 +300,8 @@ export const AppLayout = ({ children }) => {
           </p>
         </div>
       </footer>
+
+      <ConfiguracionUsuarioModal isOpen={perfilOpen} onClose={() => setPerfilOpen(false)} />
 
       {isDeveloper && (
         <BackupsModal

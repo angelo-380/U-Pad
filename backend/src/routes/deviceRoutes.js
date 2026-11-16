@@ -13,7 +13,7 @@ export const LIMITES_DISPOSITIVOS = Object.freeze({
   PAIRING_POR_CUENTA: 10,
   PAIRING_POR_IP: 30,
   TELEMETRIA_POR_DISPOSITIVO: 30,
-  ESTADO_POR_DISPOSITIVO: 60,
+  ESTADO_POR_DISPOSITIVO: 120,
 });
 
 export const limitePairingLink = crearLimiteIntentos({
@@ -43,7 +43,7 @@ export const limiteTelemetria = crearLimiteIntentos({
   mensaje: 'Demasiados envíos de ubicación para este dispositivo. Espera un minuto.',
 });
 
-// La app del niño consulta su estado cada 2 s (30/min); 60/min deja margen y frena el barrido de ids
+// La app consulta el estado cada 2 s (30/min por pantalla abierta: niño y mapa del padre); 120/min deja margen
 export const limiteEstadoDispositivo = crearLimiteIntentos({
   ventanaMs: 60_000,
   maximo: LIMITES_DISPOSITIVOS.ESTADO_POR_DISPOSITIVO,

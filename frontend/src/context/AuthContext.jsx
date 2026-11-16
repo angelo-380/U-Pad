@@ -107,6 +107,13 @@ export const AuthProvider = ({ children }) => {
 
   const clearSessionNotice = () => setSessionExpiredNotice(false);
 
+  /** Vuelve a leer la cuenta del servidor (nombre, rol u organización pudieron cambiar). */
+  const refreshUser = async () => {
+    const usuarioActual = await authService.getMe();
+    if (usuarioActual) setUser(usuarioActual);
+    return usuarioActual;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -123,6 +130,7 @@ export const AuthProvider = ({ children }) => {
         registrarConGoogle,
         registroGooglePendiente,
         cancelarRegistroGoogle,
+        refreshUser,
       }}
     >
       {children}

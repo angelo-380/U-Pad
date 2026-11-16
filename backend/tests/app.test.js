@@ -2804,4 +2804,146 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       });
     });
   });
+
+  describe('23. Vinculación (rotación de códigos), Developer Center y tutores en el panel gerencial', () => {
+    const auth = (token) => ({ Authorization: `Bearer ${token}` });
+    const correo = (etiqueta) => `test-${TIMESTAMP}-k-${etiqueta}-${crypto.randomUUID().slice(0, 8)}@upad.test`;
+    const codigoAleatorio = () => String(crypto.randomInt(100000, 1000000));
+    const developer = () => tokenDe({ id: `dev23_${TIMESTAMP}`, email: `test-${TIMESTAMP}-dev23@upad.test`, rol: 'developer', organizacionId: null });
+
+    const registrar = async (rol, extra = {}) => {
+      const res = await request(app).post('/api/auth/register').send({
+        nombre: extra.nombre || `Cuenta ${rol}`,
+        email: correo(rol),
+        password: passwordGenerada(),
+        rol,
+        ...extra,
+      });
+      expect(res.status).toBe(201);
+      return res.body.data;
+    };
+
+    describe('K.1 códigos de vinculación', () => {
+      test('al generar un código nuevo, el anterior del mismo dispositivo deja de valer', async () => {
+        const deviceId = `dev_k1_${crypto.randomUUID().slice(0, 8)}`;
+        const viejo = codigoAleatorio();
+        const nuevo = codigoAleatorio();
+        expect((await request(app).post('/api/v1/devices/pairing/create').send({ code: viejo, deviceId })).status).toBe(201);
+        expect((await request(app).post('/api/v1/devices/pairing/create').send({ code: nuevo, deviceId })).status).toBe(201);
+
+        expect((await request(app).get(`/api/v1/devices/pairing/${viejo}`)).status).toBe(404);
+        expect((await request(app).get(`/api/v1/devices/pairing/${nuevo}`)).status).toBe(200);
+
+        const tutor = await registrar('tutor');
+        const conViejo = await request(app).post('/api/devices/pairing/link').set(auth(tutor.token)).send({ code: viejo, childName: 'K1' });
+        expect(conViejo.status).toBe(404);
+        const conNuevo = await request(app).post('/api/devices/pairing/link').set(auth(tutor.token)).send({ code: nuevo, childName: 'K1' });
+        expect(conNuevo.status).toBe(201);
+      });
+
+      test('un teléfono no puede quedarse con el código vigente de otro (409 PAIRING_CODE_USED)', async () => {
+        const code = codigoAleatorio();
+        expect((await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId: 'dev_k1_a' })).status).toBe(201);
+        const robo = await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId: 'dev_k1_b' });
+        expect(robo.status).toBe(409);
+        expect(robo.body.errors.code).toBe('PAIRING_CODE_USED');
+        // El mismo teléfono sí puede volver a publicarlo
+        expect((await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId: 'dev_k1_a' })).status).toBe(201);
+      });
+
+      test('los códigos pendientes creados hace más de 5 minutos se purgan al generar otro', async () => {
+        const viejo = codigoAleatorio();
+        const hace10Min = new Date(Date.now() - 10 * 60_000).toISOString();
+        db.prepare("INSERT INTO pairing_codes (code, device_id, pairing_status, expires_at) VALUES (?, 'dev_k1_viejo', 'PENDING', ?)").run(viejo, hace10Min);
+
+        await request(app).post('/api/v1/devices/pairing/create').send({ code: codigoAleatorio(), deviceId: 'dev_k1_otro' });
+        expect(db.prepare('SELECT COUNT(*) AS n FROM pairing_codes WHERE code = ?').get(viejo).n).toBe(0);
+      });
+
+      test(`el estado del dispositivo admite ${LIMITES_DISPOSITIVOS.ESTADO_POR_DISPOSITIVO} consultas por minuto (niño y mapa del padre)`, () => {
+        expect(LIMITES_DISPOSITIVOS.ESTADO_POR_DISPOSITIVO).toBe(120);
+      });
+    });
+
+    describe('K.4 Developer Center', () => {
+      test('GET /api/admin/rutinas filtra por turno y devuelve pasos, ninoId y nombre de la organización', async () => {
+        const empresario = await registrar('empresario', { nombre: `Institución K4 ${TIMESTAMP}` });
+        const titulo = `Rutina K4 ${crypto.randomUUID().slice(0, 6)}`;
+        const creada = await request(app).post('/api/rutinas').set(auth(empresario.token))
+          .send({ titulo, turno: 'TARDE', pasos: [{ orden: 1, texto: 'Lavarse', palabraClave: 'lavar' }] });
+        expect(creada.status).toBe(201);
+
+        const tarde = await request(app).get('/api/admin/rutinas').query({ search: titulo, turno: 'tarde' }).set(auth(developer()));
+        expect(tarde.status).toBe(200);
+        expect(tarde.body.data).toHaveLength(1);
+        const r = tarde.body.data[0];
+        expect(r.pasos).toEqual([expect.objectContaining({ texto: 'Lavarse', palabraClave: 'lavar' })]);
+        expect(r.pasosCount).toBe(1);
+        expect(r).toHaveProperty('ninoId');
+        expect(r.organizacionNombre).toBe(`Institución K4 ${TIMESTAMP}`);
+
+        const manana = await request(app).get('/api/admin/rutinas').query({ search: titulo, turno: 'MANANA' }).set(auth(developer()));
+        expect(manana.body.data).toHaveLength(0);
+      });
+
+      test('un turno inválido responde 400 TURNO_INVALIDO', async () => {
+        const res = await request(app).get('/api/admin/rutinas').query({ turno: 'MADRUGADA' }).set(auth(developer()));
+        expect(res.status).toBe(400);
+        expect(res.body.errors.code).toBe('TURNO_INVALIDO');
+      });
+
+      test('GET /api/admin/users incluye el nombre de la organización', async () => {
+        const empresario = await registrar('empresario', { nombre: `Institución Usuarios ${TIMESTAMP}` });
+        const res = await request(app).get('/api/admin/users').query({ search: empresario.usuario.email }).set(auth(developer()));
+        expect(res.status).toBe(200);
+        const fila = res.body.data.find((u) => u.id === empresario.usuario.id);
+        expect(fila.organizacionNombre).toBe(`Institución Usuarios ${TIMESTAMP}`);
+      });
+
+      test('PUT /api/admin/organizaciones/:id cambia el nombre (solo developer; valida longitud; 404 si no existe)', async () => {
+        const empresario = await registrar('empresario', { nombre: `Institución Vieja ${TIMESTAMP}` });
+        const orgId = empresario.organizacion.id;
+
+        const ok = await request(app).put(`/api/admin/organizaciones/${orgId}`).set(auth(developer())).send({ nombre: '  Colegio   Nuevo  ' });
+        expect(ok.status).toBe(200);
+        expect(ok.body.data).toEqual({ id: orgId, nombre: 'Colegio Nuevo' });
+        expect(db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(orgId).nombre).toBe('Colegio Nuevo');
+
+        const corto = await request(app).put(`/api/admin/organizaciones/${orgId}`).set(auth(developer())).send({ nombre: 'X' });
+        expect(corto.status).toBe(400);
+        expect(corto.body.errors.code).toBe('NOMBRE_ORGANIZACION_INVALIDO');
+        const largo = await request(app).put(`/api/admin/organizaciones/${orgId}`).set(auth(developer())).send({ nombre: 'x'.repeat(101) });
+        expect(largo.status).toBe(400);
+
+        const inexistente = await request(app).put('/api/admin/organizaciones/org_no_existe').set(auth(developer())).send({ nombre: 'Algo' });
+        expect(inexistente.status).toBe(404);
+
+        const comoEmpresario = await request(app).put(`/api/admin/organizaciones/${orgId}`).set(auth(empresario.token)).send({ nombre: 'Hackeo' });
+        expect(comoEmpresario.status).toBe(403);
+      });
+    });
+
+    describe('K.5 tutores en el panel gerencial', () => {
+      test('el director ve cuántos tutores tiene, sus nombres y sus hijos vinculados; sin correos ni tutores de otras instituciones', async () => {
+        const empresario = await registrar('empresario', { nombre: `Institución K5 ${TIMESTAMP}` });
+        const codigo = empresario.organizacion.codigo;
+        const ana = await registrar('tutor', { nombre: 'Ana K5', codigoOrganizacion: codigo });
+        await registrar('tutor', { nombre: 'Bruno K5', codigoOrganizacion: codigo });
+        await registrar('tutor', { nombre: 'Ajeno K5' });
+
+        const deviceId = `dev_k5_${crypto.randomUUID().slice(0, 8)}`;
+        const code = codigoAleatorio();
+        await request(app).post('/api/v1/devices/pairing/create').send({ code, deviceId });
+        expect((await request(app).post('/api/devices/pairing/link').set(auth(ana.token)).send({ code, childName: 'Hijo K5' })).status).toBe(201);
+
+        const res = await request(app).get('/api/empresario/kpis').set(auth(empresario.token));
+        expect(res.status).toBe(200);
+        const { kpis } = res.body.data;
+        expect(kpis.totalTutoresInstitucion).toBe(2);
+        expect(kpis.tutoresDetalle.map((t) => [t.nombre, t.cantidadNinos])).toEqual([['Ana K5', 1], ['Bruno K5', 0]]);
+        expect(Object.keys(kpis.tutoresDetalle[0]).sort()).toEqual(['cantidadNinos', 'id', 'nombre']);
+        expect(JSON.stringify(res.body)).not.toMatch(/@upad\.test|Ajeno K5|Hijo K5/);
+      });
+    });
+  });
 });

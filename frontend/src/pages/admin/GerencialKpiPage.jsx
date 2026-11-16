@@ -11,6 +11,9 @@ import {
   Copy,
   Check,
   ClipboardList,
+  HeartHandshake,
+  ChevronRight,
+  X,
 } from 'lucide-react';
 import { adminService } from '../../services/adminService.js';
 import { useLanguage } from '../../context/LanguageContext.jsx';
@@ -19,6 +22,8 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 const KPIS_VACIOS = {
   totalEstudiantesInstitucion: 0,
   totalRutinasEstructuradas: 0,
+  totalTutoresInstitucion: 0,
+  tutoresDetalle: [],
   distribucionTurnos: {
     manana: 0,
     tarde: 0,
@@ -33,6 +38,7 @@ export const GerencialKpiPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [codigoCopiado, setCodigoCopiado] = useState(false);
+  const [tutoresOpen, setTutoresOpen] = useState(false);
 
   const fetchKpis = async () => {
     setLoading(true);
@@ -66,6 +72,17 @@ export const GerencialKpiPage = () => {
   const kpis = data?.kpis || KPIS_VACIOS;
   const institucionNombre = data?.institucion || t('org_fallback_name');
   const codigoOrganizacion = data?.organizacion?.codigo || null;
+  const tutores = Array.isArray(kpis.tutoresDetalle) ? kpis.tutoresDetalle : [];
+  const totalTutores = kpis.totalTutoresInstitucion ?? tutores.length;
+
+  useEffect(() => {
+    if (!tutoresOpen) return undefined;
+    const alPulsarTecla = (e) => {
+      if (e.key === 'Escape') setTutoresOpen(false);
+    };
+    window.addEventListener('keydown', alPulsarTecla);
+    return () => window.removeEventListener('keydown', alPulsarTecla);
+  }, [tutoresOpen]);
 
   return (
     <div className="space-y-6">
@@ -138,7 +155,7 @@ export const GerencialKpiPage = () => {
       )}
 
       {/* Tarjetas de KPIs principales */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Total Estudiantes / Usuarios de la Institución */}
         <div className="bg-white rounded-2xl p-5 border border-tea-border shadow-soft-xs space-y-2">
           <div className="flex items-center justify-between">
@@ -174,6 +191,27 @@ export const GerencialKpiPage = () => {
             {t('gerencial_routines_desc')}
           </p>
         </div>
+
+        {/* Padres y tutores de la institución (nombres solo para su director y el developer) */}
+        <button
+          type="button"
+          onClick={() => setTutoresOpen(true)}
+          className="text-left bg-white rounded-2xl p-5 border border-tea-border shadow-soft-xs space-y-2 hover:border-amber-300 hover:bg-amber-50/30 transition-tea focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider">
+              {t('gerencial_tutors')}
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <HeartHandshake className="w-5 h-5" />
+            </div>
+          </div>
+          <p className="text-2xl font-black text-tea-text">{totalTutores}</p>
+          <p className="text-[11px] text-tea-muted flex items-center gap-1">
+            {t('gerencial_tutors_desc')}
+            <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          </p>
+        </button>
       </div>
 
       {/* Gráficos y Distribución Agregada */}
@@ -251,6 +289,61 @@ export const GerencialKpiPage = () => {
           </div>
         </div>
       </div>
+
+      {tutoresOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tutores-titulo"
+          onClick={() => setTutoresOpen(false)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-tea-border relative animate-scaleIn max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setTutoresOpen(false)}
+              aria-label={t('profile_close')}
+              className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 id="tutores-titulo" className="text-lg font-extrabold text-tea-text flex items-center gap-2 pr-10">
+              <HeartHandshake className="w-5 h-5 text-amber-600" />
+              {t('gerencial_tutors_title', { total: totalTutores })}
+            </h3>
+            <p className="text-xs text-tea-muted mt-1 mb-4">{t('gerencial_tutors_privacy')}</p>
+
+            {tutores.length === 0 ? (
+              <div className="py-8 px-4 text-center rounded-2xl border border-dashed border-tea-border bg-slate-50">
+                <p className="text-sm font-bold text-tea-text">{t('gerencial_tutors_empty_title')}</p>
+                <p className="text-xs text-tea-muted mt-1">{t('gerencial_tutors_empty_desc')}</p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-tea-border border border-tea-border rounded-2xl overflow-hidden">
+                {tutores.map((tutor) => (
+                  <li key={tutor.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-8 h-8 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                        {(tutor.nombre || '?').charAt(0).toUpperCase()}
+                      </span>
+                      <span className="text-sm font-semibold text-tea-text truncate">{tutor.nombre}</span>
+                    </span>
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 whitespace-nowrap">
+                      {t('gerencial_tutors_children', { total: tutor.cantidadNinos })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {totalTutores > tutores.length && (
+              <p className="text-[11px] text-tea-muted mt-3">{t('gerencial_tutors_truncated', { total: tutores.length })}</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

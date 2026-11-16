@@ -9,6 +9,10 @@ import { crearOrganizacion, obtenerOrganizacionPorId } from '../utils/organizaci
 
 const router = Router();
 
+const TURNOS_RUTINA = ['MANANA', 'TARDE', 'NOCHE'];
+const NOMBRE_ORGANIZACION_MIN = 2;
+const NOMBRE_ORGANIZACION_MAX = 100;
+
 // Todas las rutas de administración requieren autenticación y rol 'developer'
 router.use(authenticate);
 router.use(authorizeRoles('developer'));
@@ -96,10 +100,12 @@ router.get('/users', (req, res, next) => {
         u.email,
         u.rol,
         u.organizacionId,
+        o.nombre AS organizacionNombre,
         u.activo,
         u.creadoEn,
         (SELECT COUNT(*) FROM rutinas r WHERE r.creadoPor = u.id) as rutinasCount
       FROM usuarios u
+      LEFT JOIN organizaciones o ON o.id = u.organizacionId
       ${whereClause}
       ORDER BY u.creadoEn DESC, u.rowid DESC
       LIMIT ? OFFSET ?
@@ -298,7 +304,8 @@ router.delete('/users/:userId', (req, res, next) => {
 /**
  * GET /api/admin/rutinas
  * Lista TODAS las rutinas del sistema, de la más reciente a la más antigua, paginadas (límite máximo 100).
- * Búsqueda opcional (?search=) por título, nombre o correo del creador. Incluye datos del creador.
+ * Búsqueda opcional (?search=) por título, nombre o correo del creador y filtro (?turno=MANANA|TARDE|NOCHE).
+ * Incluye datos del creador, el nombre de la organización y los pasos (para mostrar sus pictogramas).
  */
 router.get('/rutinas', (req, res, next) => {
   try {
@@ -306,6 +313,10 @@ router.get('/rutinas', (req, res, next) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25));
     const offset = (page - 1) * limit;
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const turno = typeof req.query.turno === 'string' ? req.query.turno.trim().toUpperCase() : '';
+    if (turno && !TURNOS_RUTINA.includes(turno)) {
+      throw new AppError(`Turno no válido [${turno}]. Usa: ${TURNOS_RUTINA.join(', ')}.`, 400, { field: 'turno', code: 'TURNO_INVALIDO' });
+    }
 
     let whereClause = ' WHERE 1=1';
     const params = [];
@@ -313,8 +324,12 @@ router.get('/rutinas', (req, res, next) => {
       whereClause += ' AND (r.titulo LIKE ? OR u.nombre LIKE ? OR u.email LIKE ?)';
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
+    if (turno) {
+      whereClause += ' AND r.turno = ?';
+      params.push(turno);
+    }
 
-    const desde = 'FROM rutinas r LEFT JOIN usuarios u ON u.id = r.creadoPor';
+    const desde = 'FROM rutinas r LEFT JOIN usuarios u ON u.id = r.creadoPor LEFT JOIN organizaciones o ON o.id = r.organizacionId';
     const total = db.prepare(`SELECT COUNT(*) AS total ${desde} ${whereClause}`).get(...params)?.total || 0;
     const totalPages = Math.ceil(total / limit) || 1;
 
@@ -323,11 +338,14 @@ router.get('/rutinas', (req, res, next) => {
         r.id,
         r.titulo,
         r.turno,
+        r.ninoId,
         r.organizacionId,
+        o.nombre AS organizacionNombre,
         r.pasos,
         r.activa,
         r.creadoPor,
         r.creadoEn,
+        r.actualizadoEn,
         u.nombre AS creadorNombre,
         u.email AS creadorEmail,
         u.rol AS creadorRol
@@ -344,7 +362,8 @@ router.get('/rutinas', (req, res, next) => {
       } catch (e) {
         lista = [];
       }
-      return { ...r, activa: Boolean(r.activa), pasosCount: Array.isArray(lista) ? lista.length : 0 };
+      const pasosLista = Array.isArray(lista) ? lista : [];
+      return { ...r, activa: Boolean(r.activa), pasos: pasosLista, pasosCount: pasosLista.length };
     });
 
     return res.status(200).json({
@@ -356,6 +375,32 @@ router.get('/rutinas', (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/organizaciones/:organizacionId
+ * Cambia el nombre de una organización (lo ven su director y sus tutores). Solo developer.
+ * Body: { nombre } de 2 a 100 caracteres. 404 si la organización no existe.
+ */
+router.put('/organizaciones/:organizacionId', (req, res, next) => {
+  try {
+    const organizacion = obtenerOrganizacionPorId(db, req.params.organizacionId);
+    if (!organizacion) {
+      throw new AppError('La organización no existe.', 404, { code: 'ORGANIZACION_NO_ENCONTRADA' });
+    }
+    const nombre = typeof req.body?.nombre === 'string' ? req.body.nombre.trim().replace(/\s+/g, ' ') : '';
+    if (nombre.length < NOMBRE_ORGANIZACION_MIN || nombre.length > NOMBRE_ORGANIZACION_MAX) {
+      throw new AppError(
+        `El nombre de la organización debe tener entre ${NOMBRE_ORGANIZACION_MIN} y ${NOMBRE_ORGANIZACION_MAX} caracteres.`,
+        400,
+        { field: 'nombre', code: 'NOMBRE_ORGANIZACION_INVALIDO' }
+      );
+    }
+    db.prepare('UPDATE organizaciones SET nombre = ? WHERE id = ?').run(nombre, organizacion.id);
+    return sendSuccess(res, 200, 'Nombre de la organización actualizado', { id: organizacion.id, nombre });
+  } catch (error) {
+    return next(error);
   }
 });
 

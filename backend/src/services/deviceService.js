@@ -4,6 +4,8 @@ import { AppError } from '../utils/AppError.js';
 
 /** Vida de un código de vinculación (como un código MFA). */
 export const PAIRING_TTL_MS = 60_000;
+// Los códigos pendientes creados hace más de 5 min se purgan (vencieron hace más de 4)
+const PURGA_PENDIENTES_MS = 5 * 60_000 - PAIRING_TTL_MS;
 
 const REGEX_CODIGO = /^\d{6}$/;
 
@@ -248,10 +250,23 @@ export const deviceService = {
     const devId = typeof deviceId === 'string' && deviceId.trim() ? deviceId.trim().slice(0, 128) : `dev_${crypto.randomUUID()}`;
     const expiresAt = new Date(Date.now() + PAIRING_TTL_MS).toISOString();
 
-    const existente = db.prepare('SELECT pairing_status, parent_id FROM pairing_codes WHERE code = ?').get(finalCode);
+    // Limpieza: los códigos pendientes que vencieron hace más de 4 min (creados hace más de 5) se borran
+    const limitePurga = new Date(Date.now() - PURGA_PENDIENTES_MS).toISOString();
+    db.prepare("DELETE FROM pairing_codes WHERE pairing_status = 'PENDING' AND parent_id IS NULL AND (expires_at IS NULL OR expires_at < ?)")
+      .run(limitePurga);
+
+    const existente = db.prepare('SELECT pairing_status, parent_id, device_id, expires_at FROM pairing_codes WHERE code = ?').get(finalCode);
     if (existente && (existente.pairing_status === 'LINKED' || existente.parent_id)) {
       throw new AppError('Ese código ya está en uso. Genera otro.', 409, { code: 'PAIRING_CODE_USED' });
     }
+    // Un código vigente de OTRO dispositivo no se le quita (evita que un teléfono robe el código de otro)
+    if (existente && existente.device_id !== devId && !estaVencido(existente)) {
+      throw new AppError('Ese código ya está en uso. Genera otro.', 409, { code: 'PAIRING_CODE_USED' });
+    }
+
+    // Al rotar el código, los anteriores pendientes del mismo dispositivo dejan de valer
+    db.prepare("DELETE FROM pairing_codes WHERE device_id = ? AND code <> ? AND pairing_status = 'PENDING' AND parent_id IS NULL")
+      .run(devId, finalCode);
 
     // Un código pendiente con el mismo número se reemplaza (el teléfono lo volvió a publicar)
     db.prepare(`

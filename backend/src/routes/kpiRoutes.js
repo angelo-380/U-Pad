@@ -6,6 +6,9 @@ import { obtenerOrganizacionPorId, formatearCodigo } from '../utils/organizacion
 
 const router = Router();
 
+// Tope de tutores listados en el detalle (el total siempre es exacto)
+const MAX_TUTORES_DETALLE = 500;
+
 // Accesible por rol empresario (colegio/clínica) y developer
 router.use(authenticate);
 router.use(authorizeRoles('empresario', 'developer'));
@@ -18,7 +21,8 @@ router.use(authorizeRoles('empresario', 'developer'));
  * Todas las cifras son datos reales: rutinas, distribución por turno, estudiantes (niños vinculados) y kioscos (0 si no hay).
  * No se devuelven métricas de cumplimiento o adherencia: el backend aún no recibe registros de rutinas completadas
  * (la app Android los guarda solo en el dispositivo), y no se inventan cifras.
- * PROTECCIÓN DE PRIVACIDAD: No expone ningún dato personal identificable (PII) de alumnos o tutores.
+ * PRIVACIDAD (decisión del 16-nov-2026): de los tutores solo se devuelven el nombre y cuántos hijos tienen vinculados,
+ * y solo los de la propia organización (el developer, los de todas). Nunca correos, ni datos de los niños.
  */
 router.get('/kpis', (req, res, next) => {
   try {
@@ -78,6 +82,21 @@ router.get('/kpis', (req, res, next) => {
     const totalEstudiantes = Number(dispositivos?.total || 0);
     const dispositivosKiosco = Number(dispositivos?.kiosco || 0);
 
+    // Tutores de la organización (nombre y número de hijos vinculados), de la A a la Z
+    const tutores = db.prepare(`
+      SELECT
+        u.id,
+        u.nombre,
+        (SELECT COUNT(*) FROM child_devices d WHERE d.parent_id = u.id) AS cantidadNinos
+      FROM usuarios u
+      WHERE u.rol = 'tutor' AND u.${filtroUsuarios}
+      ORDER BY u.nombre COLLATE NOCASE ASC
+      LIMIT ${MAX_TUTORES_DETALLE}
+    `).all(...params);
+    const totalTutores = Number(
+      db.prepare(`SELECT COUNT(*) AS total FROM usuarios u WHERE u.rol = 'tutor' AND u.${filtroUsuarios}`).get(...params)?.total || 0
+    );
+
     // El código de la organización solo se muestra a su propietario
     const esPropietario = Boolean(organizacion && organizacion.propietarioId === req.user.id);
     const organizacionPublica = organizacion
@@ -97,6 +116,8 @@ router.get('/kpis', (req, res, next) => {
         totalEstudiantesInstitucion: totalEstudiantes,
         totalRutinasEstructuradas: totalRutinas,
         dispositivosKioskEnPerimetro: dispositivosKiosco,
+        totalTutoresInstitucion: totalTutores,
+        tutoresDetalle: tutores.map((t) => ({ id: t.id, nombre: t.nombre, cantidadNinos: Number(t.cantidadNinos || 0) })),
         distribucionTurnos: {
           manana: mananaCount,
           tarde: tardeCount,
@@ -109,16 +130,16 @@ router.get('/kpis', (req, res, next) => {
         },
       },
       politicaPrivacidad: {
-        cumplimiento: 'Estricto cumplimiento de anonimización de datos de menores TEA',
-        datosPersonalesVisibles: false,
-        formato: 'Agregado estadístico para toma de decisiones directivas',
+        cumplimiento: 'Sin datos de los menores: solo cifras agregadas',
+        datosPersonalesVisibles: true,
+        formato: 'Cifras agregadas y nombres de los tutores de la propia institución (sin correos)',
       },
     };
 
     return res.status(200).json({
       status: 'success',
       statusCode: 200,
-      message: 'Métricas gerenciales obtenidas exitosamente sin exposición de datos personales',
+      message: 'Métricas gerenciales obtenidas exitosamente',
       data,
     });
   } catch (error) {

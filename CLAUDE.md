@@ -21,7 +21,7 @@
 
 ## 4. Tests
 - Backend: `cd backend && npm test` (Jest + Supertest, `NODE_ENV=test`).
-- 222/222 pruebas pasan (verificado 16-nov-2026, tras J.1 y J.2); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
+- 231/231 pruebas pasan (verificado 16-nov-2026, tras el bloque K); las menciones a Firestore en `tests/setup.js` y `app.test.js` son texto obsoleto.
 - `tests/setup.js` fuerza una base SQLite temporal por corrida (y su carpeta `backups/`): los tests nunca tocan una base real ni crean `.db` en el repo. También genera `JWT_SECRET` y `GCP_KMS_PEPPER_SECRET` aleatorios en cada corrida (no usa los del `.env`).
 
 ## 5. Roles (estado actual del código)
@@ -60,8 +60,10 @@ Dónde se validan (el backend es la autoridad; el frontend solo oculta menús y 
 - Actualiza la sección 10 de este archivo tras CADA cambio (código, verificación o decisión), dejando registrado en qué estado está el trabajo.
 
 ## 7. Android
-- NO modificar nada del proyecto Android: `app/`, `build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradle.properties`, `gradlew*` y los `.apk` de la raíz.
-- Solo se puede leer para entender contratos de API.
+- Desde el 16-nov-2026 (decisión del usuario) se puede modificar `app/` SOLO dentro del bloque L (correcciones críticas de integración con el backend; ver sección 10), con plan aprobado. Fuera de eso sigue sin tocarse.
+- No modificar la configuración de compilación (`build.gradle.kts`, `settings.gradle.kts`, `gradle/`, `gradle.properties`, `gradlew*`) salvo indicación expresa.
+- La APK de la raíz (`UPad_Cloud_Ready.apk`) se regenera con `build-apk.sh` (lo ejecuta el usuario: en esta Mac no hay SDK de Android). Antes de commitearla, comprobar que no lleve claves (el repositorio de GitHub es público).
+- El backend es la fuente de verdad: Android se adapta a sus contratos, no al revés.
 
 ## 8. Credenciales
 - No escribas contraseñas, tokens, claves ni peppers en ningún archivo (código, docs, tests, scripts, este CLAUDE.md).
@@ -148,7 +150,17 @@ Nada de los bloques B a F tiene commit todavía (último commit: `59590d6`). Los
 - **Corregido (16-nov 14:58 UTC):** con `UPAD_BUCKET` bien escrito, `/health` → `persistencia: "Cloud Storage (Litestream)"` y `pepper: "Cloud KMS"`. H.1 y H.3 verificados en producción. **Paso 8 completado por el usuario (16-nov-2026):** entró con la cuenta developer, creó una cuenta de prueba que sobrevivió a una nueva implementación, el bucket tiene `db/` y `backups/`, quitó `DEV_PASSWORD` y añadió la URL de Cloud Run a los orígenes autorizados de OAuth (app de Google en modo «Prueba»; el usuario se añadió como usuario de prueba, los compañeros se añaden después). **Bloque H cerrado en producción.**
 - **J.1 hecho (16-nov-2026, sin commit):** `GET /api/v1/devices/status/:deviceId` (y `/api/devices/…`), sin token, para la app del niño: `{deviceId, linked, parentId}` (desconocido → `linked: false`, `parentId: ''`); valida el formato del id (400 `DEVICE_ID_INVALIDO`) y admite 60 consultas por minuto por dispositivo (429 `ESTADO_RATE_LIMIT`; la app consulta cada 2 s). No expone nombre, modelo ni ubicación. Riesgo aceptado mientras `MOBILE_SIN_TOKEN` siga activo: quien conozca un `deviceId` obtiene el id del padre.
 - **J.2 hecho (16-nov-2026, sin commit):** `authenticate` comprueba la cuenta en la base en cada petición (ver sección 5). Sección 22 de tests (9 pruebas); 222/222. Prueba de humo local correcta.
-- **Siguiente:** J.3 (traer `app/` y la APK cuando el compañero suba su versión final) y J.4 (decidir si se abre Android). Desplegar J.1 y J.2 cuando el usuario quiera (no cambian el frontend: no hace falta regenerar `public_html`).
+- **J.1 y J.2 en commit `5cc253a`.**
+- **Análisis completo de su versión final (16-nov-2026):** es `95983cd` (12-nov); el usuario confirmó que no hay otra. Decisiones del usuario: abrir Android para corregir lo crítico (bloque L); portar pictogramas en español, ventana «Mi perfil», mejoras del Developer Center y tutores en el panel gerencial (bloque K); el director ve el número Y los nombres de sus tutores con sus hijos vinculados. Descartado de su rama: cuentas maestras y purgas, telemetría GET simulada, `cleanup-duplicates`, adherencia 0 de relleno, `tutorName` en el endpoint público, su Desempeño con cifras inventadas e IA falsa, «Todos mis hijos» como `ninoId` de texto, su generador de contraseñas, quitar el interruptor «Cuenta activa», `deploy-cloud.sh` (despliega su backend) y limitar Desempeño a tutores.
+- **J.3 hecho (16-nov-2026):** `app/`, `UPad_Cloud_Ready.apk` y `build-apk.sh` traídos de su rama en el commit `ec4c067` (sin su backend, su frontend, `deploy-cloud.sh` ni el README). Sección 7 actualizada.
+- **Bloque K hecho (16-nov-2026):** 231/231 tests (sección 23), build y paridad es/en correctas.
+  - K.1: `generarCodigo` purga los códigos pendientes creados hace más de 5 min, invalida los pendientes anteriores del mismo dispositivo al rotar y responde 409 `PAIRING_CODE_USED` si otro teléfono intenta quedarse con un código vigente ajeno. `ESTADO_POR_DISPOSITIVO` pasa de 60 a 120 por minuto (el niño y el mapa del padre consultan a la vez).
+  - K.2: ARASAAC busca en español (`'es'`) y guarda en caché también las búsquedas fallidas.
+  - K.3: ventana «Mi perfil» (`components/layout/ConfiguracionUsuarioModal.jsx`, solo lectura) al pulsar el nombre en el header (escritorio y móvil): nombre, correo, rol y organización; el director ve el código para tutores con «Copiar». `AuthContext.refreshUser()` (GET `/api/auth/me`).
+  - K.4: `GET /api/admin/rutinas` acepta `?turno=` (400 `TURNO_INVALIDO`) y devuelve `pasos`, `ninoId`, `actualizadoEn` y `organizacionNombre`; `GET /api/admin/users` devuelve `organizacionNombre`; nuevo `PUT /api/admin/organizaciones/:id {nombre}` (developer, 2–100 caracteres, 400 `NOMBRE_ORGANIZACION_INVALIDO`, 404). Developer Center: filtro por turno y pictogramas en la pestaña Rutinas, nombre de la organización en ambas tablas, campo «Nombre de la organización» al editar un usuario (solo si no cambia su organización), y «Rutinas de un usuario» agrupadas por turno con pictogramas.
+  - K.5: `GET /api/empresario/kpis` devuelve `totalTutoresInstitucion` y `tutoresDetalle: [{id, nombre, cantidadNinos}]` (máx. 500, de la A a la Z, solo de su organización; el developer, de todas); `politicaPrivacidad.datosPersonalesVisibles: true`. Panel gerencial: tarjeta «Padres y tutores» con ventana de la lista y aviso de privacidad.
+  - Falta: revisión del usuario en el navegador (perfil, Developer Center, panel gerencial, pictogramas).
+- **Siguiente:** bloque L (Android). Plan en `~/.claude/plans/empecemos-con-la-planificacion-sparkling-puzzle.md`. Desplegar J.1 y J.2 cuando el usuario quiera (no cambian el frontend: no hace falta regenerar `public_html`).
 - **Pendiente (usuario):** (puesta en marcha de H ya completada) pedir al compañero que suba su última versión (Android y backend) y que no despliegue; decidir si se abre Android para corregir esos fallos.
 
 ### Revisión de los 22 puntos (15-nov-2026)

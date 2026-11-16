@@ -3,7 +3,8 @@
  * API oficial: https://api.arasaac.org/
  * CDN oficial: https://static.arasaac.org/pictograms/{id}/{id}_{size}.png
  *
- * Utiliza el idioma inglés ('en') según requerimiento.
+ * Busca en español ('es'): las palabras clave de las rutinas se escriben en español.
+ * Las búsquedas sin resultado o fallidas también se guardan en caché para no repetirlas.
  */
 
 const ARASAAC_API_BASE = 'https://api.arasaac.org/api';
@@ -23,10 +24,10 @@ export const arasaacService = {
   },
 
   /**
-   * Busca pictogramas por palabra clave en ARASAAC (idioma inglés por defecto).
+   * Busca pictogramas por palabra clave en ARASAAC (español por defecto).
    * Retorna una lista de coincidencias con su _id, keywords y URL de imagen.
    */
-  async searchPictograms(keyword, locale = 'en') {
+  async searchPictograms(keyword, locale = 'es') {
     if (!keyword || typeof keyword !== 'string') return [];
     const term = keyword.trim().toLowerCase();
     if (!term) return [];
@@ -61,16 +62,17 @@ export const arasaacService = {
       searchCache.set(cacheKey, formatted);
       return formatted;
     } catch (err) {
-      console.warn(`[ARASAAC] Error buscando "${term}":`, err.message);
+      // Sin red o error del servicio: se recuerda como vacía para no repetir la búsqueda
+      searchCache.set(cacheKey, []);
       return [];
     }
   },
 
   /**
-   * Obtiene el pictograma más representativo para una palabra clave (locale 'en').
+   * Obtiene el pictograma más representativo para una palabra clave (español por defecto).
    * Retorna { id, url, keyword } o null si no se encuentra.
    */
-  async getPictogramByKeyword(keyword, locale = 'en') {
+  async getPictogramByKeyword(keyword, locale = 'es') {
     if (!keyword || typeof keyword !== 'string') return null;
     const term = keyword.trim().toLowerCase();
     if (!term) return null;
@@ -92,7 +94,7 @@ export const arasaacService = {
       return match;
     }
 
-    // Si no encontró en inglés directo, probamos con una palabra limpia
+    // Si no encontró la frase completa, probamos con una palabra limpia
     // (por ejemplo si contiene guiones o múltiples palabras, tomamos la primera)
     const firstWord = term.split(/[\s_-]+/)[0];
     if (firstWord && firstWord !== term) {

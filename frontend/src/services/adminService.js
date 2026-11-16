@@ -27,6 +27,7 @@ export const adminService = {
     if (filtros.page) params.append('page', filtros.page);
     if (filtros.limit) params.append('limit', filtros.limit);
     if (filtros.search) params.append('search', filtros.search);
+    if (filtros.turno) params.append('turno', filtros.turno);
 
     const query = params.toString() ? `?${params.toString()}` : '';
     const res = await api.get(`/api/admin/rutinas${query}`);
@@ -49,6 +50,14 @@ export const adminService = {
    */
   async editarUsuario(userId, userData) {
     const res = await api.put(`/api/admin/users/${userId}`, userData);
+    return res?.data || res;
+  },
+
+  /**
+   * Cambia el nombre de una organización (lo ven su director y todos sus tutores)
+   */
+  async cambiarNombreOrganizacion(organizacionId, nombre) {
+    const res = await api.put(`/api/admin/organizaciones/${encodeURIComponent(organizacionId)}`, { nombre });
     return res?.data || res;
   },
 

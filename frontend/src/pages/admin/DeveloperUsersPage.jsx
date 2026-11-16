@@ -19,8 +19,12 @@ import {
 } from 'lucide-react';
 import { adminService } from '../../services/adminService.js';
 import { Paginacion } from '../../components/common/Paginacion.jsx';
+import { ArasaacPictogram } from '../../components/common/ArasaacPictogram.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
+
+const TURNOS = ['MANANA', 'TARDE', 'NOCHE'];
+const PICTOGRAMAS_EN_TABLA = 4;
 
 export const DeveloperUsersPage = () => {
   const { t, locale } = useLanguage();
@@ -65,12 +69,13 @@ export const DeveloperUsersPage = () => {
   const [rutinasPagina, setRutinasPagina] = useState(1);
   const [rutinasPaginacion, setRutinasPaginacion] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
   const [rutinasBusqueda, setRutinasBusqueda] = useState('');
+  const [rutinasTurno, setRutinasTurno] = useState('');
   const [cargandoRutinas, setCargandoRutinas] = useState(false);
 
   const fetchRutinas = async (page = rutinasPagina) => {
     setCargandoRutinas(true);
     try {
-      const res = await adminService.listarRutinas({ page, limit: 25, search: rutinasBusqueda.trim() });
+      const res = await adminService.listarRutinas({ page, limit: 25, search: rutinasBusqueda.trim(), turno: rutinasTurno });
       setRutinasAdmin(res.rutinas);
       setRutinasPaginacion(res.pagination);
     } catch (e) {
@@ -83,7 +88,11 @@ export const DeveloperUsersPage = () => {
 
   useEffect(() => {
     if (activeTab === 'routines_table') fetchRutinas(rutinasPagina);
-  }, [activeTab, rutinasPagina]);
+  }, [activeTab, rutinasPagina, rutinasTurno]);
+
+  const nombreTurno = (turno) => (
+    turno === 'MANANA' ? t('tab_morning') : turno === 'TARDE' ? t('tab_afternoon') : turno === 'NOCHE' ? t('tab_night') : turno || '—'
+  );
 
   const fetchUsers = async (page = 1, currentLimit = pageSize) => {
     setLoading(true);
@@ -156,6 +165,8 @@ export const DeveloperUsersPage = () => {
       email: user.email,
       rol: user.rol,
       organizacionId: user.organizacionId || '',
+      organizacionNombreOriginal: user.organizacionNombre || '',
+      organizacionNombre: user.organizacionNombre || '',
       activo: user.activo === 1,
       password: '',
     });
@@ -166,7 +177,14 @@ export const DeveloperUsersPage = () => {
     e.preventDefault();
     setEditingUser(true);
     try {
-      await adminService.editarUsuario(editUserData.id, editUserData);
+      const { organizacionNombre, organizacionNombreOriginal, ...datosUsuario } = editUserData;
+      await adminService.editarUsuario(editUserData.id, datosUsuario);
+      // El nombre de la organización solo se cambia si la organización no cambió y el nombre sí
+      const nombreNuevo = organizacionNombre.trim();
+      const mismaOrganizacion = datosUsuario.organizacionId.trim() === (users.find((u) => u.id === editUserData.id)?.organizacionId || '');
+      if (mismaOrganizacion && datosUsuario.organizacionId.trim() && nombreNuevo && nombreNuevo !== organizacionNombreOriginal) {
+        await adminService.cambiarNombreOrganizacion(datosUsuario.organizacionId.trim(), nombreNuevo);
+      }
       toast.success(t('dev_user_updated', { email: editUserData.email }));
       setEditUserModalOpen(false);
       fetchUsers(pagination.page);
@@ -406,9 +424,12 @@ export const DeveloperUsersPage = () => {
                         <td className="py-3.5 px-4">{getRoleBadge(u.rol)}</td>
                         <td className="py-3.5 px-4">
                           {u.organizacionId ? (
-                            <span className="font-mono text-[11px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
-                              {u.organizacionId}
-                            </span>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-bold text-[12px] text-tea-text">{u.organizacionNombre || u.organizacionId}</span>
+                              <span className="font-mono text-[10px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded w-fit">
+                                {u.organizacionId}
+                              </span>
+                            </div>
                           ) : (
                             <span className="text-tea-subtle italic text-[11px]">{t('dev_org_none')}</span>
                           )}
@@ -549,6 +570,20 @@ export const DeveloperUsersPage = () => {
                 className="w-full pl-9 pr-3 py-2 rounded-xl text-xs border border-tea-border focus:ring-2 focus:ring-purple-600 focus:outline-none"
               />
             </div>
+            <select
+              value={rutinasTurno}
+              onChange={(e) => {
+                setRutinasTurno(e.target.value);
+                setRutinasPagina(1);
+              }}
+              aria-label={t('dev_routines_filter_shift')}
+              className="px-3 py-2 rounded-xl text-xs font-semibold border border-tea-border bg-white focus:ring-2 focus:ring-purple-600 focus:outline-none cursor-pointer"
+            >
+              <option value="">{t('dev_routines_all_shifts')}</option>
+              {TURNOS.map((turno) => (
+                <option key={turno} value={turno}>{nombreTurno(turno)}</option>
+              ))}
+            </select>
             <button
               type="submit"
               className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 transition-tea cursor-pointer"
@@ -588,15 +623,27 @@ export const DeveloperUsersPage = () => {
                     rutinasAdmin.map((r) => (
                       <tr key={r.id} className="hover:bg-slate-50/60">
                         <td className="px-4 py-3 font-bold text-tea-text">{r.titulo}</td>
-                        <td className="px-4 py-3">
-                          {r.turno === 'MANANA' ? t('tab_morning') : r.turno === 'TARDE' ? t('tab_afternoon') : r.turno === 'NOCHE' ? t('tab_night') : r.turno}
-                        </td>
+                        <td className="px-4 py-3">{nombreTurno(r.turno)}</td>
                         <td className="px-4 py-3">
                           <span className="block font-semibold text-tea-text">{r.creadorNombre || '—'}</span>
                           <span className="block text-[11px] text-tea-muted">{r.creadorEmail || r.creadoPor}</span>
                         </td>
-                        <td className="px-4 py-3 font-mono text-[11px] text-tea-muted">{r.organizacionId || '—'}</td>
-                        <td className="px-4 py-3 text-center font-bold">{r.pasosCount}</td>
+                        <td className="px-4 py-3 text-[11px] text-tea-muted">{r.organizacionNombre || r.organizacionId || '—'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-1">
+                            {(r.pasos || []).slice(0, PICTOGRAMAS_EN_TABLA).map((paso, i) => (
+                              <ArasaacPictogram
+                                key={`${r.id}-${i}`}
+                                keyword={paso.palabraClave || paso.texto}
+                                alt={paso.texto || ''}
+                                size="xs"
+                              />
+                            ))}
+                            <span className="ml-1 font-bold">
+                              {r.pasosCount > PICTOGRAMAS_EN_TABLA ? `+${r.pasosCount - PICTOGRAMAS_EN_TABLA}` : r.pasosCount}
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-tea-muted whitespace-nowrap">
                           {r.creadoEn ? new Date(r.creadoEn).toLocaleString(locale) : '—'}
                         </td>
@@ -898,6 +945,21 @@ export const DeveloperUsersPage = () => {
                 </div>
               </div>
 
+              {editUserData.organizacionNombreOriginal && (
+                <div>
+                  <label htmlFor="edit-org-nombre" className="block text-xs font-bold text-slate-700 mb-1">{t('dev_field_org_name')}</label>
+                  <input
+                    id="edit-org-nombre"
+                    type="text"
+                    value={editUserData.organizacionNombre}
+                    maxLength={100}
+                    onChange={(e) => setEditUserData({ ...editUserData, organizacionNombre: e.target.value })}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  />
+                  <p className="text-[10px] text-tea-muted mt-1">{t('dev_field_org_name_hint')}</p>
+                </div>
+              )}
+
               <div className="pt-1">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -966,30 +1028,50 @@ export const DeveloperUsersPage = () => {
                 {t('dev_user_routines_empty')}
               </div>
             ) : (
-              <div className="space-y-3">
-                {userRoutines.map((r) => (
-                  <div key={r.id} className="p-4 rounded-2xl bg-slate-50 border border-tea-border flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
-                        <CalendarCheck className="w-6 h-6 text-purple-600" />
+              <div className="space-y-5">
+                {[...TURNOS, 'OTRO'].map((turno) => {
+                  const delTurno = userRoutines.filter((r) => (TURNOS.includes(r.turno) ? r.turno : 'OTRO') === turno);
+                  if (delTurno.length === 0) return null;
+                  return (
+                    <section key={turno} aria-label={turno === 'OTRO' ? t('dev_user_routines_other_shift') : nombreTurno(turno)}>
+                      <h4 className="text-[11px] font-bold uppercase tracking-wider text-amber-800 mb-2">
+                        {turno === 'OTRO' ? t('dev_user_routines_other_shift') : nombreTurno(turno)} ({delTurno.length})
+                      </h4>
+                      <div className="space-y-3">
+                        {delTurno.map((r) => {
+                          const pasos = Array.isArray(r.pasos) ? r.pasos : [];
+                          return (
+                            <div key={r.id} className="p-4 rounded-2xl bg-slate-50 border border-tea-border">
+                              <div className="flex items-start justify-between gap-3 mb-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <CalendarCheck className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                                  <h5 className="text-sm font-bold text-tea-text truncate">{r.titulo}</h5>
+                                </div>
+                                <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                                  {r.creadoEn ? new Date(r.creadoEn).toLocaleDateString(locale) : '—'}
+                                </span>
+                              </div>
+                              {pasos.length === 0 ? (
+                                <p className="text-[11px] text-tea-muted">{t('dev_user_routine_steps', { total: 0 })}</p>
+                              ) : (
+                                <ol className="flex flex-wrap gap-2">
+                                  {pasos.map((paso, i) => (
+                                    <li key={`${r.id}-${i}`} className="flex flex-col items-center w-20 p-2 rounded-xl bg-white border border-slate-200">
+                                      <ArasaacPictogram keyword={paso.palabraClave || paso.texto} alt={paso.texto || ''} size="sm" />
+                                      <span className="mt-1 text-[10px] text-center text-tea-text leading-tight line-clamp-2">
+                                        {paso.orden || i + 1}. {paso.texto}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ol>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-tea-text">{r.titulo}</h4>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                            {r.turno === 'MANANA' ? t('tab_morning') : r.turno === 'TARDE' ? t('tab_afternoon') : r.turno === 'NOCHE' ? t('tab_night') : r.turno || '—'}
-                          </span>
-                          <span className="text-[11px] text-tea-muted">
-                            {t('dev_user_routine_steps', { total: Array.isArray(r.pasos) ? r.pasos.length : 0 })}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[11px] text-slate-400">
-                      {r.creadoEn ? new Date(r.creadoEn).toLocaleDateString(locale) : '—'}
-                    </span>
-                  </div>
-                ))}
+                    </section>
+                  );
+                })}
               </div>
             )}
           </div>
