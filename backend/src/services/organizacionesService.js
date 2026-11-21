@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { db } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
 import { obtenerOrganizacionPorId, formatearCodigo, buscarPorCodigo } from '../utils/organizaciones.js';
@@ -57,5 +58,81 @@ export const organizacionesService = {
   async salir(usuarioActual) {
     moverTutor(usuarioActual.id, null);
     return null;
+  },
+
+  /**
+   * El tutor solicita retirarse de su institución (Punto 12).
+   * Requiere autorización del director para hacerse efectiva.
+   */
+  async solicitarSalida(usuarioActual) {
+    if (!usuarioActual.organizacionId) {
+      throw new AppError('No perteneces a ninguna institución.', 400);
+    }
+    const org = obtenerOrganizacionPorId(db, usuarioActual.organizacionId);
+    if (!org) {
+      throw new AppError('Organización no encontrada.', 404);
+    }
+
+    // Verificar si ya tiene una solicitud pendiente
+    const pendiente = db.prepare(`
+      SELECT id FROM solicitudes_retiro
+      WHERE tutorId = ? AND organizacionId = ? AND estado = 'PENDIENTE'
+    `).get(usuarioActual.id, org.id);
+
+    if (pendiente) {
+      return { id: pendiente.id, estado: 'PENDIENTE', yaExistia: true, institucion: org.nombre };
+    }
+
+    const id = `ret_${Date.now().toString(16)}_${crypto.randomBytes(3).toString('hex')}`;
+    db.prepare(`
+      INSERT INTO solicitudes_retiro (id, tutorId, tutorNombre, tutorEmail, organizacionId, organizacionNombre, estado, creadoEn)
+      VALUES (?, ?, ?, ?, ?, ?, 'PENDIENTE', ?)
+    `).run(id, usuarioActual.id, usuarioActual.nombre || 'Tutor', usuarioActual.email, org.id, org.nombre, new Date().toISOString());
+
+    return { id, estado: 'PENDIENTE', yaExistia: false, institucion: org.nombre };
+  },
+
+  /**
+   * El director consulta las solicitudes de retiro pendientes de su institución (Punto 12).
+   */
+  async listarSolicitudesRetiro(director) {
+    if (!director.organizacionId) return [];
+    return db.prepare(`
+      SELECT id, tutorId, tutorNombre, tutorEmail, organizacionId, organizacionNombre, estado, creadoEn
+      FROM solicitudes_retiro
+      WHERE organizacionId = ? AND estado = 'PENDIENTE'
+      ORDER BY creadoEn DESC
+    `).all(director.organizacionId);
+  },
+
+  /**
+   * El director aprueba o rechaza la solicitud de retiro (Punto 12).
+   */
+  async resolverSolicitudRetiro(director, solicitudId, accion) {
+    const solicitud = db.prepare(`
+      SELECT * FROM solicitudes_retiro WHERE id = ? AND organizacionId = ?
+    `).get(solicitudId, director.organizacionId);
+
+    if (!solicitud) {
+      throw new AppError('Solicitud de retiro no encontrada.', 404);
+    }
+    if (solicitud.estado !== 'PENDIENTE') {
+      throw new AppError('Esta solicitud ya fue resuelta.', 400);
+    }
+
+    const nuevoEstado = accion === 'APROBAR' ? 'APROBADO' : 'RECHAZADO';
+    const ahora = new Date().toISOString();
+
+    if (nuevoEstado === 'APROBADO') {
+      moverTutor(solicitud.tutorId, null);
+    }
+
+    db.prepare(`
+      UPDATE solicitudes_retiro
+      SET estado = ?, resueltoEn = ?
+      WHERE id = ?
+    `).run(nuevoEstado, ahora, solicitudId);
+
+    return { id: solicitudId, estado: nuevoEstado, tutorId: solicitud.tutorId };
   },
 };

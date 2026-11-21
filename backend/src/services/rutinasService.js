@@ -170,7 +170,7 @@ export const rutinasService = {
       total = countRow ? countRow.count : 0;
     }
 
-    let query = `SELECT * FROM rutinas ${whereClause} ORDER BY creadoEn DESC, rowid DESC`;
+    let query = `SELECT * FROM rutinas ${whereClause} ORDER BY creadoEn ASC, rowid ASC`;
     const queryParams = [...params];
 
     if (isPaginated) {

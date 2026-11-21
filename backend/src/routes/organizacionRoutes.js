@@ -48,4 +48,44 @@ router.delete('/membresia', authorizeRoles('tutor'), async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/organizaciones/solicitar-retiro (Punto 12)
+ * El tutor solicita retirarse con permiso del director.
+ */
+router.post('/solicitar-retiro', authorizeRoles('tutor'), async (req, res, next) => {
+  try {
+    const resultado = await organizacionesService.solicitarSalida(req.user);
+    return sendSuccess(res, 200, 'Solicitud de retiro enviada al director', resultado);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/organizaciones/solicitudes-retiro (Punto 12)
+ * El director consulta las solicitudes pendientes de su institución.
+ */
+router.get('/solicitudes-retiro', authorizeRoles('empresario'), async (req, res, next) => {
+  try {
+    const solicitudes = await organizacionesService.listarSolicitudesRetiro(req.user);
+    return sendSuccess(res, 200, 'Solicitudes de retiro obtenidas', solicitudes);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/organizaciones/solicitudes-retiro/:id/resolver (Punto 12)
+ * El director aprueba o rechaza la solicitud de retiro.
+ */
+router.post('/solicitudes-retiro/:id/resolver', authorizeRoles('empresario'), async (req, res, next) => {
+  try {
+    const accion = req.body?.accion === 'RECHAZAR' ? 'RECHAZAR' : 'APROBAR';
+    const resultado = await organizacionesService.resolverSolicitudRetiro(req.user, req.params.id, accion);
+    return sendSuccess(res, 200, 'Solicitud resuelta', resultado);
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

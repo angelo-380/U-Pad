@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { adminService } from '../../services/adminService.js';
+import { organizacionesService } from '../../services/organizacionesService.js';
 import { cumplimientoService } from '../../services/cumplimientoService.js';
 import { CumplimientoResumen } from '../../components/common/CumplimientoResumen.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
@@ -43,6 +44,30 @@ export const GerencialKpiPage = () => {
   const [tutorExpandidoId, setTutorExpandidoId] = useState(null);
   const [cumplimiento, setCumplimiento] = useState(null);
   const [errorCumplimiento, setErrorCumplimiento] = useState(null);
+  const [solicitudesRetiro, setSolicitudesRetiro] = useState([]);
+  const [resolviendoRetiroId, setResolviendoRetiroId] = useState(null);
+
+  const cargarSolicitudesRetiro = async () => {
+    try {
+      const list = await organizacionesService.listarSolicitudesRetiro();
+      setSolicitudesRetiro(Array.isArray(list) ? list : []);
+    } catch {
+      // silencioso
+    }
+  };
+
+  const handleResolverRetiro = async (id, accion) => {
+    try {
+      setResolviendoRetiroId(id);
+      await organizacionesService.resolverSolicitudRetiro(id, accion);
+      setSolicitudesRetiro((prev) => prev.filter((s) => s.id !== id));
+      fetchKpis();
+    } catch (err) {
+      console.error('Error al resolver retiro:', err);
+    } finally {
+      setResolviendoRetiroId(null);
+    }
+  };
 
   const fetchKpis = async () => {
     setLoading(true);
@@ -72,6 +97,7 @@ export const GerencialKpiPage = () => {
 
   useEffect(() => {
     fetchKpis();
+    cargarSolicitudesRetiro();
   }, []);
 
   const copiarCodigo = async () => {
@@ -142,6 +168,53 @@ export const GerencialKpiPage = () => {
       {error && (
         <div className="p-3.5 rounded-2xl text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-800" role="alert">
           {error}
+        </div>
+      )}
+
+      {/* Solicitudes de retiro de institución pendientes (Punto 12) */}
+      {solicitudesRetiro.length > 0 && (
+        <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-3 shadow-soft-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+              {t('withdrawal_requests_title')}
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-xs font-bold">
+              {solicitudesRetiro.length}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {solicitudesRetiro.map((s) => (
+              <div
+                key={s.id}
+                className="p-3 bg-white rounded-xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+              >
+                <div>
+                  <p className="text-sm font-bold text-slate-800">{s.tutorNombre}</p>
+                  <p className="text-xs text-slate-500">
+                    {s.tutorEmail} • {t('withdrawal_wants_leave')}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    disabled={resolviendoRetiroId === s.id}
+                    onClick={() => handleResolverRetiro(s.id, 'APROBAR')}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-50 transition-colors"
+                  >
+                    {t('withdrawal_approve')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resolviendoRetiroId === s.id}
+                    onClick={() => handleResolverRetiro(s.id, 'RECHAZAR')}
+                    className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold disabled:opacity-50 transition-colors"
+                  >
+                    {t('withdrawal_reject')}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

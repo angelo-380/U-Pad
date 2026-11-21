@@ -23,6 +23,9 @@ router.get('/me', authenticate, (req, res) => {
   });
 });
 
+// Actualizar nombre en el perfil (Punto 13)
+router.put('/me', authenticate, authController.actualizarPerfil);
+
 // Borrar la propia cuenta (confirmando la contraseña). Lo usan también las pruebas de k6 al terminar.
 // Exige token y contraseña, así que usa su propio límite por cuenta (10 por minuto) en vez de authLimiter:
 // cada ejecución de k6 solo gasta un cupo de registro/login, el del alta de su cuenta temporal.

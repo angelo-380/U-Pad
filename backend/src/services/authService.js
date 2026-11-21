@@ -395,4 +395,19 @@ export const authService = {
 
     return { userId: usuarioId, deleted: true, organizacionesBorradas: organizacionesPropias.length };
   },
+
+  /**
+   * Cambia el nombre en el perfil del usuario (Punto 13)
+   */
+  actualizarNombre(userId, nuevoNombre) {
+    const limpio = String(nuevoNombre || '').trim();
+    if (!limpio) {
+      throw new AppError('El nombre no puede estar vacío.', 400, { field: 'nombre' });
+    }
+    if (limpio.length < 2 || limpio.length > 100) {
+      throw new AppError('El nombre debe tener entre 2 y 100 caracteres.', 400, { field: 'nombre' });
+    }
+    db.prepare('UPDATE usuarios SET nombre = ? WHERE id = ?').run(limpio, userId);
+    return db.prepare('SELECT id, nombre, email, rol, organizacionId FROM usuarios WHERE id = ?').get(userId);
+  },
 };

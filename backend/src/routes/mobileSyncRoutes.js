@@ -204,16 +204,32 @@ router.get('/mobile/sync-routines', identificarUsuarioMovil({ anonimoVacio: true
       rows = db.prepare('SELECT * FROM rutinas WHERE activa = 1 AND creadoPor = ? ORDER BY creadoEn ASC, rowid ASC').all(req.usuarioMovil.id);
     }
 
-    // En orden de creación: el niño empieza por la primera rutina que creó su padre
+    // En orden de creación FIFO (cola): verificar cuáles rutinas ya fueron cumplidas hoy
+    // para que cuando el niño cumpla una rutina avance automáticamente a la siguiente (Puntos 3 y 4)
+    const fechaHoy = new Date().toISOString().slice(0, 10);
+    const completadasHoy = new Set();
+    try {
+      const q = deviceId
+        ? db.prepare('SELECT actividad, rutinaId FROM cumplimientos WHERE (deviceId = ? OR deviceId = ?) AND fecha = ?').all(deviceId, `web_${req.usuarioMovil.id}`, fechaHoy)
+        : db.prepare('SELECT actividad, rutinaId FROM cumplimientos WHERE fecha = ?').all(fechaHoy);
+      for (const c of q) {
+        if (c.rutinaId) completadasHoy.add(String(c.rutinaId));
+        if (c.actividad) completadasHoy.add(String(c.actividad).toUpperCase().trim());
+      }
+    } catch {
+      // si falla consulta de cumplimientos, continúa sin bloquear
+    }
+
     const tasks = rows.map((r) => {
       const pasos = leerPasos(r.pasos, r.titulo);
       const total = duracionTotal(pasos);
+      const isCompletada = completadasHoy.has(String(r.id)) || completadasHoy.has(String(r.titulo).toUpperCase().trim());
       return {
         id: r.id,
         actividad: r.titulo.toUpperCase(),
         palabraClave: (pasos[0]?.palabraClave || r.titulo).toLowerCase(),
         dias: ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'],
-        completada: false,
+        completada: isCompletada,
         turno: r.turno,
         ninoId: r.ninoId || null,
         pasos,

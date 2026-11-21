@@ -92,10 +92,11 @@ export const RutinaShiftSection = ({
 
       {count > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {rutinas.map((rutina) => (
+          {rutinas.map((rutina, index) => (
             <RutinaCard
               key={rutina.id}
               rutina={rutina}
+              queueIndex={index + 1}
               onEditar={onEditar}
               onEliminar={onEliminar}
               nombresHijos={nombresHijos}

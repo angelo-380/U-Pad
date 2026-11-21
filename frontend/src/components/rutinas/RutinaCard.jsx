@@ -16,6 +16,7 @@ import {
 
 export const RutinaCard = ({
   rutina,
+  queueIndex,
   onEditar,
   onEliminar,
   nombresHijos = {}, // { deviceId: nombre } de los hijos vinculados
@@ -82,7 +83,14 @@ export const RutinaCard = ({
       <div>
         {/* Cabecera de la tarjeta */}
         <div className="flex items-center justify-between gap-2 mb-3">
-          {getTurnoBadge(rutina.turno)}
+          <div className="flex items-center gap-2">
+            {getTurnoBadge(rutina.turno)}
+            {queueIndex && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                #{queueIndex} {t('routine_in_queue')}
+              </span>
+            )}
+          </div>
 
           {formattedDate && (
             <span className="text-xs text-tea-muted font-medium flex items-center gap-1">

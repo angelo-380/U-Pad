@@ -114,6 +114,13 @@ export const AuthProvider = ({ children }) => {
     return usuarioActual;
   };
 
+  /** Actualiza el nombre del usuario en el perfil (Punto 13) */
+  const actualizarNombre = async (nuevoNombre) => {
+    const usuarioActual = await authService.actualizarNombre(nuevoNombre);
+    if (usuarioActual) setUser(usuarioActual);
+    return usuarioActual;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -131,6 +138,7 @@ export const AuthProvider = ({ children }) => {
         registroGooglePendiente,
         cancelarRegistroGoogle,
         refreshUser,
+        actualizarNombre,
       }}
     >
       {children}

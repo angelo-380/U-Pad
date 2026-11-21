@@ -125,4 +125,17 @@ export const authController = {
       next(error);
     }
   },
+
+  /**
+   * PUT /api/auth/me - Actualiza el nombre en el perfil del usuario (Punto 13)
+   */
+  async actualizarPerfil(req, res, next) {
+    try {
+      const { nombre } = req.body || {};
+      const usuario = authService.actualizarNombre(req.user.id, nombre);
+      return sendSuccess(res, 200, 'Nombre actualizado exitosamente', { usuario });
+    } catch (error) {
+      next(error);
+    }
+  },
 };

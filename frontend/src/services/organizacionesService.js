@@ -21,4 +21,22 @@ export const organizacionesService = {
     await api.delete('/api/organizaciones/membresia');
     return null;
   },
+
+  /** Solo tutores: solicita permiso al director para retirarse (Punto 12) */
+  async solicitarSalida() {
+    const res = await api.post('/api/organizaciones/solicitar-retiro');
+    return res?.data;
+  },
+
+  /** Directores: lista solicitudes pendientes de retiro (Punto 12) */
+  async listarSolicitudesRetiro() {
+    const res = await api.get('/api/organizaciones/solicitudes-retiro');
+    return res?.data || [];
+  },
+
+  /** Directores: aprueba o rechaza solicitud de retiro (Punto 12) */
+  async resolverSolicitudRetiro(solicitudId, accion) {
+    const res = await api.post(`/api/organizaciones/solicitudes-retiro/${solicitudId}/resolver`, { accion });
+    return res?.data;
+  },
 };

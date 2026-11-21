@@ -80,4 +80,10 @@ export const authService = {
   logout() {
     api.setToken(null);
   },
+
+  /** Actualiza el nombre del perfil (Punto 13) */
+  async actualizarNombre(nombre) {
+    const res = await api.put('/api/auth/me', { nombre });
+    return res?.data?.usuario;
+  },
 };

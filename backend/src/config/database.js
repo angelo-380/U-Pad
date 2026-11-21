@@ -258,6 +258,19 @@ export function inicializarEsquema(conexion) {
     PRIMARY KEY (device_id, parent_id)
   );
 
+  -- Solicitudes de retiro de institución (Punto 12)
+  CREATE TABLE IF NOT EXISTS solicitudes_retiro (
+    id TEXT PRIMARY KEY,
+    tutorId TEXT NOT NULL,
+    tutorNombre TEXT NOT NULL,
+    tutorEmail TEXT NOT NULL,
+    organizacionId TEXT NOT NULL,
+    organizacionNombre TEXT NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+    creadoEn TEXT NOT NULL,
+    resueltoEn TEXT
+  );
+
   -- Cumplimiento real: cada actividad que el niño completa en su teléfono (una vez por día, actividad y turno).
   -- Padre y organización los decide el servidor; la fecha es el día local del teléfono (YYYY-MM-DD).
   CREATE TABLE IF NOT EXISTS cumplimientos (

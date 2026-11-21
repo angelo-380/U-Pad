@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, UserRound, Building2, KeyRound, Copy, Check, Loader2, RefreshCw, LogIn, LogOut } from 'lucide-react';
+import { X, UserRound, Building2, KeyRound, Copy, Check, Loader2, RefreshCw, LogIn, LogOut, Edit2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { organizacionesService } from '../../services/organizacionesService.js';
@@ -14,7 +14,7 @@ import { mensajeDeError } from '../../utils/erroresApi.js';
  */
 export const ConfiguracionUsuarioModal = ({ isOpen, onClose }) => {
   const { t } = useLanguage();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, actualizarNombre } = useAuth();
   const [organizacion, setOrganizacion] = useState(null);
   const [cargandoOrg, setCargandoOrg] = useState(false);
   const [errorOrg, setErrorOrg] = useState(false);
@@ -22,6 +22,9 @@ export const ConfiguracionUsuarioModal = ({ isOpen, onClose }) => {
   const [codigo, setCodigo] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState(null); // { tipo: 'ok' | 'error', texto }
+  const [editandoNombre, setEditandoNombre] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [guardandoNombre, setGuardandoNombre] = useState(false);
 
   const cargarOrganizacion = async () => {
     setCargandoOrg(true);
@@ -77,18 +80,33 @@ export const ConfiguracionUsuarioModal = ({ isOpen, onClose }) => {
   };
 
   const salir = async () => {
-    if (guardando || !window.confirm(t('profile_leave_confirm', { nombre: organizacion?.nombre || '' }))) return;
+    const confirmMsg = t('profile_leave_confirm', { nombre: organizacion?.nombre || '' });
+    if (guardando || !window.confirm(confirmMsg)) return;
     setGuardando(true);
     setMensaje(null);
     try {
-      await organizacionesService.salir();
-      setOrganizacion(null);
-      setMensaje({ tipo: 'ok', texto: t('profile_leave_ok') });
-      refreshUser().catch(() => {});
+      await organizacionesService.solicitarSalida();
+      setMensaje({ tipo: 'ok', texto: t('profile_leave_requested') });
     } catch (err) {
       setMensaje({ tipo: 'error', texto: mensajeDeError(err, t, t('profile_join_error')) });
     } finally {
       setGuardando(false);
+    }
+  };
+
+  const handleGuardarNombre = async (e) => {
+    e.preventDefault();
+    if (!nuevoNombre.trim() || guardandoNombre) return;
+    setGuardandoNombre(true);
+    setMensaje(null);
+    try {
+      await actualizarNombre(nuevoNombre.trim());
+      setEditandoNombre(false);
+      setMensaje({ tipo: 'ok', texto: t('profile_name_updated') });
+    } catch (err) {
+      setMensaje({ tipo: 'error', texto: mensajeDeError(err, t, t('profile_name_error')) });
+    } finally {
+      setGuardandoNombre(false);
     }
   };
 
@@ -243,9 +261,51 @@ export const ConfiguracionUsuarioModal = ({ isOpen, onClose }) => {
         <dl className="space-y-3 mb-5">
           <div className="flex items-start gap-3">
             <UserRound className="w-4 h-4 mt-0.5 text-tea-subtle flex-shrink-0" aria-hidden="true" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <dt className="text-[11px] font-bold text-tea-subtle uppercase tracking-wider">{t('profile_name')}</dt>
-              <dd className="text-sm font-semibold text-tea-text break-words">{nombre}</dd>
+              {editandoNombre ? (
+                <form onSubmit={handleGuardarNombre} className="flex items-center gap-2 mt-1">
+                  <input
+                    type="text"
+                    value={nuevoNombre}
+                    onChange={(e) => setNuevoNombre(e.target.value)}
+                    maxLength={100}
+                    disabled={guardandoNombre}
+                    className="flex-1 min-w-0 px-2.5 py-1 text-sm rounded-lg border border-tea-border focus:ring-2 focus:ring-brand-500 focus:outline-none bg-white"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={guardandoNombre || !nuevoNombre.trim()}
+                    className="px-2.5 py-1 rounded-lg bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 disabled:opacity-50 cursor-pointer"
+                  >
+                    {guardandoNombre ? <Loader2 className="w-3 h-3 animate-spin" /> : (t('btn_save') || 'Guardar')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditandoNombre(false)}
+                    className="text-xs text-slate-500 hover:text-slate-700 cursor-pointer"
+                  >
+                    {t('btn_cancel')}
+                  </button>
+                </form>
+              ) : (
+                <div className="flex items-center justify-between gap-2 mt-0.5">
+                  <dd className="text-sm font-semibold text-tea-text break-words">{nombre}</dd>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNuevoNombre(user.nombre || '');
+                      setEditandoNombre(true);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs text-brand-600 font-bold hover:underline cursor-pointer"
+                    title={t('btn_edit')}
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>{t('btn_edit')}</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-start gap-3">
