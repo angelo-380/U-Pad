@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { devicesService } from '../../services/devicesService.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
-import { X, Tablet, KeyRound, CheckCircle2, Loader2, Trash2, AlertCircle, RefreshCw, Timer } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { X, Tablet, KeyRound, CheckCircle2, Loader2, Trash2, AlertCircle, RefreshCw, Timer, Info } from 'lucide-react';
 
 // Errores del backend al vincular, traducidos a mensajes claros para el tutor
 const ERRORES_VINCULACION = {
@@ -17,6 +18,7 @@ const ERRORES_VINCULACION = {
  */
 export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [code, setCode] = useState('');
   const [childName, setChildName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -128,6 +130,14 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
             <p className="text-xs text-tea-muted">{t('link_subtitle')}</p>
           </div>
         </div>
+
+        {/* Aviso de Modo Demostración/Capacitación para el Director */}
+        {user?.rol === 'empresario' && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+            <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="leading-snug">{t('devices_dir_demo_notice')}</p>
+          </div>
+        )}
 
         {/* Hijos ya vinculados, cada uno con su opción de desvincular */}
         {existingDevices.length > 0 && (

@@ -120,6 +120,44 @@ export const cumplimientoService = {
   },
 
   /**
+   * Registra el cumplimiento de una rutina directamente desde la interfaz web.
+   */
+  completarDesdeWeb(usuario, { rutinaId, fecha } = {}) {
+    if (!rutinaId) {
+      throw new AppError('El id de la rutina es requerido.', 400, { field: 'rutinaId', code: 'RUTINA_ID_REQUERIDO' });
+    }
+    const fechaObj = fecha || new Date().toISOString().slice(0, 10);
+    const rutina = db.prepare('SELECT id, titulo, turno, ninoId, creadoPor FROM rutinas WHERE id = ?').get(rutinaId);
+    if (!rutina) {
+      throw new AppError('Rutina no encontrada.', 404, { code: 'RUTINA_NO_ENCONTRADA' });
+    }
+    if (usuario.rol === 'tutor' && rutina.creadoPor !== usuario.id) {
+      throw new AppError('No tienes permisos para registrar cumplimiento en esta rutina.', 403, { code: 'FORBIDDEN' });
+    }
+    let deviceId = rutina.ninoId;
+    if (!deviceId) {
+      const hijo = db.prepare('SELECT device_id FROM child_devices WHERE parent_id = ? LIMIT 1').get(rutina.creadoPor);
+      deviceId = hijo ? hijo.device_id : `web_${usuario.id}`;
+    }
+    const padre = db.prepare('SELECT organizacionId FROM usuarios WHERE id = ?').get(rutina.creadoPor);
+    const cumplimiento = {
+      id: `cmp_${Date.now().toString(16)}_${crypto.randomBytes(4).toString('hex')}`,
+      deviceId,
+      rutinaId: rutina.id,
+      actividad: rutina.titulo,
+      turno: rutina.turno,
+      fecha: fechaObj,
+      completadoEn: new Date().toISOString(),
+    };
+    db.prepare(`
+      INSERT OR REPLACE INTO cumplimientos (id, padreId, deviceId, rutinaId, actividad, turno, fecha, completadoEn, organizacionId)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(cumplimiento.id, rutina.creadoPor, deviceId, rutina.id, rutina.titulo, rutina.turno, fechaObj, cumplimiento.completadoEn, padre?.organizacionId ?? null);
+
+    return { ok: true, cumplimiento };
+  },
+
+  /**
    * Lo que el teléfono del niño ya completó en una fecha (su fecha local, ±1 día): [{ rutinaId, actividad, turno }].
    * Así recupera su avance al recargar la lista o reabrir la app.
    */

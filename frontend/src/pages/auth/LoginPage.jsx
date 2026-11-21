@@ -6,11 +6,12 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 import { LanguageSelector } from '../../components/common/LanguageSelector.jsx';
 import { ImagePlaceholder } from '../../components/common/ImagePlaceholder.jsx';
 import { BotonGoogle } from '../../components/auth/BotonGoogle.jsx';
-import { Mail, Lock, LogIn, AlertCircle, ShieldAlert, Loader2 } from 'lucide-react';
+import { Mail, Lock, LogIn, AlertCircle, ShieldAlert, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -121,8 +122,15 @@ export const LoginPage = () => {
         {/* Form Column */}
         <div className="p-8 sm:p-10 flex flex-col justify-center">
           <div className="md:hidden mb-6">
-            <div className="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white font-extrabold text-xl shadow-sm mb-2">
-              U
+            <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm mb-2 bg-white flex items-center justify-center">
+              <img
+                src="/images/logo_upad.png"
+                alt="U-Pad Logo"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
             </div>
             <h1 className="text-2xl font-extrabold text-tea-text tracking-tight">{t('login_title') || 'Sign In'}</h1>
             <p className="text-xs text-tea-muted">{t('login_subtitle') || 'Access U-Pad Web Portal'}</p>
@@ -203,14 +211,22 @@ export const LoginPage = () => {
                 </div>
                 <input
                   id="password"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   disabled={loading}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-tea-border bg-slate-50 focus:bg-white text-tea-text placeholder:text-slate-400 transition-colors"
+                  className="w-full pl-10 pr-10 py-2.5 text-sm rounded-xl border border-tea-border bg-slate-50 focus:bg-white text-tea-text placeholder:text-slate-400 transition-colors"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
+                  aria-label={showPassword ? (t('hide_password') || 'Ocultar contraseña') : (t('show_password') || 'Mostrar contraseña')}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 

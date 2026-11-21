@@ -117,7 +117,21 @@ router.get('/kpis', (req, res, next) => {
         totalRutinasEstructuradas: totalRutinas,
         dispositivosKioskEnPerimetro: dispositivosKiosco,
         totalTutoresInstitucion: totalTutores,
-        tutoresDetalle: tutores.map((t) => ({ id: t.id, nombre: t.nombre, cantidadNinos: Number(t.cantidadNinos || 0) })),
+        tutoresDetalle: tutores.map((t) => {
+          const rutinasTutor = db.prepare(`
+            SELECT id, titulo, turno, activa, substr(creadoEn, 1, 10) AS fecha, duracionTotalMinutos
+            FROM rutinas
+            WHERE creadoPor = ?
+            ORDER BY creadoEn ASC
+          `).all(t.id).map((r) => ({ ...r, activa: Boolean(r.activa) }));
+          return {
+            id: t.id,
+            nombre: t.nombre,
+            cantidadNinos: Number(t.cantidadNinos || 0),
+            cantidadRutinas: rutinasTutor.length,
+            rutinas: rutinasTutor,
+          };
+        }),
         distribucionTurnos: {
           manana: mananaCount,
           tarde: tardeCount,

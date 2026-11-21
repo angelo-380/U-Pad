@@ -23,6 +23,7 @@ import {
   Sparkles,
   Users,
   Building2,
+  Info,
 } from 'lucide-react';
 
 export const RutinasPage = () => {
@@ -215,23 +216,40 @@ export const RutinasPage = () => {
 
       {/* Banner especial para Empresario (Director de Colegio / Clínica) */}
       {user?.rol === 'empresario' && (
-        <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-soft-xs">
-          <div className="flex items-center gap-3">
-            <span className="p-2 rounded-xl bg-indigo-600 text-white font-black text-xs">DIR</span>
+        <div className="space-y-3">
+          <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-soft-xs">
+            <div className="flex items-center gap-3">
+              <span className="p-2 rounded-xl bg-indigo-600 text-white font-black text-xs">DIR</span>
+              <div>
+                <p className="font-extrabold text-indigo-900">{organizacion?.nombre || t('org_fallback_name')}</p>
+                <p className="text-indigo-700 text-[11px]">
+                  {t('routines_dir_banner_desc')}
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/gerencial"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-colors shadow-sm flex-shrink-0"
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              <span>{t('routines_dir_banner_cta')}</span>
+            </Link>
+          </div>
+
+          {/* Aclaración Punto 15: Modo Demostración / Capacitación para el Director */}
+          <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex items-start gap-3 text-xs shadow-soft-xs">
+            <div className="p-1.5 rounded-xl bg-amber-500 text-white flex-shrink-0 mt-0.5">
+              <Info className="w-4 h-4" />
+            </div>
             <div>
-              <p className="font-extrabold text-indigo-900">{organizacion?.nombre || t('org_fallback_name')}</p>
-              <p className="text-indigo-700 text-[11px]">
-                {t('routines_dir_banner_desc')}
+              <p className="font-extrabold text-amber-900 text-sm">
+                {t('routines_dir_demo_title')}
+              </p>
+              <p className="text-amber-800 text-xs mt-0.5 leading-relaxed">
+                {t('routines_dir_demo_desc')}
               </p>
             </div>
           </div>
-          <Link
-            to="/gerencial"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-colors shadow-sm flex-shrink-0"
-          >
-            <Building2 className="w-3.5 h-3.5" />
-            <span>{t('routines_dir_banner_cta')}</span>
-          </Link>
         </div>
       )}
 

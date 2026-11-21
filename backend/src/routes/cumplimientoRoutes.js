@@ -22,4 +22,17 @@ router.get('/', (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/cumplimiento/completar
+ * Permite registrar el cumplimiento de una rutina directamente desde la interfaz web.
+ */
+router.post('/completar', (req, res, next) => {
+  try {
+    const resultado = cumplimientoService.completarDesdeWeb(req.user, req.body || {});
+    return sendSuccess(res, 200, 'Cumplimiento de rutina registrado exitosamente', resultado);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 export default router;

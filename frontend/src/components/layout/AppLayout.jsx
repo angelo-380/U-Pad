@@ -95,16 +95,15 @@ export const AppLayout = ({ children }) => {
                 className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 rounded-xl p-1"
                 aria-label={t('nav_home_aria')}
               >
-                <div className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center font-black text-lg tracking-wider shadow-soft-xs overflow-hidden">
+                <div className="w-9 h-9 rounded-xl overflow-hidden shadow-soft-xs flex items-center justify-center bg-white flex-shrink-0">
                   <img
                     src="/images/logo_upad.png"
-                    alt="U-Pad"
-                    className="w-full h-full object-contain p-0.5"
+                    alt="U-Pad Logo"
+                    className="w-full h-full object-cover"
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                     }}
                   />
-                  <span className="text-white font-black text-lg">U</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="font-extrabold text-base tracking-tight text-tea-text leading-none">

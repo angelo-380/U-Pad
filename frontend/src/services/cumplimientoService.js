@@ -16,4 +16,10 @@ export const cumplimientoService = {
     const res = await api.get(`/api/cumplimiento?${params.toString()}`);
     return res?.data || null;
   },
+
+  /** Registra el cumplimiento de una rutina directamente desde la web */
+  async registrarCumplimiento(rutinaId) {
+    const res = await api.post('/api/cumplimiento/completar', { rutinaId, fecha: fechaLocal() });
+    return res?.data || null;
+  },
 };

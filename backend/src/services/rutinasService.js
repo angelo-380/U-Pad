@@ -125,6 +125,10 @@ export const rutinasService = {
         whereClause += ' AND creadoPor = ?';
         params.push(usuarioActual.id);
       }
+      if (filtros.creadoPor || filtros.tutorId) {
+        whereClause += ' AND creadoPor = ?';
+        params.push(filtros.creadoPor || filtros.tutorId);
+      }
     } else if (usuarioActual.rol === 'developer') {
       if (filtros.all === 'true' || filtros.scope === 'all') {
         // Modo auditoría global: ve todas o filtra por organizacionId si se especifica

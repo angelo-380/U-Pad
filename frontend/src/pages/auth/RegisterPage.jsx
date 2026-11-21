@@ -6,12 +6,15 @@ import { useLanguage } from '../../context/LanguageContext.jsx';
 import { LanguageSelector } from '../../components/common/LanguageSelector.jsx';
 import { ImagePlaceholder } from '../../components/common/ImagePlaceholder.jsx';
 import { BotonGoogle } from '../../components/auth/BotonGoogle.jsx';
-import { User, Mail, Lock, UserPlus, AlertCircle, Loader2, Briefcase, KeyRound } from 'lucide-react';
+import { User, Mail, Lock, UserPlus, AlertCircle, Loader2, Briefcase, KeyRound, Eye, EyeOff } from 'lucide-react';
 
 export const RegisterPage = () => {
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [rol, setRol] = useState('empresario');
   const [codigoOrganizacion, setCodigoOrganizacion] = useState('');
   const [error, setError] = useState(null);
@@ -80,6 +83,11 @@ export const RegisterPage = () => {
 
     if (!/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(password)) {
       setError(t('register_pass_policy') || 'Password must include uppercase, numbers, and special symbols.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError(t('register_pass_mismatch') || 'Las contraseñas no coinciden.');
       return;
     }
 
@@ -287,29 +295,71 @@ export const RegisterPage = () => {
             )}
 
             {!pendiente && (
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-xs font-bold uppercase tracking-wider text-tea-text mb-1.5"
-              >
-                {t('password_policy_label') || 'Password (min. 8 characters, Uppercase, Numbers & Symbols)'}
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Lock className="w-4 h-4" />
+            <>
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-xs font-bold uppercase tracking-wider text-tea-text mb-1.5"
+                >
+                  {t('password_policy_label') || 'Password (min. 8 characters, Uppercase, Numbers & Symbols)'}
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    disabled={loading}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-10 py-2.5 text-sm rounded-xl border border-tea-border bg-slate-50 focus:bg-white text-tea-text placeholder:text-slate-400 transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
+                    aria-label={showPassword ? (t('hide_password') || 'Ocultar contraseña') : (t('show_password') || 'Mostrar contraseña')}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
-                <input
-                  id="password"
-                  type="password"
-                  required
-                  disabled={loading}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-tea-border bg-slate-50 focus:bg-white text-tea-text placeholder:text-slate-400 transition-colors"
-                />
               </div>
-            </div>
+
+              <div>
+                <label
+                  htmlFor="confirmPassword"
+                  className="block text-xs font-bold uppercase tracking-wider text-tea-text mb-1.5"
+                >
+                  {t('confirm_password_label') || 'Confirm Password'}
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    disabled={loading}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-10 py-2.5 text-sm rounded-xl border border-tea-border bg-slate-50 focus:bg-white text-tea-text placeholder:text-slate-400 transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
+                    aria-label={showConfirmPassword ? (t('hide_password') || 'Ocultar contraseña') : (t('show_password') || 'Mostrar contraseña')}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </>
             )}
 
             <button

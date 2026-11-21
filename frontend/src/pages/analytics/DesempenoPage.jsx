@@ -10,12 +10,17 @@ import {
   CalendarCheck,
   ListChecks,
   BarChart3,
+  CheckCircle2,
+  Clock,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { rutinasService } from '../../services/rutinasService.js';
 import { cumplimientoService } from '../../services/cumplimientoService.js';
 import { CumplimientoResumen } from '../../components/common/CumplimientoResumen.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
+import { useToast } from '../../context/ToastContext.jsx';
 
 /**
  * Normaliza el turno guardado ('MANANA', 'Mañana', 'manana'...) a MANANA | TARDE | NOCHE.
@@ -38,12 +43,27 @@ const contarPasos = (rutina) => (Array.isArray(rutina?.pasos) ? rutina.pasos.len
 export const DesempenoPage = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const toast = useToast();
   const navigate = useNavigate();
   const [rutinas, setRutinas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [cumplimiento, setCumplimiento] = useState(null);
   const [errorCumplimiento, setErrorCumplimiento] = useState(null);
+  const [marcandoId, setMarcandoId] = useState(null);
+
+  const handleMarcarCumplida = async (rutinaId) => {
+    try {
+      setMarcandoId(rutinaId);
+      await cumplimientoService.registrarCumplimiento(rutinaId);
+      toast.success(t('perf_mark_success'), t('perf_completed_today'));
+      await cargarDatos();
+    } catch (e) {
+      toast.error(e?.message || 'Error');
+    } finally {
+      setMarcandoId(null);
+    }
+  };
 
   // Roles que tienen el módulo de Rutinas en su menú
   const puedeIrARutinas = user?.rol === 'tutor' || user?.rol === 'developer';
@@ -216,6 +236,65 @@ export const DesempenoPage = () => {
               })}
             </div>
           </div>
+
+          {/* Registro interactivo de cumplimiento de rutinas (Punto 11) */}
+          {rutinas.length > 0 && (
+            <div className="bg-white rounded-3xl p-6 border border-tea-border shadow-soft-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-base font-extrabold text-tea-text flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    {t('perf_quick_check_title')}
+                  </h2>
+                  <p className="text-xs text-tea-muted mt-0.5">
+                    {t('perf_quick_check_desc')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {rutinas.map((r) => {
+                  const isMarcando = marcandoId === r.id;
+
+                  return (
+                    <div
+                      key={r.id}
+                      className="p-4 rounded-2xl border border-tea-border bg-slate-50 flex items-center justify-between gap-3 shadow-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-tea-text truncate">
+                            {r.titulo}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                            {r.turno}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-tea-muted mt-0.5">
+                          {contarPasos(r)} {contarPasos(r) === 1 ? t('visual_step_single') : t('visual_step_plural')}
+                          {r.duracionTotalMinutos ? ` • ${r.duracionTotalMinutos} min` : ''}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleMarcarCumplida(r.id)}
+                        disabled={isMarcando}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-xs transition-colors disabled:opacity-50 flex-shrink-0 cursor-pointer"
+                      >
+                        {isMarcando ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Check className="w-3.5 h-3.5" />
+                        )}
+                        <span>{t('perf_mark_completed')}</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
 

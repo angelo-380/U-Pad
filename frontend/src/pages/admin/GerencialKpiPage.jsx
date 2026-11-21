@@ -40,6 +40,7 @@ export const GerencialKpiPage = () => {
   const [error, setError] = useState(null);
   const [codigoCopiado, setCodigoCopiado] = useState(false);
   const [tutoresOpen, setTutoresOpen] = useState(false);
+  const [tutorExpandidoId, setTutorExpandidoId] = useState(null);
   const [cumplimiento, setCumplimiento] = useState(null);
   const [errorCumplimiento, setErrorCumplimiento] = useState(null);
 
@@ -334,16 +335,51 @@ export const GerencialKpiPage = () => {
             ) : (
               <ul className="divide-y divide-tea-border border border-tea-border rounded-2xl overflow-hidden">
                 {tutores.map((tutor) => (
-                  <li key={tutor.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <span className="flex items-center gap-2.5 min-w-0">
-                      <span className="w-8 h-8 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                        {(tutor.nombre || '?').charAt(0).toUpperCase()}
+                  <li key={tutor.id} className="p-3.5 space-y-2 hover:bg-slate-50/50 transition-colors">
+                    <div
+                      onClick={() => setTutorExpandidoId(tutorExpandidoId === tutor.id ? null : tutor.id)}
+                      className="flex items-center justify-between gap-3 cursor-pointer select-none"
+                    >
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                          {(tutor.nombre || '?').charAt(0).toUpperCase()}
+                        </span>
+                        <div className="truncate">
+                          <p className="text-sm font-bold text-tea-text truncate">{tutor.nombre}</p>
+                          <p className="text-[11px] text-tea-muted">
+                            {t('gerencial_tutors_children', { total: tutor.cantidadNinos })} • {tutor.cantidadRutinas || 0} {tutor.cantidadRutinas === 1 ? t('routine_single') : t('routine_plural')}
+                          </p>
+                        </div>
                       </span>
-                      <span className="text-sm font-semibold text-tea-text truncate">{tutor.nombre}</span>
-                    </span>
-                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 whitespace-nowrap">
-                      {t('gerencial_tutors_children', { total: tutor.cantidadNinos })}
-                    </span>
+                      <span className="text-xs font-bold text-indigo-600 flex items-center gap-1">
+                        {tutorExpandidoId === tutor.id ? t('hide_routines') : t('view_routines')}
+                        <ChevronRight className={`w-4 h-4 transition-transform ${tutorExpandidoId === tutor.id ? 'rotate-90' : ''}`} />
+                      </span>
+                    </div>
+
+                    {tutorExpandidoId === tutor.id && (
+                      <div className="mt-2 pt-2 border-t border-dashed border-tea-border pl-2 space-y-1.5 animate-fadeIn">
+                        {(!tutor.rutinas || tutor.rutinas.length === 0) ? (
+                          <p className="text-xs text-tea-muted italic py-1">{t('tutor_no_routines')}</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {tutor.rutinas.map((r) => (
+                              <div key={r.id} className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs shadow-xs">
+                                <div>
+                                  <p className="font-bold text-slate-800">{r.titulo}</p>
+                                  <p className="text-[10px] text-slate-500">
+                                    {r.turno} {r.duracionTotalMinutos ? `• ${r.duracionTotalMinutos} min` : ''}
+                                  </p>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${r.activa ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                                  {r.activa ? t('routine_active') : t('routine_inactive')}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
