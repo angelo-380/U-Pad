@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { devicesService } from '../../services/devicesService.js';
+import { permisosService } from '../../services/permisosService.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { X, Tablet, KeyRound, CheckCircle2, Loader2, Trash2, AlertCircle, RefreshCw, Timer, Info } from 'lucide-react';
+import { X, Tablet, KeyRound, CheckCircle2, Loader2, Trash2, AlertCircle, RefreshCw, Timer, Info, Share2, UserPlus } from 'lucide-react';
 
 // Errores del backend al vincular, traducidos a mensajes claros para el tutor
 const ERRORES_VINCULACION = {
@@ -26,6 +27,9 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
   const [existingDevices, setExistingDevices] = useState([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState(null);
+  const [compartirDevId, setCompartirDevId] = useState(null);
+  const [emailCompartir, setEmailCompartir] = useState('');
+  const [compartiendo, setCompartiendo] = useState(false);
   const toast = useToast();
 
   const cargarDispositivos = async () => {
@@ -100,6 +104,24 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
     }
   };
 
+  const handleCompartir = async (deviceId, dName) => {
+    if (!emailCompartir.trim()) return;
+    try {
+      setCompartiendo(true);
+      await permisosService.compartirHijo(deviceId, emailCompartir.trim());
+      toast.success(
+        t('share_child_success') ? t('share_child_success').replace('{nombre}', dName) : `Se compartió a ${dName}`,
+        t('share_child_title') || 'Hijo compartido'
+      );
+      setEmailCompartir('');
+      setCompartirDevId(null);
+    } catch (err) {
+      toast.error(err.message || t('share_child_error') || 'Error al compartir hijo');
+    } finally {
+      setCompartiendo(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn"
@@ -164,28 +186,63 @@ export const VincularDispositivoModal = ({ isOpen, onClose, onLinked }) => {
                 const isDeleting = unlinkingId === devId;
 
                 return (
-                  <div
-                    key={devId}
-                    className="flex items-center justify-between p-3 rounded-xl bg-white border border-emerald-100 shadow-xs"
-                  >
-                    <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5 min-w-0">
-                      <span className="truncate">{dName}</span>
-                      {dModel && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-mono truncate">
-                          {dModel}
-                        </span>
-                      )}
+                  <div key={devId} className="space-y-1.5">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-emerald-100 shadow-xs">
+                      <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5 min-w-0">
+                        <span className="truncate">{dName}</span>
+                        {dModel && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-mono truncate">
+                            {dModel}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCompartirDevId(compartirDevId === devId ? null : devId);
+                            setEmailCompartir('');
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold transition-colors"
+                          title={t('share_child_btn')}
+                        >
+                          <Share2 className="w-3.5 h-3.5" />
+                          <span>{t('share_child_btn')}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isDeleting}
+                          onClick={() => handleDesvincular(devId, dName)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold transition-colors disabled:opacity-50"
+                        >
+                          {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          <span>{t('unlink_button')}</span>
+                        </button>
+                      </div>
                     </div>
 
-                    <button
-                      type="button"
-                      disabled={isDeleting}
-                      onClick={() => handleDesvincular(devId, dName)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold transition-colors disabled:opacity-50 flex-shrink-0"
-                    >
-                      {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                      <span>{t('unlink_button')}</span>
-                    </button>
+                    {compartirDevId === devId && (
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row gap-2 items-center animate-fadeIn">
+                        <input
+                          type="email"
+                          placeholder={t('share_child_email_placeholder')}
+                          value={emailCompartir}
+                          onChange={(e) => setEmailCompartir(e.target.value)}
+                          className="w-full text-xs px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500 bg-white"
+                        />
+                        <button
+                          type="button"
+                          disabled={compartiendo || !emailCompartir.trim()}
+                          onClick={() => handleCompartir(devId, dName)}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition-colors disabled:opacity-50 flex-shrink-0"
+                        >
+                          {compartiendo ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserPlus className="w-3 h-3" />}
+                          <span>{t('share_child_submit')}</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}

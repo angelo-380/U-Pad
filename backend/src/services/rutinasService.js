@@ -15,7 +15,11 @@ const sinValor = (valor) => valor === undefined || valor === null || (typeof val
 export const validarNino = (ninoId, propietarioId) => {
   if (sinValor(ninoId)) return null;
   const limpio = String(ninoId).trim();
-  const hijo = db.prepare('SELECT device_id FROM child_devices WHERE device_id = ? AND parent_id = ?').get(limpio, propietarioId);
+  const hijo = db.prepare(`
+    SELECT device_id FROM child_devices WHERE device_id = ? AND parent_id = ?
+    UNION
+    SELECT device_id FROM device_parents WHERE device_id = ? AND parent_id = ?
+  `).get(limpio, propietarioId, limpio, propietarioId);
   if (!hijo) {
     throw new AppError('El niño seleccionado no está vinculado a la cuenta del dueño de la rutina.', 400, {
       code: 'NINO_INVALIDO',

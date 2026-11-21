@@ -89,7 +89,7 @@ export const adminService = {
    * Obtiene los KPIs e indicadores gerenciales para el rol Empresario / Colegio
    */
   async obtenerKpisEmpresario() {
-    const res = await api.get('/api/empresario/kpis');
+    const res = await api.get('/api/empresario/kpis?conRutinas=true');
     return res?.data;
   },
 };

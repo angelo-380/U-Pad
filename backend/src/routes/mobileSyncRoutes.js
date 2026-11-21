@@ -183,12 +183,22 @@ router.get('/mobile/sync-routines', identificarUsuarioMovil({ anonimoVacio: true
     const deviceId = typeof req.query?.deviceId === 'string' ? req.query.deviceId.trim() : '';
     let rows;
     if (deviceId) {
-      const esHijo = db.prepare('SELECT 1 FROM child_devices WHERE device_id = ? AND parent_id = ?').get(deviceId, req.usuarioMovil.id);
+      const esHijo = db.prepare(`
+        SELECT 1 FROM child_devices WHERE device_id = ? AND parent_id = ?
+        UNION
+        SELECT 1 FROM device_parents WHERE device_id = ? AND parent_id = ?
+      `).get(deviceId, req.usuarioMovil.id, deviceId, req.usuarioMovil.id);
       rows = esHijo
         ? db.prepare(`
-            SELECT * FROM rutinas WHERE activa = 1 AND creadoPor = ? AND (ninoId IS NULL OR ninoId = ?)
+            SELECT * FROM rutinas
+            WHERE activa = 1
+              AND (
+                (creadoPor = ? AND (ninoId IS NULL OR ninoId = ?))
+                OR (ninoId = ? AND creadoPor IN (SELECT parent_id FROM device_parents WHERE device_id = ?))
+                OR (ninoId = ? AND creadoPor IN (SELECT parent_id FROM child_devices WHERE device_id = ?))
+              )
             ORDER BY creadoEn ASC, rowid ASC
-          `).all(req.usuarioMovil.id, deviceId)
+          `).all(req.usuarioMovil.id, deviceId, deviceId, deviceId, deviceId, deviceId)
         : [];
     } else {
       rows = db.prepare('SELECT * FROM rutinas WHERE activa = 1 AND creadoPor = ? ORDER BY creadoEn ASC, rowid ASC').all(req.usuarioMovil.id);

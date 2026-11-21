@@ -97,4 +97,18 @@ export const deviceController = {
       next(error);
     }
   },
+
+  /**
+   * POST /api/devices/:deviceId/compartir - Comparte un hijo con otro tutor (Punto 10)
+   */
+  async compartir(req, res, next) {
+    try {
+      const { deviceId } = req.params;
+      const { emailSegundoTutor } = req.body || {};
+      const resultado = await deviceService.compartir(deviceId, req.user.id, emailSegundoTutor);
+      return sendSuccess(res, 200, 'Hijo compartido exitosamente con el tutor', resultado);
+    } catch (error) {
+      next(error);
+    }
+  },
 };

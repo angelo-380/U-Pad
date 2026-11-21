@@ -198,6 +198,7 @@ router.get('/:deviceId/cumplimiento', validarDeviceId, limiteCumplimientoDia, (r
 router.use(authenticate);
 
 router.get('/', deviceController.listar);
+router.post('/:deviceId/compartir', validarDeviceId, deviceController.compartir);
 router.put('/:deviceId/zona-segura', deviceController.zonaSegura);
 
 // Bloqueo kiosco del hijo (solo su dueño, con token)

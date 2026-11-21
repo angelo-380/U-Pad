@@ -236,6 +236,28 @@ export function inicializarEsquema(conexion) {
     leida INTEGER NOT NULL DEFAULT 0
   );
 
+  -- Solicitudes de permiso anticipado (Punto 9: niño pide terminar rutina antes de tiempo)
+  CREATE TABLE IF NOT EXISTS solicitudes_permiso (
+    id TEXT PRIMARY KEY,
+    padreId TEXT NOT NULL,
+    deviceId TEXT NOT NULL,
+    childName TEXT NOT NULL,
+    rutinaId TEXT NOT NULL,
+    rutinaTitulo TEXT NOT NULL,
+    minutosRestantes INTEGER NOT NULL DEFAULT 0,
+    estado TEXT NOT NULL DEFAULT 'PENDIENTE',
+    creadoEn TEXT NOT NULL,
+    resueltoEn TEXT
+  );
+
+  -- Soporte para múltiples tutores por niño (Punto 10)
+  CREATE TABLE IF NOT EXISTS device_parents (
+    device_id VARCHAR(128) NOT NULL,
+    parent_id VARCHAR(64) NOT NULL,
+    vinculadoEn TEXT NOT NULL,
+    PRIMARY KEY (device_id, parent_id)
+  );
+
   -- Cumplimiento real: cada actividad que el niño completa en su teléfono (una vez por día, actividad y turno).
   -- Padre y organización los decide el servidor; la fecha es el día local del teléfono (YYYY-MM-DD).
   CREATE TABLE IF NOT EXISTS cumplimientos (

@@ -15,6 +15,8 @@ import { RutinasEmptyState } from '../../components/rutinas/RutinasEmptyState.js
 import { RutinasErrorState } from '../../components/rutinas/RutinasErrorState.jsx';
 import { VincularDispositivoModal } from '../../components/devices/VincularDispositivoModal.jsx';
 import { Paginacion } from '../../components/common/Paginacion.jsx';
+import { PermisosPanel } from '../../components/rutinas/PermisosPanel.jsx';
+import { TutorialInteractivo, TutorialButton, useTutorialAutoShow } from '../../components/common/TutorialInteractivo.jsx';
 import {
   Plus,
   RefreshCw,
@@ -27,6 +29,7 @@ import {
 } from 'lucide-react';
 
 export const RutinasPage = () => {
+  const [showTutorial, setShowTutorial] = useTutorialAutoShow();
   const [rutinas, setRutinas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -253,6 +256,9 @@ export const RutinasPage = () => {
         </div>
       )}
 
+      {/* Panel de solicitudes de permiso del niño (Punto 9) */}
+      <PermisosPanel />
+
       {/* Cabecera Principal */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
         <div>
@@ -296,6 +302,8 @@ export const RutinasPage = () => {
             <Tablet className="w-4 h-4 text-brand-600" />
             <span>{resumenHijos}</span>
           </button>
+
+          <TutorialButton onClick={() => setShowTutorial(true)} />
 
           <button
             type="button"
@@ -422,6 +430,8 @@ export const RutinasPage = () => {
         }
         loading={deleteLoading}
       />
+
+      <TutorialInteractivo visible={showTutorial} onClose={() => setShowTutorial(false)} />
     </div>
   );
 };

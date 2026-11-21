@@ -89,28 +89,29 @@ export const deviceService = {
   async listarPorPadre(parentId) {
     const devices = db.prepare(`
       SELECT
-        device_id as deviceId,
-        device_id as device_id,
-        parent_id as parentId,
-        parent_id as parent_id,
-        COALESCE(child_name, 'Hijo Vinculado') as childName,
-        COALESCE(child_name, 'Hijo Vinculado') as child_name,
-        device_model as deviceModel,
-        device_model as device_model,
-        is_kiosk_active as isKioskActive,
-        is_kiosk_active as is_kiosk_active,
-        last_latitude as lastLatitude,
-        last_longitude as lastLongitude,
-        ubicacion_actualizada_en as ubicacionActualizadaEn,
-        zona_lat as zonaLat,
-        zona_lng as zonaLng,
-        zona_radio as zonaRadio,
-        last_seen_at as lastSeenAt,
-        last_seen_at as last_seen_at
-      FROM child_devices
-      WHERE parent_id = ?
-      ORDER BY last_seen_at DESC
-    `).all(parentId);
+        cd.device_id as deviceId,
+        cd.device_id as device_id,
+        cd.parent_id as parentId,
+        cd.parent_id as parent_id,
+        COALESCE(cd.child_name, 'Hijo Vinculado') as childName,
+        COALESCE(cd.child_name, 'Hijo Vinculado') as child_name,
+        cd.device_model as deviceModel,
+        cd.device_model as device_model,
+        cd.is_kiosk_active as isKioskActive,
+        cd.is_kiosk_active as is_kiosk_active,
+        cd.last_latitude as lastLatitude,
+        cd.last_longitude as lastLongitude,
+        cd.ubicacion_actualizada_en as ubicacionActualizadaEn,
+        cd.zona_lat as zonaLat,
+        cd.zona_lng as zonaLng,
+        cd.zona_radio as zonaRadio,
+        cd.last_seen_at as lastSeenAt,
+        cd.last_seen_at as last_seen_at
+      FROM child_devices cd
+      WHERE cd.parent_id = ?
+         OR cd.device_id IN (SELECT device_id FROM device_parents WHERE parent_id = ?)
+      ORDER BY cd.last_seen_at DESC
+    `).all(parentId, parentId);
 
     return devices.map(({ zonaLat, zonaLng, zonaRadio, ...d }) => ({
       ...d,
@@ -213,15 +214,67 @@ export const deviceService = {
       throw new AppError('Debes iniciar sesión para desvincular un dispositivo.', 401, { code: 'UNAUTHORIZED' });
     }
 
+    // Si es tutor secundario, solo se elimina de device_parents
+    const delSecundario = db.prepare('DELETE FROM device_parents WHERE device_id = ? AND parent_id = ?').run(deviceId, parentId);
+    if (delSecundario.changes > 0) {
+      return { deviceId, desvinculado: true };
+    }
+
     const resultado = db.prepare('DELETE FROM child_devices WHERE device_id = ? AND parent_id = ?').run(deviceId, parentId);
     if (resultado.changes === 0) {
       throw new AppError('No se encontró ese dispositivo entre tus hijos vinculados.', 404, { code: 'DEVICE_NOT_FOUND' });
     }
 
+    db.prepare('DELETE FROM device_parents WHERE device_id = ?').run(deviceId);
     db.prepare('DELETE FROM pairing_codes WHERE device_id = ?').run(deviceId);
     db.prepare('UPDATE rutinas SET ninoId = NULL WHERE ninoId = ?').run(deviceId);
 
     return { deviceId, desvinculado: true };
+  },
+
+  /**
+   * Comparte el dispositivo del hijo con un segundo tutor (Punto 10)
+   */
+  async compartir(deviceId, parentId, emailSegundoTutor) {
+    if (!parentId) {
+      throw new AppError('Debes iniciar sesión para compartir este hijo.', 401, { code: 'UNAUTHORIZED' });
+    }
+    const emailLimpio = String(emailSegundoTutor || '').trim().toLowerCase();
+    if (!emailLimpio) {
+      throw new AppError('Ingresa el correo electrónico del segundo tutor.', 400, { field: 'emailSegundoTutor' });
+    }
+
+    // Verificar que el dispositivo pertenezca al usuario actual
+    const esDuenio = db.prepare(`
+      SELECT child_name FROM child_devices WHERE device_id = ? AND parent_id = ?
+      UNION
+      SELECT d.child_name FROM child_devices d JOIN device_parents dp ON d.device_id = dp.device_id WHERE d.device_id = ? AND dp.parent_id = ?
+    `).get(deviceId, parentId, deviceId, parentId);
+
+    if (!esDuenio) {
+      throw new AppError('No tienes permisos sobre este dispositivo.', 403, { code: 'FORBIDDEN' });
+    }
+
+    // Buscar al segundo tutor
+    const target = db.prepare('SELECT id, nombre, email FROM usuarios WHERE LOWER(email) = ?').get(emailLimpio);
+    if (!target) {
+      throw new AppError('No se encontró ningún usuario registrado con ese correo electrónico.', 404, { code: 'USER_NOT_FOUND' });
+    }
+    if (target.id === parentId) {
+      throw new AppError('Ya eres tutor de este hijo.', 400, { code: 'SAME_USER' });
+    }
+
+    // Vincular al segundo tutor
+    db.prepare(`
+      INSERT OR IGNORE INTO device_parents (device_id, parent_id, vinculadoEn)
+      VALUES (?, ?, ?)
+    `).run(deviceId, target.id, new Date().toISOString());
+
+    return {
+      deviceId,
+      childName: esDuenio.child_name,
+      segundoTutor: { id: target.id, nombre: target.nombre, email: target.email }
+    };
   },
 
   /**
