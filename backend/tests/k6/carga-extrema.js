@@ -57,7 +57,7 @@ export default function () {
   check(estado, { 'status-200 OK': (r) => r.status === 200 });
   contar(estado);
 
-  sleep(1);
+  sleep(10);
 }
 
 export function handleSummary(data) {
