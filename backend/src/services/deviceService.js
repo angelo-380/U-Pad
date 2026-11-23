@@ -3,10 +3,10 @@ import { db } from '../config/database.js';
 import { AppError } from '../utils/AppError.js';
 import { notificacionesService } from './notificacionesService.js';
 
-/** Vida de un código de vinculación (como un código MFA). */
-export const PAIRING_TTL_MS = 60_000;
-// Los códigos pendientes creados hace más de 5 min se purgan (vencieron hace más de 4)
-const PURGA_PENDIENTES_MS = 5 * 60_000 - PAIRING_TTL_MS;
+/** Vida de un código de vinculación: 5 minutos para dar margen cómodo al usuario al tipear en la web. */
+export const PAIRING_TTL_MS = 300_000;
+// Los códigos pendientes creados hace más de 10 min se purgan
+const PURGA_PENDIENTES_MS = 10 * 60_000;
 
 const REGEX_CODIGO = /^\d{6}$/;
 
