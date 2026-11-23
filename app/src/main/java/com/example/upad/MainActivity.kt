@@ -238,6 +238,10 @@ class MainActivity : AppCompatActivity() {
             val importance = android.app.NotificationManager.IMPORTANCE_HIGH
             val channel = android.app.NotificationChannel("upad_notifications_channel", name, importance).apply {
                 description = descriptionText
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500)
+                enableLights(true)
+                lightColor = android.graphics.Color.RED
             }
             val notificationManager: android.app.NotificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
@@ -332,6 +336,8 @@ class MainActivity : AppCompatActivity() {
             .setContentTitle(title)
             .setContentText(description)
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(androidx.core.app.NotificationCompat.DEFAULT_ALL)
+            .setVibrate(longArrayOf(0, 500, 200, 500))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 

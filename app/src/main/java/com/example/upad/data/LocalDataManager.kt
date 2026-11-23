@@ -1285,6 +1285,26 @@ object LocalDataManager {
         }
     }
 
+    /** El niño solicita permiso al tutor para terminar una rutina antes de tiempo (Punto 9). */
+    fun solicitarPermisoAnticipado(deviceId: String, rutinaId: String, minutosRestantes: Int, onResultado: (Boolean) -> Unit = {}) {
+        if (deviceId.isBlank() || rutinaId.isBlank()) {
+            onResultado(false)
+            return
+        }
+        kotlin.concurrent.thread {
+            val cuerpo = JSONObject()
+                .put("deviceId", deviceId)
+                .put("rutinaId", rutinaId)
+                .put("minutosRestantes", minutosRestantes)
+            val r = httpRequest("POST", "/api/permisos/solicitar", cuerpo)
+            val exito = r?.ok == true
+            if (!exito) {
+                Log.w(TAG, "No se pudo solicitar el permiso anticipado (HTTP ${r?.codigo ?: "sin conexión"})")
+            }
+            onResultado(exito)
+        }
+    }
+
     /**
      * Registra en el servidor una actividad completada en el teléfono del niño (cumplimiento real para la web).
      * Sin token, como la telemetría: el servidor solo lo acepta si el teléfono está vinculado y la actividad es una

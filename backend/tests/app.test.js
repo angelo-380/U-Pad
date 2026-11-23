@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import bcrypt from 'bcrypt';
 import jsonwebtoken from 'jsonwebtoken';
@@ -1919,9 +1920,10 @@ describe('=== SUITE DE PRUEBAS OBLIGATORIAS: U-PAD BACKEND (ENTREGA 25%) ===', (
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upad-sin-secretos-'));
       const dbPath = path.join(dir, 'upad_relational.db');
       const modulo = path.join(SRC, 'config/database.js');
+      const moduloUrl = pathToFileURL(modulo).href;
       // cwd en una carpeta vacía: dotenv no encuentra ningún .env que rellene los valores
       const env = { PATH: process.env.PATH, DB_PATH: dbPath, JWT_SECRET: '', GCP_KMS_PEPPER_SECRET: '' };
-      const r = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', `await import(${JSON.stringify(modulo)});`], { cwd: dir, env, encoding: 'utf8' });
+      const r = spawnSync(process.execPath, ['--no-warnings', '--input-type=module', '-e', `await import(${JSON.stringify(moduloUrl)});`], { cwd: dir, env, encoding: 'utf8' });
 
       expect(r.status).not.toBe(0);
       expect(r.stderr).toContain('JWT_SECRET');

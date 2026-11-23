@@ -37,6 +37,10 @@ fun TaskExecutionScreen(
     val colorVerdeExito = Color(0xFF4CAF50)
     val colorGrisBloqueado = Color(0xFFB0BEC5)
     val colorNaranjaPomodoro = Color(0xFFFF5722)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var mostrarDialogoPermiso by remember { mutableStateOf(false) }
+    var permisoEnviado by remember { mutableStateOf(false) }
+    var enviandoPermiso by remember { mutableStateOf(false) }
 
     val currentUserId = remember {
         padreId.ifEmpty {
@@ -306,7 +310,83 @@ fun TaskExecutionScreen(
                         textAlign = TextAlign.Center
                     )
                 }
+
+                if (!tiempoCumplido) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextButton(
+                        onClick = { mostrarDialogoPermiso = true },
+                        modifier = Modifier.fillMaxWidth(0.9f)
+                    ) {
+                        Text(
+                            text = if (permisoEnviado) "✓ Solicitud de permiso enviada a tu tutor" else "✋ ¿Terminaste antes? Pedir permiso a tu tutor",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (permisoEnviado) Color(0xFF2E7D32) else Color(0xFF0288D1),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
             }
         }
+    }
+
+    if (mostrarDialogoPermiso) {
+        AlertDialog(
+            onDismissRequest = { if (!enviandoPermiso) mostrarDialogoPermiso = false },
+            title = {
+                Text(
+                    text = "¿Terminaste antes de tiempo?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "Enviaremos una solicitud a tu tutor para que revise tu avance y te permita concluir o avanzar de actividad.",
+                    fontSize = 14.sp,
+                    color = Color.DarkGray
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        enviandoPermiso = true
+                        val devId = com.example.upad.data.LocalDataManager.idEsteDispositivo()
+                        val rutId = currentTask?.id ?: currentTask?.actividad ?: ""
+                        val minsRest = (tiempoRestanteSegundos / 60) + 1
+                        com.example.upad.data.LocalDataManager.solicitarPermisoAnticipado(devId, rutId, minsRest) { exito ->
+                            enviandoPermiso = false
+                            mostrarDialogoPermiso = false
+                            if (exito) {
+                                permisoEnviado = true
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    android.widget.Toast.makeText(context, "¡Solicitud enviada! Tu tutor la revisará.", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            } else {
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    android.widget.Toast.makeText(context, "No se pudo enviar la solicitud. Revisa la conexión.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    },
+                    enabled = !enviandoPermiso,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1))
+                ) {
+                    if (enviandoPermiso) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Enviar solicitud")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { mostrarDialogoPermiso = false },
+                    enabled = !enviandoPermiso
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
