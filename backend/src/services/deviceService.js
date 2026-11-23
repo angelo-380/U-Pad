@@ -4,7 +4,7 @@ import { AppError } from '../utils/AppError.js';
 import { notificacionesService } from './notificacionesService.js';
 
 /** Vida de un código de vinculación: 5 minutos para dar margen cómodo al usuario al tipear en la web. */
-export const PAIRING_TTL_MS = 300_000;
+export const PAIRING_TTL_MS = 60_000;
 // Los códigos pendientes creados hace más de 10 min se purgan
 const PURGA_PENDIENTES_MS = 10 * 60_000;
 
